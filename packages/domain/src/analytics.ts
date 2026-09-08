@@ -14,7 +14,7 @@ export function analyticsTrends(current: PostAnalyticsSnapshot, previous?: PostA
   return current.metrics.flatMap((metric) => {
     const before = prior.get(metric.key);
     if (!before || before.unit !== metric.unit) return [];
-    if (before.rawMetric !== metric.rawMetric || before.source !== metric.source || before.coverage !== metric.coverage || before.definitionVersion !== metric.definitionVersion) return [];
+    if (before.rawMetric !== metric.rawMetric || before.source !== metric.source || before.coverage !== metric.coverage || before.definitionVersion !== metric.definitionVersion || before.aggregation !== metric.aggregation) return [];
     const absoluteChange = metric.value - before.value;
     return [{
       key: metric.key,

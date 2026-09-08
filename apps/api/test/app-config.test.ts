@@ -21,6 +21,39 @@ describe("Meta OAuth configuration",()=>{
   });
 });
 
+describe("Facebook Page analytics configuration", () => {
+  const verifiedAt = new Date(Date.now() - 60_000).toISOString();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  const analyticsConfig = {
+    ...productionMetaConfig,
+    AUTH_MODE: "sessions",
+    BOOTSTRAP_ADMIN_EMAIL: "owner@originpost.test",
+    BOOTSTRAP_ADMIN_PASSWORD: "a-safe-password",
+    FACEBOOK_CONNECTOR_MODE: "official",
+    FACEBOOK_ANALYTICS_CONNECTOR_MODE: "official",
+    FACEBOOK_ANALYTICS_APP_REVIEW_SHA256: "d".repeat(64),
+    FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION: "v26.0",
+    FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256: "e".repeat(64),
+    FACEBOOK_ANALYTICS_CONTRACT_PROBE_VERIFIED_AT: verifiedAt,
+    FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT: expiresAt,
+    META_WEBHOOK_VERIFY_TOKEN: "m".repeat(32),
+  };
+
+  it("accepts reviewed, current evidence for the exact Graph version", () => {
+    expect(validateConfig(analyticsConfig)).toMatchObject({ FACEBOOK_ANALYTICS_CONNECTOR_MODE: "official" });
+  });
+
+  it.each([
+    ["publishing mode", { FACEBOOK_CONNECTOR_MODE: "mock" }],
+    ["review evidence", { FACEBOOK_ANALYTICS_APP_REVIEW_SHA256: "missing" }],
+    ["Graph version", { FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION: "v25.0" }],
+    ["probe result evidence", { FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256: "missing" }],
+    ["expired probe", { FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT: new Date(Date.now() - 1).toISOString() }],
+  ])("rejects an invalid %s gate", (_name, override) => {
+    expect(() => validateConfig({ ...analyticsConfig, ...override })).toThrow(/Facebook analytics|Official Facebook analytics/);
+  });
+});
+
 describe("workspace AI runtime configuration",()=>{
   it("normalizes the private-endpoint gate and rejects ambiguous values",()=>{
     expect(validateConfig({NODE_ENV:"test",AGENT_ALLOW_PRIVATE_ENDPOINTS:"true"})).toMatchObject({AGENT_ALLOW_PRIVATE_ENDPOINTS:true});

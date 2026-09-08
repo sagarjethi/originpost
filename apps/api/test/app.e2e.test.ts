@@ -510,7 +510,7 @@ describe("OriginPost API", () => {
     expect(outbox.body).toMatchObject({ pending: 1, processing: 0, failed: 0 });
   });
 
-  it("exposes Facebook Page analytics as unsupported in the first release", async () => {
+  it("keeps Facebook Page analytics disabled until the reviewed provider gate is enabled", async () => {
     const response = await request(app.getHttpServer()).get("/v1/connectors").expect(200);
     const facebook = response.body.find((entry: { platform: string }) => entry.platform === "facebook");
     expect(facebook).toMatchObject({

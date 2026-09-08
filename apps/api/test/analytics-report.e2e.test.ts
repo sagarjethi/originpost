@@ -43,7 +43,7 @@ describe("proof-backed analytics client reports", () => {
       proofs: [{
         id: "proof-report-fixture", contentItemId: created.item.id, draftId: "draft-report", draftSha256: "d".repeat(64), platform: "instagram",
         accountId: "report-instagram", externalPostId: "provider-post", liveUrl: "https://www.instagram.com/p/provider-post/", publishedAt: createdAt,
-        captionSha256: "c".repeat(64), mediaSha256: ["m".repeat(64)], connectorResponseSha256: "r".repeat(64), approvedBy: actor.id, sourceIds: [], disclosure: "none",
+        captionSha256: "c".repeat(64), mediaSha256: ["m".repeat(64)], connectorResponseSha256: "r".repeat(64), approvedBy: actor.id, sourceIds: [], disclosure: "none", evidenceMode: "official",
       }],
     };
     await infrastructure.repository.commit(item, created.event);
@@ -92,5 +92,25 @@ describe("proof-backed analytics client reports", () => {
 
     await request(app.getHttpServer()).post(`/v1/analytics/reports/${reportId}/shares/${shared.body.id}/revoke?workspaceId=default`).expect(201);
     await request(app.getHttpServer()).get(`/v1/analytics-reports/${token}`).expect(404);
+  });
+
+  it("blocks client links for simulated publication proofs", async () => {
+    const createdAt = "2026-08-18T10:00:00.000Z";
+    await infrastructure.connectedAccountRepository.save({
+      id: "report-simulation", workspaceId: "default", brandId: "brand_default", platform: "instagram", displayName: "Simulation account",
+      externalAccountId: "simulated-account", capabilities: ["profile_read"], status: "healthy", createdBy: actor.id, createdAt, updatedAt: createdAt,
+    }, { id: "audit-report-simulation-account", workspaceId: "default", actorId: actor.id, actorType: "human", action: "test.account", detail: {}, createdAt });
+    const created = createContentItem({ contentId: "content-report-simulation", workspaceId: "default", brandId: "brand_default", title: "Simulation only", actor, now: createdAt });
+    await infrastructure.repository.commit({ ...created.item, status: "published", proofs: [{
+      id: "proof-report-simulation", contentItemId: created.item.id, draftId: "draft-simulation", draftSha256: "d".repeat(64), platform: "instagram", accountId: "report-simulation",
+      externalPostId: "mock_post", liveUrl: "https://instagram.example.invalid/p/mock_post", publishedAt: createdAt, captionSha256: "c".repeat(64), mediaSha256: [], connectorResponseSha256: "r".repeat(64), approvedBy: actor.id, sourceIds: [], disclosure: "none", evidenceMode: "simulation",
+    }] }, created.event);
+
+    const report = await request(app.getHttpServer()).post("/v1/analytics/reports").send({
+      workspaceId: "default", name: "Simulation report", brandIds: ["brand_default"], rangeMode: "fixed", from: "2026-08-01T00:00:00.000Z", to: "2026-08-31T23:59:59.999Z", platforms: ["instagram"], accountIds: ["report-simulation"], metricKeys: ["views"],
+    }).expect(201);
+    const snapshot = await request(app.getHttpServer()).post(`/v1/analytics/reports/${report.body.definition.id}/generate?workspaceId=default`).expect(201);
+    expect(snapshot.body.warnings).toContainEqual(expect.objectContaining({ code: "simulation_data", count: 1 }));
+    await request(app.getHttpServer()).post(`/v1/analytics/reports/${report.body.definition.id}/snapshots/${snapshot.body.id}/shares`).send({ workspaceId: "default", expiresInDays: 14 }).expect(409);
   });
 });

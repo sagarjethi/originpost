@@ -31,7 +31,7 @@ OriginPost keeps social account setup separate from content and publishing recor
 - each selected Facebook Page becomes its own brand-scoped account and receives a separate encrypted Page credential;
 - Facebook Page publishing starts with text-only and one-photo posts; unsupported media shapes fail before scheduling;
 - the worker stores a durable Facebook intent before the provider write, never blind-retries an unclear response, and records proof only from a read-back Page ID and API permalink;
-- Facebook proofs are shown normally, while Facebook analytics are clearly marked unsupported in this release;
+- Facebook proofs are shown normally; Page Post analytics remains a separate fail-closed capability that requires reviewed `read_insights` access, the Page `ANALYZE` task, and a current deployment contract probe;
 - YouTube uses the server-side authorization-code flow with offline access; access and refresh tokens stay encrypted and server-side;
 - YouTube scheduling requires the exact approved title and description plus explicit privacy, Made for Kids, synthetic-media, and subscriber-notification choices;
 - a YouTube disconnect blocks local publishing first, then revokes the Google grant and deletes the encrypted credential; failed provider revocation stays visible and retryable without re-enabling publishing.
@@ -115,6 +115,19 @@ FACEBOOK_CONNECTOR_MODE=official
 ALLOW_LIVE_PUBLISH=true
 AUTH_MODE=sessions
 ```
+
+Facebook publishing and analytics are deliberately independent. To enable proof-linked Page Post analytics after Meta approval, add:
+
+```text
+FACEBOOK_ANALYTICS_CONNECTOR_MODE=official
+FACEBOOK_ANALYTICS_APP_REVIEW_SHA256=<lowercase-sha256-of-immutable-review-evidence>
+FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION=vNN.0
+FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256=<lowercase-sha256-of-watched-probe-output>
+FACEBOOK_ANALYTICS_CONTRACT_PROBE_VERIFIED_AT=<watched-owned-page-probe-time>
+FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT=<no-more-than-30-days-after-verification>
+```
+
+The operator runs and watches the owned-Page probe outside OriginPost, records an immutable result digest, and attests its time window. OriginPost validates the digest format, exact `META_GRAPH_API_VERSION`, and a current window no longer than 30 days; it does not claim to execute that external probe itself. With this gate enabled, Facebook Login also requests `read_insights`. The selected Page must expose the `ANALYZE` task; otherwise publishing remains usable but Analytics and Connection Doctor show the missing read capability. Existing Page connections must reconnect to add the scope and capability.
 
 Register this exact callback URL in the Meta application:
 

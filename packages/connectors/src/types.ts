@@ -40,7 +40,7 @@ export interface AnalyticsRequest {
   contentItemId: string;
   proofId: string;
   accountId: string;
-  platform: Extract<Platform, "instagram" | "youtube">;
+  platform: Extract<Platform, "instagram" | "facebook" | "youtube">;
   externalPostId: string;
   publishedAt: string;
 }
@@ -56,7 +56,11 @@ export interface AnalyticsResult {
 }
 
 export class ProviderAnalyticsError extends Error {
-  constructor(message: string, public readonly code: "permission_missing" | "unsupported" | "provider_failed") {
+  constructor(
+    message: string,
+    public readonly code: "permission_missing" | "unsupported" | "rate_limited" | "transient" | "provider_failed",
+    public readonly detail: { providerCode?: number; providerSubcode?: number; retryAfterSeconds?: number } = {},
+  ) {
     super(message);
     this.name = "ProviderAnalyticsError";
   }

@@ -1,8 +1,8 @@
 export type AnalyticsStatus = "ready" | "not_fetched" | "stale" | "pending" | "unavailable" | "privacy_threshold" | "expired" | "hidden" | "permission_missing" | "unsupported" | "failed";
 
-export type AnalyticsMetricKey = "views" | "engaged_views" | "reach" | "impressions" | "likes" | "comments" | "shares" | "saves" | "watch_time_seconds" | "average_view_duration_seconds" | "subscribers_gained";
+export type AnalyticsMetricKey = "views" | "engaged_views" | "reach" | "impressions" | "clicks" | "likes" | "comments" | "shares" | "saves" | "watch_time_seconds" | "average_view_duration_seconds" | "subscribers_gained";
 
-export type AnalyticsMetric = { key: AnalyticsMetricKey; value: number; unit: "count" | "seconds"; rawMetric?: string; source?: string; coverage?: string; definitionVersion?: string; caveats?: string[] };
+export type AnalyticsMetric = { key: AnalyticsMetricKey; value: number; unit: "count" | "seconds"; rawMetric?: string; source?: string; coverage?: string; definitionVersion?: string; aggregation?: "sum" | "non_additive"; caveats?: string[] };
 
 export type AnalyticsTrend = {
   key: AnalyticsMetricKey;
@@ -31,7 +31,7 @@ export function metricValue(metrics: AnalyticsMetric[], key: AnalyticsMetricKey)
 }
 
 export function interactionTotal(metrics: AnalyticsMetric[]): number | undefined {
-  const values = (["likes", "comments", "shares", "saves"] as const)
+  const values = (["clicks", "likes", "comments", "shares", "saves"] as const)
     .map((key) => metricValue(metrics, key))
     .filter((value): value is number => value !== undefined);
   return values.length ? values.reduce((total, value) => total + value, 0) : undefined;

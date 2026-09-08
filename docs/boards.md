@@ -37,6 +37,10 @@ Board and desired skill policy changes are committed to PostgreSQL with an audit
 
 The lifecycle is `setup_required` → `provisioning` → `ready` or `attention`. An archived Board cannot change skills or run. Archiving increments both epochs, rotates the profile key, durably queues toolset shutdown and removal from the Hermes multiplex allowlist, and retains the profile, isolated memory, desired/observed policy, run ledger, and audit history. Deleting or purging a Hermes profile is intentionally not implemented.
 
+The Board opens on its own Work surface. Creators, managers, and owners can run the ready Board there; viewers can inspect only the safe ledger. Raw prompts and responses stay ephemeral in the browser, while PostgreSQL stores only hashes, model/token metadata, timing, and outcome. A deliberate **Send to Content Inbox** handoff creates a normal Content Item for source checking and human review. A Board response is never publishing authority by itself.
+
+Hermes profile allowlist reconciliation is globally serialized with worker and queue concurrency of one. Hermes 0.21 stores that allowlist as a shared read-modify-write setting, so this prevents two Boards from overwriting each other during concurrent setup or archive operations.
+
 Run history stores request/response SHA-256 values, model, token counts, latency, outcome, and a safe error code. It never stores the raw prompt, response, memory, provider body, or credentials in the ledger or audit detail.
 
 ## Roles

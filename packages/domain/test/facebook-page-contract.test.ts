@@ -179,7 +179,7 @@ describe("Facebook Page persistence contracts", () => {
     await expect(repository.consumeState(state.stateHash, "facebook", "2026-08-29T00:02:00.000Z")).resolves.toBeNull();
   });
 
-  it("stores a durable Facebook provider operation without widening analytics", async () => {
+  it("stores a durable Facebook provider operation independently of analytics", async () => {
     const repository = new InMemoryProviderPublishOperationRepository();
     const operation: ProviderPublishOperation = {
       id: "provider-op-facebook-1",

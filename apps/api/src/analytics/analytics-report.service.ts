@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   analyticsReportCsv,
@@ -8,6 +8,8 @@ import {
   createAnalyticsReportDefinition,
   createAnalyticsReportSnapshot,
   DomainError,
+  isClientReportEligibleEvidenceMode,
+  publishProofEvidenceMode,
   resolveAnalyticsReportPeriod,
   verifyAnalyticsReportSnapshot,
   type Actor,
@@ -59,7 +61,7 @@ export class AnalyticsReportService {
     const brandIds = [...new Set(dto.brandIds)];
     if (brandIds.some((brandId) => !active.has(brandId))) throw new DomainError("Every selected brand must be active in this workspace.", "analytics_report_brand_invalid", 400);
     const accounts = (await Promise.all(brandIds.map((brandId) => this.infrastructure.connectedAccountRepository.list(workspaceId, brandId)))).flat();
-    const allowedAccounts = new Map(accounts.filter((account) => dto.platforms.includes(account.platform as "instagram" | "youtube")).map((account) => [account.id, account]));
+    const allowedAccounts = new Map(accounts.filter((account) => dto.platforms.includes(account.platform as "instagram" | "facebook" | "youtube")).map((account) => [account.id, account]));
     if (dto.accountIds.some((accountId) => !allowedAccounts.has(accountId))) throw new DomainError("A selected account does not belong to the chosen brands and platforms.", "analytics_report_account_invalid", 400);
     const range = dto.rangeMode === "rolling"
       ? { mode: "rolling" as const, days: dto.rollingDays! }
@@ -109,6 +111,7 @@ export class AnalyticsReportService {
     const snapshot = await this.infrastructure.analyticsReportRepository.getSnapshot(workspaceId, reportId, snapshotId);
     if (!snapshot) throw new NotFoundException("Analytics report snapshot not found.");
     this.assertSnapshot(snapshot);
+    if (snapshot.proofRows.some((row) => !isClientReportEligibleEvidenceMode(row.evidenceMode))) throw new ConflictException("Client links require official, human-attested, or provider-reconciled publication evidence. Simulated and unverified legacy proofs cannot be shared.");
     const token = randomBytes(32).toString("base64url");
     const createdAt = new Date().toISOString();
     const share: AnalyticsReportShare = {
@@ -168,7 +171,7 @@ export class AnalyticsReportService {
     const rows: AnalyticsReportProofInput[] = [];
     for (const item of itemsByBrand.flat()) {
       for (const proof of item.proofs) {
-        if (proof.platform !== "instagram" && proof.platform !== "youtube") continue;
+        if (proof.platform !== "instagram" && proof.platform !== "facebook" && proof.platform !== "youtube") continue;
         if (!definition.platforms.includes(proof.platform) || (definition.accountIds.length && !definition.accountIds.includes(proof.accountId))) continue;
         if (proof.publishedAt < period.from || proof.publishedAt > period.to) continue;
         const candidate = latestByProof.get(proof.id);
@@ -177,7 +180,7 @@ export class AnalyticsReportService {
         rows.push({
           proofId: proof.id, contentItemId: item.id, brandId: item.brandId, brandName: brandNames.get(item.brandId) ?? "Archived brand",
           title: item.title, platform: proof.platform, accountId: proof.accountId, accountName: accounts.get(proof.accountId)?.displayName ?? "Disconnected account",
-          externalPostId: proof.externalPostId, liveUrl: proof.liveUrl, publishedAt: proof.publishedAt, status,
+          externalPostId: proof.externalPostId, liveUrl: proof.liveUrl, publishedAt: proof.publishedAt, evidenceMode: publishProofEvidenceMode(proof), status,
           ...(latest ? { analyticsSnapshotId: latest.id, capturedAt: latest.capturedAt, metrics: latest.metrics, caveats: latest.caveats ?? [], ...(latest.rawPayloadSha256 ? { analyticsRawPayloadSha256: latest.rawPayloadSha256 } : {}), ...(latest.provider ? { provider: latest.provider } : {}), ...(latest.errorCode ? { errorCode: latest.errorCode } : {}), ...(latest.errorSummary ? { errorSummary: latest.errorSummary } : {}) } : { metrics: [], caveats: [] }),
         });
       }
@@ -191,7 +194,7 @@ export class AnalyticsReportService {
       groups: snapshot.groups.map(({ key: _key, brandId: _brandId, accountId: _accountId, ...group }) => group),
       posts: snapshot.proofRows.map((row) => ({
         title: row.title, brandName: row.brandName, platform: row.platform, accountName: row.accountName,
-        liveUrl: row.liveUrl, publishedAt: row.publishedAt, status: row.status, capturedAt: row.capturedAt,
+        liveUrl: row.liveUrl, publishedAt: row.publishedAt, evidenceMode: row.evidenceMode ?? "legacy_unknown", status: row.status, capturedAt: row.capturedAt,
         metrics: row.metrics, caveats: row.caveats,
       })),
       warnings: snapshot.warnings.map(({ groupKey: _groupKey, ...warning }) => warning),

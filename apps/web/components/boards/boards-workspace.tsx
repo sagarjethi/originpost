@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, Archive, Bot, Brain, Check, CheckCircle2, ChevronRight, Columns3, Loader2, LockKeyhole, Plus, RefreshCw, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, TriangleAlert, X } from "lucide-react";
+import { Activity, Archive, Bot, Brain, Check, CheckCircle2, ChevronRight, Columns3, FilePlus2, Hash, Loader2, LockKeyhole, Plus, RefreshCw, Send, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, TriangleAlert, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, type AuthView } from "../../lib/api-client";
-import { boardStatusLabel, formatBoardStamp, parseBoard, parseBoardHermes, parseBoards, type BoardHermesView, type BoardPendingWriteDetailView, type BoardPendingWriteView, type BoardSkillView, type BoardView } from "./board-utils";
+import { boardStatusLabel, formatBoardStamp, parseBoard, parseBoardHermes, parseBoardRuns, parseBoards, type BoardHermesView, type BoardPendingWriteDetailView, type BoardPendingWriteView, type BoardRunView, type BoardSkillView, type BoardView } from "./board-utils";
 import styles from "./boards-workspace.module.css";
 
-type BoardPanel = "overview" | "memory" | "skills";
+type BoardPanel = "work" | "overview" | "memory" | "skills";
+type BoardRunResult = { runId: string; model: string; text: string; usage?: { inputTokens?: number; outputTokens?: number } };
 
 const emptyPlugin: BoardHermesView = { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, pending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] };
 
@@ -19,11 +20,27 @@ function safeRequestMessage(fallback: string) {
   return fallback;
 }
 
-function pluginState(board: BoardView, plugin: BoardHermesView) {
+function pluginState(board: BoardView, plugin: BoardHermesView, unavailable = false) {
+  if (unavailable) return { label: "Could not verify", className: styles.attention };
   if (board.status === "provisioning") return { label: "Setting up", className: styles.pending };
   if (board.status === "attention") return { label: "Needs attention", className: styles.attention };
   if (plugin.configured && plugin.healthy && board.status === "ready") return { label: "Ready", className: styles.ready };
   return { label: "Setup required", className: styles.pending };
+}
+
+function BoardWork({ board, runtimeReady, canRun, busy, prompt, result, runs, onPrompt, onRun, onHandoff }: { board: BoardView; runtimeReady: boolean; canRun: boolean; busy: string; prompt: string; result: BoardRunResult | null; runs: BoardRunView[]; onPrompt: (value: string) => void; onRun: (event: FormEvent<HTMLFormElement>) => void; onHandoff: () => void }) {
+  const ready = board.status === "ready" && runtimeReady;
+  return <div className={styles.workPanel}>
+    <div className={styles.panelLead}><span><Sparkles size={20} /></span><div><strong>Work with this Board</strong><p>The prompt uses only this Board’s purpose, memory, and owner-approved skills.</p></div></div>
+    <form className={styles.runComposer} onSubmit={onRun}>
+      <label htmlFor={`board-prompt-${board.id}`}>What should this Board work on?</label>
+      <textarea id={`board-prompt-${board.id}`} value={prompt} onChange={(event) => onPrompt(event.target.value)} minLength={1} maxLength={12_000} rows={5} placeholder="Research the next verified Mumbai event opportunity and outline a source-backed post." disabled={!canRun || !ready || Boolean(busy)} />
+      <footer><p><LockKeyhole size={13} />The saved ledger keeps hashes and usage—not prompt or response text.</p><button type="submit" disabled={!canRun || !ready || !prompt.trim() || Boolean(busy)}>{busy === "run" ? <Loader2 className={styles.spin} size={14} /> : <Send size={14} />}Run Board</button></footer>
+    </form>
+    {!ready ? <p className={styles.workWarning}><TriangleAlert size={14} />Finish Hermes setup before running this Board.</p> : !canRun ? <p className={styles.workWarning}><LockKeyhole size={14} />Your workspace role can view Board activity but cannot run Board actions.</p> : null}
+    {result ? <article className={styles.runResult}><header><div><small>EPHEMERAL RESULT</small><strong>{result.model}</strong></div><button type="button" onClick={onHandoff} disabled={Boolean(busy)}>{busy === "handoff" ? <Loader2 className={styles.spin} size={13} /> : <FilePlus2 size={13} />}Send to Content Inbox</button></header><pre>{result.text}</pre><footer>Run {result.runId.slice(0, 12)} · This response is not stored in Board history.</footer></article> : null}
+    <section className={styles.runLedger}><header><div><strong>Activity ledger</strong><p>Recent executions for this Board, without prompt or response content.</p></div><Hash size={17} /></header>{runs.length ? runs.map((run) => <article key={run.id}><span className={run.status === "succeeded" ? styles.runSucceeded : styles.runFailed}>{run.status === "succeeded" ? <CheckCircle2 size={13} /> : <TriangleAlert size={13} />}{run.status === "succeeded" ? "Completed" : "Failed"}</span><div><strong>{run.model}</strong><small>{formatBoardStamp(run.createdAt)} · {Math.round(run.latencyMs)} ms{run.outputTokens !== undefined ? ` · ${run.outputTokens} output tokens` : ""}</small></div><code title={run.requestSha256}>Request {run.requestSha256.slice(0, 10)}</code></article>) : <div className={styles.emptyInner}><Activity size={21} /><strong>No Board runs yet</strong><p>Run a task to create the first hash-only activity record.</p></div>}</section>
+  </div>;
 }
 
 function skillState(skill: BoardSkillView) {
@@ -47,14 +64,22 @@ function PendingWrites({ subsystem, plugin, detail, busy, isOwner, onReview, onD
   </div>;
 }
 
-export function BoardDetailPanel({ board, plugin, panel, isOwner, busy, pendingDetail, onPanelChange, onTest, onReconcile, onToggleSkill, onReviewPending, onPendingDecision, onEdit, onArchive }: {
+export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, panel, isOwner, canRun = false, busy, pendingDetail, runPrompt = "", runResult = null, runs = [], onPanelChange, onRunPromptChange = () => undefined, onRun = () => undefined, onHandoff = () => undefined, onTest, onReconcile, onToggleSkill, onReviewPending, onPendingDecision, onEdit, onArchive }: {
   board: BoardView;
   plugin: BoardHermesView;
+  pluginUnavailable?: boolean;
   panel: BoardPanel;
   isOwner: boolean;
+  canRun?: boolean;
   busy: string;
   pendingDetail: BoardPendingWriteDetailView | null;
+  runPrompt?: string;
+  runResult?: BoardRunResult | null;
+  runs?: BoardRunView[];
   onPanelChange: (panel: BoardPanel) => void;
+  onRunPromptChange?: (value: string) => void;
+  onRun?: (event: FormEvent<HTMLFormElement>) => void;
+  onHandoff?: () => void;
   onTest: () => void;
   onReconcile: () => void;
   onToggleSkill: (skill: BoardSkillView) => void;
@@ -63,7 +88,7 @@ export function BoardDetailPanel({ board, plugin, panel, isOwner, busy, pendingD
   onEdit: () => void;
   onArchive: () => void;
 }) {
-  const state = pluginState(board, plugin);
+  const state = pluginState(board, plugin, pluginUnavailable);
   return <section className={styles.detail} aria-labelledby="board-detail-title">
     <header className={styles.detailHead}>
       <div><p>BOARD</p><h2 id="board-detail-title">{board.name}</h2><span>{board.purpose || "A private working context for this brand."}</span></div>
@@ -83,10 +108,13 @@ export function BoardDetailPanel({ board, plugin, panel, isOwner, busy, pendingD
       </header>
 
       {plugin.pending ? <div className={styles.applyingBanner}><Loader2 className={styles.spin} size={14} /><div><strong>Approved changes are applying</strong><p>This Board stays unavailable until Hermes matches the exact Board policy.</p></div></div> : null}
+      {pluginUnavailable ? <div className={styles.applyingBanner}><TriangleAlert size={14} /><div><strong>Plugin status could not be verified</strong><p>The saved Board setup was not changed. Retry the connection check when the service is available.</p></div></div> : null}
 
       <nav className={styles.pluginTabs} aria-label="Hermes board settings">
-        {(["overview", "memory", "skills"] as const).map((value) => <button key={value} className={panel === value ? styles.activeTab : ""} onClick={() => onPanelChange(value)} aria-current={panel === value ? "page" : undefined}>{value === "overview" ? <Sparkles size={14} /> : value === "memory" ? <Brain size={14} /> : <ToggleRight size={14} />}{value[0]!.toUpperCase() + value.slice(1)}</button>)}
+        {(["work", "overview", "memory", "skills"] as const).map((value) => <button key={value} className={panel === value ? styles.activeTab : ""} onClick={() => onPanelChange(value)} aria-current={panel === value ? "page" : undefined}>{value === "work" ? <Send size={14} /> : value === "overview" ? <Sparkles size={14} /> : value === "memory" ? <Brain size={14} /> : <ToggleRight size={14} />}{value[0]!.toUpperCase() + value.slice(1)}</button>)}
       </nav>
+
+      {panel === "work" ? <BoardWork board={board} runtimeReady={!pluginUnavailable && plugin.configured && plugin.healthy && plugin.modelReady} canRun={canRun} busy={busy} prompt={runPrompt} result={runResult} runs={runs} onPrompt={onRunPromptChange} onRun={onRun} onHandoff={onHandoff} /> : null}
 
       {panel === "overview" ? <div className={styles.overview}>
         <div><span><Brain size={17} /></span><strong>Board-only memory</strong><p>Learning from this board is not shared with other boards.</p></div>
@@ -122,7 +150,8 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
   const [boards, setBoards] = useState<BoardView[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [plugin, setPlugin] = useState<BoardHermesView>(emptyPlugin);
-  const [panel, setPanel] = useState<BoardPanel>("overview");
+  const [pluginUnavailable, setPluginUnavailable] = useState(false);
+  const [panel, setPanel] = useState<BoardPanel>("work");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
@@ -130,7 +159,12 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pendingDetail, setPendingDetail] = useState<BoardPendingWriteDetailView | null>(null);
-  const isOwner = membershipRole(auth, workspaceId) === "owner";
+  const [runPrompt, setRunPrompt] = useState("");
+  const [runResult, setRunResult] = useState<BoardRunResult | null>(null);
+  const [runs, setRuns] = useState<BoardRunView[]>([]);
+  const role = membershipRole(auth, workspaceId);
+  const isOwner = role === "owner";
+  const canRun = role !== "viewer";
   const selected = useMemo(() => boards.find((board) => board.id === selectedId) ?? boards.find((board) => board.status !== "archived") ?? boards[0], [boards, selectedId]);
 
   const load = useCallback(async () => {
@@ -153,18 +187,33 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
     setDetailLoading(true);
     setError("");
     try {
-      const [boardResponse, pluginResponse] = await Promise.all([
+      const [boardResponse, pluginResponse, runsResponse] = await Promise.all([
         apiFetch(`/v1/boards/${encodeURIComponent(boardId)}?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken),
         apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/plugins/hermes?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken),
+        apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/runs?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=20`, { cache: "no-store" }, auth.csrfToken),
       ]);
-      if (!boardResponse.ok || !pluginResponse.ok) throw new Error();
+      if (!boardResponse.ok) throw new Error();
       const boardBody = await boardResponse.json().catch(() => ({}));
       const parsedBoard = parseBoard((boardBody as { board?: unknown }).board ?? boardBody);
       if (parsedBoard) setBoards((current) => current.map((board) => board.id === parsedBoard.id ? parsedBoard : board));
-      setPlugin(parseBoardHermes(await pluginResponse.json().catch(() => ({}))));
+      if (pluginResponse.ok) {
+        setPlugin(parseBoardHermes(await pluginResponse.json().catch(() => ({}))));
+        setPluginUnavailable(false);
+      } else {
+        setPlugin(emptyPlugin);
+        setPluginUnavailable(true);
+        setError(safeRequestMessage("Could not verify this Board’s internal Hermes plugin."));
+      }
+      if (runsResponse.ok) setRuns(parseBoardRuns(await runsResponse.json().catch(() => ({}))));
+      else {
+        setRuns([]);
+        setError((current) => current || safeRequestMessage("Could not load this Board’s recent run ledger."));
+      }
     } catch {
       setPlugin(emptyPlugin);
-      setError(safeRequestMessage("Could not load this board’s internal plugin."));
+      setPluginUnavailable(true);
+      setRuns([]);
+      setError(safeRequestMessage("Could not load this Board."));
     } finally {
       setDetailLoading(false);
     }
@@ -172,8 +221,9 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (selectedId) void loadDetail(selectedId); else setPlugin(emptyPlugin); }, [loadDetail, selectedId]);
-  useEffect(() => { setFormMode(null); setPanel("overview"); setNotice(""); }, [brandId, workspaceId]);
+  useEffect(() => { setFormMode(null); setPanel("work"); setNotice(""); setRunPrompt(""); setRunResult(null); }, [brandId, workspaceId]);
   useEffect(() => { setPendingDetail(null); }, [selectedId, panel]);
+  useEffect(() => { setRunPrompt(""); setRunResult(null); }, [selectedId]);
 
   async function submitBoard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -198,6 +248,34 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
     } catch {
       setError(safeRequestMessage(editing ? "Could not update this board." : "Could not create this board."));
     } finally { setBusy(""); }
+  }
+
+  async function runBoard(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !canRun || !runPrompt.trim()) return;
+    setBusy("run"); setError(""); setNotice(""); setRunResult(null);
+    try {
+      const response = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, brandId, prompt: runPrompt.trim() }) }, auth.csrfToken);
+      if (!response.ok) throw new Error();
+      const body = await response.json().catch(() => ({})) as Partial<BoardRunResult>;
+      if (typeof body.runId !== "string" || typeof body.model !== "string" || typeof body.text !== "string") throw new Error();
+      setRunResult({ runId: body.runId, model: body.model.slice(0, 200), text: body.text.slice(0, 100_000), ...(body.usage && typeof body.usage === "object" ? { usage: body.usage } : {}) });
+      setNotice("Board run completed. Its response is visible only in this browser session until you send it to the Content Inbox.");
+      const runsResponse = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}/runs?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=20`, { cache: "no-store" }, auth.csrfToken);
+      if (runsResponse.ok) setRuns(parseBoardRuns(await runsResponse.json().catch(() => ({}))));
+    } catch { setError(safeRequestMessage("The Board action could not be completed. No other profile or provider was used.")); }
+    finally { setBusy(""); }
+  }
+
+  async function handoffRun() {
+    if (!selected || !runResult || !canRun) return;
+    setBusy("handoff"); setError(""); setNotice("");
+    try {
+      const response = await apiFetch("/v1/content-items", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, brandId, title: `${selected.name} — Board output`.slice(0, 180), summary: runResult.text.slice(0, 2000), researchDepth: "standard", riskLevel: "low" }) }, auth.csrfToken);
+      if (!response.ok) throw new Error();
+      setNotice("Board output was copied into a new Content Inbox item for source checking and human review.");
+    } catch { setError(safeRequestMessage("Could not send this Board result to the Content Inbox.")); }
+    finally { setBusy(""); }
   }
 
   async function testPlugin() {
@@ -297,11 +375,11 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
     <div className={styles.layout}>
       <aside className={styles.boardList} aria-label="Boards">
         <header><div><h2>Your boards</h2><p>{boards.filter((board) => board.status !== "archived").length} active for this brand</p></div><Columns3 size={19} /></header>
-        {boards.map((board) => <button key={board.id} className={selected?.id === board.id ? styles.selectedBoard : ""} onClick={() => { setSelectedId(board.id); setPanel("overview"); }} aria-current={selected?.id === board.id ? "true" : undefined}><span><Bot size={17} /></span><div><strong>{board.name}</strong><small>{boardStatusLabel(board.status)}</small></div><ChevronRight size={15} /></button>)}
+        {boards.map((board) => <button key={board.id} className={selected?.id === board.id ? styles.selectedBoard : ""} onClick={() => { setSelectedId(board.id); setPanel("work"); }} aria-current={selected?.id === board.id ? "true" : undefined}><span><Bot size={17} /></span><div><strong>{board.name}</strong><small>{boardStatusLabel(board.status)}</small></div><ChevronRight size={15} /></button>)}
         {!loading && boards.length === 0 ? <div className={styles.emptyList}><Columns3 size={24} /><strong>No boards yet</strong><p>Create a board for a campaign, beat, or ongoing project.</p></div> : null}
         {loading ? <div className={styles.loading}><Loader2 className={styles.spin} size={18} />Loading boards…</div> : null}
       </aside>
-      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} panel={panel} isOwner={isOwner} busy={busy} pendingDetail={pendingDetail} onPanelChange={setPanel} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Bot size={28} /><strong>Select or create a board</strong><p>Every board gets its own internal Hermes context. Memory and skills are managed only after you open a board.</p></div>}</div>
+      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} pluginUnavailable={pluginUnavailable} panel={panel} isOwner={isOwner} canRun={canRun} busy={busy} pendingDetail={pendingDetail} runPrompt={runPrompt} runResult={runResult} runs={runs} onPanelChange={setPanel} onRunPromptChange={setRunPrompt} onRun={(event) => void runBoard(event)} onHandoff={() => void handoffRun()} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Bot size={28} /><strong>Select or create a board</strong><p>Every board gets its own internal Hermes context. Memory and skills are managed only after you open a board.</p></div>}</div>
     </div>
   </main>;
 }

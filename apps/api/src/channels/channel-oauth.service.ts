@@ -44,6 +44,8 @@ export class ChannelOAuthService {
   private youtubeCallbackUrl(): string { return `${(this.config.get<string>("API_PUBLIC_URL") ?? "http://localhost:4000").replace(/\/$/, "")}/v1/channels/oauth/youtube/callback`; }
   private returnUrl(): string { return `${(this.config.get<string>("WEB_PUBLIC_URL") ?? "http://localhost:3000").replace(/\/$/, "")}/`; }
   private testMode(): boolean { return this.config.get<string>("NODE_ENV") === "test" && this.config.get<string>("OAUTH_TEST_MODE") === "true"; }
+  private facebookAnalyticsRequested(): boolean { return this.config.get<string>("FACEBOOK_ANALYTICS_CONNECTOR_MODE") === "official"; }
+  private facebookScopes(): string[] { return ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", ...(this.facebookAnalyticsRequested() ? ["read_insights"] : [])]; }
   configured(): boolean { return this.vault.configured() && (this.testMode() || Boolean(this.config.get<string>("META_APP_ID") && this.config.get<string>("META_APP_SECRET"))); }
   facebookConfigured(): boolean { return this.configured(); }
   instagramFacebookConfigured(): boolean { return this.testMode() || Boolean(this.vault.configured()&&this.config.get<string>("META_APP_ID")&&this.config.get<string>("META_APP_SECRET")&&this.config.get<string>("META_GRAPH_API_VERSION")); }
@@ -85,7 +87,7 @@ export class ChannelOAuthService {
     authorization.searchParams.set("client_id", this.testMode() ? "test-facebook-client" : this.config.get<string>("META_APP_ID")!);
     authorization.searchParams.set("redirect_uri", this.facebookCallbackUrl());
     authorization.searchParams.set("response_type", "code");
-    authorization.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement");
+    authorization.searchParams.set("scope", this.facebookScopes().join(","));
     authorization.searchParams.set("state", rawState);
     return { authorizationUrl: authorization.toString(), expiresAt, callbackUrl: this.facebookCallbackUrl() };
   }
@@ -228,9 +230,11 @@ export class ChannelOAuthService {
     try {
       const identity = await this.readFacebookPageIdentity(payload);
       const now = new Date().toISOString();
+      const capabilities = identity.pageTasks.includes("ANALYZE") ? current.capabilities : current.capabilities.filter((capability) => capability !== "analytics_read");
       const updated: ConnectedAccount = {
         ...current,
         displayName: identity.displayName,
+        capabilities,
         status: "healthy",
         lastCheckedAt: now,
         lastHealthyAt: now,
@@ -239,7 +243,7 @@ export class ChannelOAuthService {
         lastErrorSummary: undefined,
         updatedAt: now,
       };
-      const audit: AuditEvent = { id: `audit_${randomUUID()}`, workspaceId, actorId: actor.id, actorType: "human", action: "channel.oauth-refreshed", detail: { connectedAccountId: accountId, platform: "facebook", externalAccountId: current.externalAccountId, accessChecked: true }, createdAt: now };
+      const audit: AuditEvent = { id: `audit_${randomUUID()}`, workspaceId, actorId: actor.id, actorType: "human", action: "channel.oauth-refreshed", detail: { connectedAccountId: accountId, platform: "facebook", externalAccountId: current.externalAccountId, accessChecked: true, analyticsAccess: capabilities.includes("analytics_read"), pageTasks: identity.pageTasks.filter((task) => task === "CREATE_CONTENT" || task === "ANALYZE") }, createdAt: now };
       await this.infrastructure.connectedAccountRepository.save(updated, audit);
       const { credentialRef: _credentialRef, ...safe } = updated;
       return { ...safe, credentialConfigured: true, credentialManaged: true };
@@ -388,7 +392,9 @@ export class ChannelOAuthService {
     for (const page of candidates as FacebookPageCandidate[]) {
       const existing = existingAccounts.find((account) => account.platform === "facebook" && account.externalAccountId === page.externalAccountId);
       const now = new Date().toISOString();
-      const secret = this.vault.seal(workspaceId, "provider-token", JSON.stringify({ accessToken: page.accessToken, tokenType: "bearer", provider: "facebook", externalAccountId: page.externalAccountId, scope:"pages_show_list pages_read_engagement pages_manage_posts pages_manage_engagement",issuedAt: now,pageTasks:[...new Set(page.tasks)].sort() } satisfies FacebookCredentialPayload), now);
+      const pageTasks = [...new Set(page.tasks)].sort();
+      const scopes = this.facebookScopes();
+      const secret = this.vault.seal(workspaceId, "provider-token", JSON.stringify({ accessToken: page.accessToken, tokenType: "bearer", provider: "facebook", externalAccountId: page.externalAccountId, scope: scopes.join(" "), issuedAt: now, pageTasks } satisfies FacebookCredentialPayload), now);
       const account: ConnectedAccount = {
         id: existing?.id ?? `account_${randomUUID()}`,
         workspaceId,
@@ -397,7 +403,7 @@ export class ChannelOAuthService {
         displayName: page.displayName,
         externalAccountId: page.externalAccountId,
         credentialRef: `secret:${secret.id}`,
-        capabilities: ["page_read", "media_publish"],
+        capabilities: ["page_read", "media_publish", ...(scopes.includes("read_insights") && pageTasks.includes("ANALYZE") ? ["analytics_read" as const] : [])],
         status: "healthy",
         lastCheckedAt: now,
         lastHealthyAt: now,
@@ -405,13 +411,13 @@ export class ChannelOAuthService {
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };
-      const audit: AuditEvent = { id: `audit_${randomUUID()}`, workspaceId, actorId: actor.id, actorType: "human", action: existing ? "channel.oauth-reconnected" : "channel.oauth-connected", detail: { connectedAccountId: account.id, platform: "facebook", externalAccountId: account.externalAccountId, capabilities: account.capabilities, tasks: page.tasks.filter((task) => task === "CREATE_CONTENT") }, createdAt: now };
+      const audit: AuditEvent = { id: `audit_${randomUUID()}`, workspaceId, actorId: actor.id, actorType: "human", action: existing ? "channel.oauth-reconnected" : "channel.oauth-connected", detail: { connectedAccountId: account.id, platform: "facebook", externalAccountId: account.externalAccountId, capabilities: account.capabilities, tasks: pageTasks.filter((task) => task === "CREATE_CONTENT" || task === "ANALYZE") }, createdAt: now };
       const oldCredentialId = credentialId(existing?.credentialRef);
       entries.push({ account, event: audit, credentialChange: { save: secret, ...(oldCredentialId ? { deleteId: oldCredentialId } : {}) } });
       const { credentialRef: _credentialRef, ...safe } = account;
       connected.push({ ...safe, credentialConfigured: true, credentialManaged: true });
     }
-    const grant = this.metaGrant({ workspaceId, actorId: actor.id, authorizationKind: "facebook_login", providerSubject: selection.providerSubject, scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement"], issuedAt: new Date().toISOString(), ...(selection.grantExpiresAt ? { accessExpiresAt: selection.grantExpiresAt } : {}) });
+    const grant = this.metaGrant({ workspaceId, actorId: actor.id, authorizationKind: "facebook_login", providerSubject: selection.providerSubject, scopes: this.facebookScopes(), issuedAt: new Date().toISOString(), ...(selection.grantExpiresAt ? { accessExpiresAt: selection.grantExpiresAt } : {}) });
     if (!await this.infrastructure.connectedAccountRepository.completeOAuthSelection(workspaceId, selectionId, entries, { grant })) throw new ConflictException("This Facebook Page selection is already being completed or was already used.");
     return { connected: true as const, accounts: connected };
   }
@@ -538,11 +544,11 @@ export class ChannelOAuthService {
     if (payload.provider !== "facebook" || typeof payload.accessToken !== "string" || !payload.accessToken || payload.externalAccountId !== expectedExternalAccountId || typeof payload.issuedAt !== "string" || !Array.isArray(payload.pageTasks) || !payload.pageTasks.every((task)=>typeof task==="string"&&Boolean(task.trim()))) {
       throw new ConflictException("The protected Facebook credential does not match this Page. Reconnect it.");
     }
-    return { accessToken: payload.accessToken, tokenType: "bearer", provider: "facebook", externalAccountId: payload.externalAccountId, issuedAt: payload.issuedAt, pageTasks:[...new Set(payload.pageTasks)].sort() };
+    return { accessToken: payload.accessToken, tokenType: "bearer", provider: "facebook", externalAccountId: payload.externalAccountId, ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}), issuedAt: payload.issuedAt, pageTasks:[...new Set(payload.pageTasks)].sort() };
   }
 
-  private async readFacebookPageIdentity(payload: FacebookCredentialPayload): Promise<{ displayName: string }> {
-    if (this.testMode()) return { displayName: `Facebook Page ${payload.externalAccountId}` };
+  private async readFacebookPageIdentity(payload: FacebookCredentialPayload): Promise<{ displayName: string; pageTasks: string[] }> {
+    if (this.testMode()) return { displayName: `Facebook Page ${payload.externalAccountId}`, pageTasks: [...payload.pageTasks] };
     const query = new URLSearchParams({ fields: "id,name,tasks", appsecret_proof: this.metaAppSecretProof(payload.accessToken), appsecret_time: String(Math.floor(Date.now() / 1000)) });
     const response = await fetch(`https://graph.facebook.com/${this.metaApiVersion()}/${encodeURIComponent(payload.externalAccountId)}?${query.toString()}`, {
       headers: { authorization: `Bearer ${payload.accessToken}` },
@@ -551,7 +557,7 @@ export class ChannelOAuthService {
     });
     const value = await response.json().catch(() => ({})) as { id?: string; name?: string; tasks?: string[]; error?: unknown };
     if (!response.ok || value.error || value.id !== payload.externalAccountId || !value.name || !value.tasks?.includes("CREATE_CONTENT")) throw new Error("Facebook Page access is no longer valid.");
-    return { displayName: value.name };
+    return { displayName: value.name, pageTasks: [...new Set(value.tasks.filter((task) => typeof task === "string"))].sort() };
   }
 
   private metaAppSecretProof(accessToken: string): string {
@@ -591,7 +597,7 @@ export class ChannelOAuthService {
     if (this.testMode()) {
       if (code !== "originpost-facebook-oauth-test-code") throw new BadGatewayException("The test provider rejected this Facebook authorization code.");
       return { providerSubject: "100000000000001", grantExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60_000).toISOString(), pages: [
-        { externalAccountId: "test-facebook-page-1", displayName: "OAuth Test Facebook Page", accessToken: "test-facebook-page-token-1-never-returned", tasks: ["CREATE_CONTENT", "MODERATE"] },
+        { externalAccountId: "test-facebook-page-1", displayName: "OAuth Test Facebook Page", accessToken: "test-facebook-page-token-1-never-returned", tasks: ["CREATE_CONTENT", "MODERATE", "ANALYZE"] },
         { externalAccountId: "test-facebook-page-2", displayName: "OAuth Test Community Page", accessToken: "test-facebook-page-token-2-never-returned", tasks: ["CREATE_CONTENT"] },
       ] };
     }
@@ -626,7 +632,7 @@ export class ChannelOAuthService {
     const permissionResponse = await fetch(`https://graph.facebook.com/${this.metaApiVersion()}/me/permissions?${permissionQuery.toString()}`, { headers: { authorization: `Bearer ${long.access_token}` }, redirect: "error", signal: AbortSignal.timeout(15_000) });
     const permissionBody = await permissionResponse.json().catch(() => ({})) as { data?: Array<{ permission?: string; status?: string }>; error?: unknown };
     const granted = new Set((permissionBody.data ?? []).filter((entry) => entry.status === "granted" && entry.permission).map((entry) => entry.permission!));
-    const required = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement"];
+    const required = this.facebookScopes();
     if (!permissionResponse.ok || permissionBody.error || required.some((permission) => !granted.has(permission))) throw new BadGatewayException("Facebook Page permissions were not fully granted. Reconnect and approve Page listing, reading, and publishing access.");
 
     const pages: FacebookPageCandidate[] = [];

@@ -13,6 +13,7 @@ import {
   correctionPermission,
   correctionStatusView,
   evidenceGradeView,
+  isEligiblePublishProof,
   localDateTimeInputValue,
   manualGuidance,
   operationNeedsPoll,
@@ -62,7 +63,7 @@ function formatDate(value: string | undefined) {
 }
 
 export function RemoteCorrectionPanel({ auth, workspaceId, contentItemId, publishProofs }: Props) {
-  const eligibleProofs = useMemo(() => publishProofs.filter((proof) => proof.id && (proof.platform === "instagram" || proof.platform === "facebook" || proof.platform === "youtube")), [publishProofs]);
+  const eligibleProofs = useMemo(() => publishProofs.filter(isEligiblePublishProof), [publishProofs]);
   const [selectedProofId, setSelectedProofId] = useState(eligibleProofs.at(-1)?.id ?? "");
   const [capabilities, setCapabilities] = useState<CorrectionCapabilities | null>(null);
   const [records, setRecords] = useState<CorrectionRecord[]>([]);

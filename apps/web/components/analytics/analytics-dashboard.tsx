@@ -34,12 +34,13 @@ type AnalyticsPost = {
   proofId: string;
   contentItemId: string;
   title: string;
-  platform: "instagram" | "youtube";
+  platform: "instagram" | "facebook" | "youtube";
   accountId: string;
   accountName: string;
   externalPostId: string;
   liveUrl: string;
   publishedAt: string;
+  evidenceMode: "official" | "manual_attestation" | "provider_reconciliation" | "simulation" | "legacy_unknown";
   status: AnalyticsStatus;
   capturedAt?: string;
   metrics: AnalyticsMetric[];
@@ -62,7 +63,7 @@ type AnalyticsResponse = {
     metrics: Record<AnalyticsMetricKey, number | null>;
     metricsScope: "single-platform" | "not-comparable";
   };
-  accountSummaries: Array<{ platform: "instagram" | "youtube"; accountId: string; accountName: string; publishedPosts: number; metrics: Record<AnalyticsMetricKey, number | null> }>;
+  accountSummaries: Array<{ platform: "instagram" | "facebook" | "youtube"; accountId: string; accountName: string; publishedPosts: number; metrics: Record<AnalyticsMetricKey, number | null> }>;
   posts: AnalyticsPost[];
 };
 
@@ -95,6 +96,10 @@ function metricLabel(key: AnalyticsMetricKey) {
   return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function platformLabel(platform: AnalyticsPost["platform"]) {
+  return platform === "instagram" ? "Instagram" : platform === "facebook" ? "Facebook Page" : "YouTube";
+}
+
 function statusIcon(status: AnalyticsStatus) {
   if (status === "ready") return <CheckCircle2 size={15} />;
   if (["stale", "not_fetched", "pending"].includes(status)) return <Clock3 size={15} />;
@@ -123,12 +128,18 @@ function Metric({ label, value, trend, duration = false }: { label: string; valu
 
 function PostCard({ post, refreshing, canRefresh, onRefresh }: { post: AnalyticsPost; refreshing: boolean; canRefresh: boolean; onRefresh: (post: AnalyticsPost) => void }) {
   const copy = analyticsStatusCopy[post.status];
+  const simulation = post.evidenceMode === "simulation";
+  const verifiedEvidence = post.evidenceMode === "official" || post.evidenceMode === "manual_attestation" || post.evidenceMode === "provider_reconciliation";
+  const awaitingFacebookWindow = post.platform === "facebook" && post.status === "not_fetched" && Date.now() - Date.parse(post.publishedAt) < 24 * 60 * 60_000;
   const trends = new Map(post.trends.map((trend) => [trend.key, trend]));
+  const primaryMetrics: Array<{ label: string; key: AnalyticsMetricKey }> = post.platform === "facebook"
+    ? [{ label: "Views", key: "views" }, { label: "Unique viewers", key: "reach" }, { label: "Clicks", key: "clicks" }]
+    : [{ label: "Views", key: "views" }, { label: "Engaged views", key: "engaged_views" }, { label: "Reach", key: "reach" }, { label: "Likes", key: "likes" }];
   return <article className={`analytics-post panel status-${post.status}`}>
     <div className="analytics-post-head">
-      <span className={`analytics-platform ${post.platform}`} aria-hidden="true">{post.platform === "instagram" ? <Camera size={20} /> : <Play size={20} />}</span>
+      <span className={`analytics-platform ${post.platform}`} aria-hidden="true">{post.platform === "instagram" ? <Camera size={20} /> : post.platform === "facebook" ? <Share2 size={20} /> : <Play size={20} />}</span>
       <div className="analytics-post-title">
-        <span>{post.platform === "instagram" ? "Instagram" : "YouTube"} · {post.accountName}</span>
+        <span>{platformLabel(post.platform)} · {post.accountName}</span>
         <h2>{post.title}</h2>
       </div>
       <span className={`analytics-status ${post.status}`}>{statusIcon(post.status)} {copy.label}</span>
@@ -137,17 +148,15 @@ function PostCard({ post, refreshing, canRefresh, onRefresh }: { post: Analytics
     <div className="analytics-post-meta">
       <span><Clock3 size={13} /> Published {formatDate(post.publishedAt)}</span>
       <span><BarChart3 size={13} /> {post.capturedAt ? `Metrics updated ${formatDate(post.capturedAt)}` : "Metrics have not been fetched"}</span>
+      <span className={`analytics-evidence ${verifiedEvidence ? "verified" : "simulation"}`}>{simulation ? "Simulation — not a live post" : post.evidenceMode === "official" ? "Official provider proof" : post.evidenceMode === "manual_attestation" ? "Human-attested proof" : post.evidenceMode === "provider_reconciliation" ? "Provider-reconciled proof" : "Legacy proof — provenance unknown"}</span>
       {post.provider ? <span>Provider: {post.provider}</span> : null}
     </div>
 
-    {isMeasuredStatus(post.status) ? <dl className="analytics-post-metrics">
-      <Metric label="Views" value={metricValue(post.metrics, "views")} trend={trends.get("views")} />
-      <Metric label="Engaged views" value={metricValue(post.metrics, "engaged_views")} trend={trends.get("engaged_views")} />
-      <Metric label="Reach" value={metricValue(post.metrics, "reach")} trend={trends.get("reach")} />
-      <Metric label="Likes" value={metricValue(post.metrics, "likes")} trend={trends.get("likes")} />
+    {isMeasuredStatus(post.status) ? <dl className={`analytics-post-metrics ${post.platform}`}>
+      {primaryMetrics.map((metric) => <Metric key={metric.key} label={metric.label} value={metricValue(post.metrics, metric.key)} trend={trends.get(metric.key)} />)}
     </dl> : <div className={`analytics-status-note ${post.status}`}>
       {statusIcon(post.status)}
-      <div><strong>{copy.label}</strong><p>{post.errorSummary ?? copy.detail}</p>{post.errorCode ? <small>Provider code: {post.errorCode}</small> : null}</div>
+      <div><strong>{copy.label}</strong><p>{awaitingFacebookWindow ? "Facebook's first automatic insight check is scheduled about 24 hours after publishing." : post.errorSummary ?? copy.detail}</p>{post.errorCode ? <small>Provider code: {post.errorCode}</small> : null}</div>
     </div>}
 
     {isMeasuredStatus(post.status) && post.metrics.length ? <details className="analytics-details">
@@ -159,9 +168,9 @@ function PostCard({ post, refreshing, canRefresh, onRefresh }: { post: Analytics
     </details> : null}
 
     <footer className="analytics-post-actions">
-      <a href={post.liveUrl} target="_blank" rel="noreferrer">View live post <ExternalLink size={14} /><span className="sr-only"> (opens in a new tab)</span></a>
+      {!verifiedEvidence ? <span className="analytics-simulation-link"><ShieldAlert size={14} /> {simulation ? "Simulation only" : "Unverified legacy proof"}</span> : <a href={post.liveUrl} target="_blank" rel="noreferrer">View live post <ExternalLink size={14} /><span className="sr-only"> (opens in a new tab)</span></a>}
       <span>Proof {post.proofId.slice(0, 8)} · {post.historyCount} saved snapshot{post.historyCount === 1 ? "" : "s"}</span>
-      <button type="button" onClick={() => onRefresh(post)} disabled={refreshing || !canRefresh} title={!canRefresh ? "Your workspace role can view analytics but cannot request a refresh." : undefined} aria-label={`Refresh provider analytics for ${post.title}`}><RefreshCw className={refreshing ? "analytics-spin" : ""} size={14} /> {refreshing ? "Queued…" : "Refresh metrics"}</button>
+      <button type="button" onClick={() => onRefresh(post)} disabled={refreshing || !canRefresh} title={!canRefresh ? "Your workspace role can view analytics but cannot request a refresh." : undefined} aria-label={`Refresh ${simulation ? "simulated" : "provider"} analytics for ${post.title}`}><RefreshCw className={refreshing ? "analytics-spin" : ""} size={14} /> {refreshing ? "Queued…" : simulation ? "Refresh simulation" : "Refresh metrics"}</button>
     </footer>
   </article>;
 }
@@ -225,7 +234,7 @@ export function AnalyticsDashboard({ auth, workspaceId, brandId, brands }: Analy
       <div>
         <p className="eyebrow">PROOF-TIED ANALYTICS</p>
         <h1>What happened after publish</h1>
-        <p>Instagram and YouTube metrics are attached to the exact live-post proof. Facebook Page analytics are clearly marked unavailable.</p>
+        <p>Instagram, Facebook Page, and YouTube metrics stay tied to publication proof and provider definitions. Simulated evidence remains visibly labeled.</p>
       </div>
       <div className="analytics-hero-actions"><div className="analytics-view-switch" role="tablist" aria-label="Analytics views"><button role="tab" aria-selected={view === "ledger"} className={view === "ledger" ? "active" : ""} onClick={() => setView("ledger")}>Proof ledger</button><button role="tab" aria-selected={view === "reports"} className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}>Client reports</button></div>{view === "ledger" ? <button type="button" className="secondary-button" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "analytics-spin" : ""} size={15} /> Refresh screen</button> : null}</div>
     </header>
@@ -235,10 +244,10 @@ export function AnalyticsDashboard({ auth, workspaceId, brandId, brands }: Analy
 
     {view === "reports" ? <AnalyticsReportStudio auth={auth} workspaceId={workspaceId} activeBrandId={brandId} brands={brands} /> : loading && !data ? <div className="analytics-state panel" role="status"><RefreshCw className="analytics-spin" size={28} /><strong>Loading proof analytics…</strong><p>Reading saved provider snapshots for this brand.</p></div> : data ? <>
       <section className="analytics-summary" aria-label="Analytics summary">
-        <article><span className="teal"><BarChart3 size={18} /></span><small>IG + YouTube proofs</small><strong>{data.summary.publishedPosts}</strong><p>Facebook Pages are not counted</p></article>
+        <article><span className="teal"><BarChart3 size={18} /></span><small>Published proofs</small><strong>{data.summary.publishedPosts}</strong><p>Across all three connected networks</p></article>
         <article><span className="sage"><Camera size={18} /></span><small>Instagram posts</small><strong>{data.posts.filter((post) => post.platform === "instagram").length}</strong><p>Kept separate from YouTube views</p></article>
         <article><span className="sand"><Play size={18} /></span><small>YouTube posts</small><strong>{data.posts.filter((post) => post.platform === "youtube").length}</strong><p>Owned channel analytics only</p></article>
-        <article className="unsupported"><span className="facebook"><Share2 size={18} /></span><small>Facebook Page analytics</small><strong>—</strong><p>Not available in this release</p></article>
+        <article><span className="facebook"><Share2 size={18} /></span><small>Facebook Page posts</small><strong>{data.posts.filter((post) => post.platform === "facebook").length}</strong><p>Proof-level Post Insights only</p></article>
         <article><span className="charcoal"><BarChart3 size={18} /></span><small>Measured posts</small><strong>{data.summary.measuredPosts}<i> / {data.summary.publishedPosts}</i></strong><p>Current or saved stale snapshot</p></article>
         <article className={data.summary.needsAttention ? "attention" : ""}><span className="brick"><ShieldAlert size={18} /></span><small>Needs attention</small><strong>{data.summary.needsAttention}</strong><p>Stale, failed or missing access</p></article>
       </section>
@@ -249,10 +258,10 @@ export function AnalyticsDashboard({ auth, workspaceId, brandId, brands }: Analy
           <label>Snapshot status<select value={filter} onChange={(event) => setFilter(event.target.value as StatusFilter)}><option value="all">All statuses</option><option value="ready">Current</option><option value="stale">Out of date</option><option value="pending">Still processing</option><option value="not_fetched">Not fetched</option><option value="unavailable">Not returned</option><option value="privacy_threshold">Audience too small</option><option value="expired">Insight window ended</option><option value="hidden">Hidden</option><option value="permission_missing">Permission missing</option><option value="unsupported">Not supported</option><option value="failed">Fetch failed</option></select></label>
         </div>
 
-        {data.posts.length === 0 ? <div className="analytics-state panel"><BarChart3 size={28} /><strong>No measured Instagram or YouTube proofs yet</strong><p>Facebook Page publishing proof stays in OriginPost, but Page analytics are not available in this release and are not counted here.</p></div> : visiblePosts.length === 0 ? <div className="analytics-state panel"><MessageCircle size={27} /><strong>No posts with this status</strong><p>Choose another snapshot status to see the rest of the proof ledger.</p></div> : <div className="analytics-post-list">{visiblePosts.map((post) => <PostCard key={post.proofId} post={post} refreshing={refreshingProof === post.proofId} canRefresh={canRefresh} onRefresh={(value) => void refreshPost(value)} />)}</div>}
+        {data.posts.length === 0 ? <div className="analytics-state panel"><BarChart3 size={28} /><strong>No publication proof records yet</strong><p>Publish through a connected account or run a labeled simulation to create a proof-linked analytics row.</p></div> : visiblePosts.length === 0 ? <div className="analytics-state panel"><MessageCircle size={27} /><strong>No posts with this status</strong><p>Choose another snapshot status to see the rest of the proof ledger.</p></div> : <div className="analytics-post-list">{visiblePosts.map((post) => <PostCard key={post.proofId} post={post} refreshing={refreshingProof === post.proofId} canRefresh={canRefresh} onRefresh={(value) => void refreshPost(value)} />)}</div>}
       </section>
 
-      <footer className="analytics-honesty-note"><ShieldAlert size={16} /><p><strong>How to read this screen:</strong> Instagram and YouTube define views differently, so OriginPost does not merge them into one score. Facebook Page analytics are not fetched or counted in this release. A dash means unavailable—not zero. Trends compare compatible snapshots of the same proof only.</p></footer>
+      <footer className="analytics-honesty-note"><ShieldAlert size={16} /><p><strong>How to read this screen:</strong> Every network defines metrics differently, so OriginPost does not merge unlike contracts into one score. Facebook unique viewers stay on each post and are never summed. A dash means unavailable—not zero. Trends compare compatible snapshots of the same proof only.</p></footer>
     </> : null}
   </section>;
 }

@@ -27,7 +27,7 @@ OriginPost is a modular TypeScript monorepo. Each module hides its implementatio
 | `telegram` | Telegram Bot API client and command routing contract | Domain rules or direct connector access |
 | `telegram-bot` | Allow-listed long-polling adapter and OriginPost API client | A second content workflow |
 
-The domain interface is the main test surface. PostgreSQL and in-memory repositories are storage adapters. Mock and official platform connectors are publishing adapters.
+The domain interface is the main test surface. PostgreSQL and in-memory repositories are storage adapters. Mock and official platform connectors are publishing adapters. Proof rows preserve whether the evidence came from an official response, manual attestation, provider reconciliation, a simulation, or an unclassified legacy row.
 
 ## First vertical slice
 
@@ -39,8 +39,8 @@ Inbox input
   → approval
   → scheduled target + outbox command (one PostgreSQL transaction)
   → rebuildable publish job
-  → mock platform result
-  → Proof of Publish
+  → platform result (simulation or gated official connector)
+  → Proof of Publish with explicit evidence mode
   → audit history
 ```
 
@@ -126,7 +126,7 @@ Connected Account metadata
   → exact failed step and recovery action
 ```
 
-Connected-account reads are workspace-scoped. Saving account metadata, its encrypted credential, and its audit event is one PostgreSQL transaction. Raw OAuth tokens and client secrets are rejected by account DTO validation and are never returned to the web app. Auto-scheduling requires a checked account for the same platform and cannot schedule beyond its recorded expiry; the worker repeats the state and expiry check before calling the connector. The current publishing connector is intentionally a safe test adapter, so Connection Doctor shows a warning even when the saved metadata is healthy.
+Connected-account reads are workspace-scoped. Saving account metadata, its encrypted credential, and its audit event is one PostgreSQL transaction. Raw OAuth tokens and client secrets are rejected by account DTO validation and are never returned to the web app. Auto-scheduling requires a checked account for the same platform and cannot schedule beyond its recorded expiry; the worker repeats the state and expiry check before calling the connector. Safe local configuration uses test adapters, while each official connector has an independent fail-closed deployment gate; Connection Doctor reports the active mode and any missing prerequisites.
 
 ## OAuth credential boundary
 

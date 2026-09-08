@@ -58,6 +58,31 @@ export class ConnectionDoctorService {
         : { id: "engagement", label: "Comment inbox", status: "warn", detail: "Publishing still works, but the Engagement inbox is unavailable.", action: "Reconnect Instagram and grant comment access." });
     }
 
+    if (account.platform === "facebook") {
+      checks.push(!connector?.manifest.capabilities.analytics
+        ? {
+            id: "analytics",
+            label: "Page Post analytics",
+            status: "warn",
+            detail: "Publishing can work, but the reviewed Facebook Page Post analytics contract is disabled or expired for this deployment.",
+            action: "Complete Meta App Review and record a current watched owned-Page probe result before enabling Facebook analytics.",
+          }
+        : account.capabilities.includes("analytics_read")
+          ? {
+              id: "analytics",
+              label: "Page Post analytics",
+              status: "pass",
+              detail: "This Page grant includes read_insights and the Page ANALYZE task.",
+            }
+          : {
+              id: "analytics",
+              label: "Page Post analytics",
+              status: "warn",
+              detail: "Publishing can work, but this Page grant cannot read Page Post insights.",
+              action: "Reconnect the Page and approve read_insights with a user who has the Page ANALYZE task.",
+            });
+    }
+
     try {
       const url = new URL(baseUrl);
       const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);

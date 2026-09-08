@@ -23,4 +23,10 @@ describe("analytics", () => {
     const current = { ...snapshot("new", 150), metrics: [{ key: "views" as const, value: 150, unit: "count" as const, rawMetric: "views", definitionVersion: "youtube-views-2026" }] };
     expect(analyticsTrends(current, old)).toEqual([]);
   });
+
+  it("does not compare snapshots whose aggregation contract changed", () => {
+    const old = { ...snapshot("old", 100), metrics: [{ key: "reach" as const, value: 100, unit: "count" as const, aggregation: "sum" as const }] };
+    const current = { ...snapshot("new", 150), metrics: [{ key: "reach" as const, value: 150, unit: "count" as const, aggregation: "non_additive" as const }] };
+    expect(analyticsTrends(current, old)).toEqual([]);
+  });
 });

@@ -22,6 +22,8 @@
 .post { display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 16px 18px; background: #fffdf8; border: 1px solid #d8d2c7; border-radius: 13px; }
 .post strong { display: block; margin-bottom: 5px; } .post small { color: #6e7672; text-transform: capitalize; }
 .post a { align-self: center; color: #086b79; font-weight: 700; text-decoration: none; }
+.postMetrics { display: block; margin-top: 7px; color: #4e5a55; font-size: 12px; line-height: 1.5; text-transform: capitalize; }
+.simulation { align-self: center; border-radius: 999px; background: #fff0ed; padding: 7px 10px; color: #8a3128; font-size: 12px; font-weight: 800; }
 .warnings { display: grid; gap: 8px; margin: 18px 0; }
 .warning { display: flex; gap: 9px; align-items: start; padding: 12px 14px; color: #7e4c17; background: #fff2d8; border: 1px solid #ead4a8; border-radius: 11px; }
 .integrity { margin-top: 30px; padding: 18px; border-top: 1px solid #d8d2c7; color: #6e7672; font-size: 12px; overflow-wrap: anywhere; }

@@ -28,6 +28,7 @@ export * from "./operations.js";
 export * from "./organizations.js";
 export * from "./outbox.js";
 export * from "./posting-queue.js";
+export * from "./publish-proof.js";
 export * from "./schedule-conflicts.js";
 export * from "./permissions.js";
 export * from "./private-conversations.js";

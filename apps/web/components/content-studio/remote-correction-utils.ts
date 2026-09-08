@@ -12,6 +12,7 @@ export type PublishProofSummary = {
   externalPostId?: string | undefined;
   accountId?: string | undefined;
   publishedAt?: string | undefined;
+  evidenceMode?: "official" | "manual_attestation" | "provider_reconciliation" | "simulation" | "legacy_unknown" | undefined;
   draftId?: string | undefined;
   draftSha256?: string | undefined;
   approvedSettingsSha256?: string | undefined;
@@ -106,7 +107,13 @@ export function correctionApprovalMode(role: WorkspaceRole | undefined, actorId:
 }
 
 export function hasEligiblePublishProofs(proofs: readonly PublishProofSummary[]): boolean {
-  return proofs.some((proof) => Boolean(proof.id) && platforms.has(proof.platform as CorrectionPlatform));
+  return proofs.some(isEligiblePublishProof);
+}
+
+export function isEligiblePublishProof(proof: PublishProofSummary): boolean {
+  if (!proof.id || !platforms.has(proof.platform as CorrectionPlatform) || !["official", "manual_attestation", "provider_reconciliation"].includes(proof.evidenceMode ?? "legacy_unknown")) return false;
+  try { return !new URL(proof.liveUrl).hostname.endsWith(".invalid"); }
+  catch { return false; }
 }
 
 export function correctionControlState(status: CorrectionStatus, approvalMode: "two_person" | "single_owner_override" | "blocked") {

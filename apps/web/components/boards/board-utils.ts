@@ -45,6 +45,18 @@ export type BoardHermesView = {
   skills: BoardSkillView[];
 };
 
+export type BoardRunView = {
+  id: string;
+  status: "succeeded" | "failed";
+  model: string;
+  requestSha256: string;
+  responseSha256?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  latencyMs: number;
+  createdAt: string;
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -120,6 +132,31 @@ export function parseBoardHermes(value: unknown): BoardHermesView {
     ...(lastCheckedAt ? { lastCheckedAt } : {}),
     skills,
   };
+}
+
+export function parseBoardRuns(value: unknown): BoardRunView[] {
+  const root = record(value);
+  const rows = Array.isArray(value) ? value : Array.isArray(root?.runs) ? root.runs : [];
+  return rows.flatMap((value): BoardRunView[] => {
+    const row = record(value);
+    if (!row || typeof row.id !== "string" || (row.status !== "succeeded" && row.status !== "failed") || typeof row.model !== "string" || typeof row.requestSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(row.requestSha256) || typeof row.latencyMs !== "number" || !Number.isFinite(row.latencyMs)) return [];
+    const createdAt = safeDate(row.createdAt);
+    if (!createdAt) return [];
+    const responseSha256 = typeof row.responseSha256 === "string" && /^[a-f0-9]{64}$/u.test(row.responseSha256) ? row.responseSha256 : undefined;
+    const inputTokens = typeof row.inputTokens === "number" && Number.isInteger(row.inputTokens) && row.inputTokens >= 0 ? row.inputTokens : undefined;
+    const outputTokens = typeof row.outputTokens === "number" && Number.isInteger(row.outputTokens) && row.outputTokens >= 0 ? row.outputTokens : undefined;
+    return [{
+      id: row.id,
+      status: row.status,
+      model: row.model.slice(0, 200),
+      requestSha256: row.requestSha256,
+      ...(responseSha256 ? { responseSha256 } : {}),
+      ...(inputTokens !== undefined ? { inputTokens } : {}),
+      ...(outputTokens !== undefined ? { outputTokens } : {}),
+      latencyMs: Math.max(0, row.latencyMs),
+      createdAt,
+    }];
+  });
 }
 
 export function boardStatusLabel(status: BoardStatus): string {

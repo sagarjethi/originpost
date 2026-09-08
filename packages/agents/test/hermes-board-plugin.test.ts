@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { deriveBoardRuntimeSecrets, HermesBoardPlugin, HermesBoardPluginError } from "../src/hermes-board-plugin.js";
+import { deriveBoardRuntimeSecrets, HermesBoardPlugin, HermesBoardPluginError, validateHermesBoardPluginConfig } from "../src/hermes-board-plugin.js";
 
 const binding = {
   workspaceId: "workspace-a", brandId: "brand-a", boardId: "agent_board_a",
@@ -14,7 +14,7 @@ const profileDescription = (enabledSkills: string[] = [], configurationEpoch = 2
   return `OriginPost Board runtime; owner=${binding.ownershipMarker}; policy_sha256=${policyDigest}.`;
 };
 
-const plugin = () => new HermesBoardPlugin({ dashboardBaseUrl: "http://127.0.0.1:9119", dashboardSessionToken: "dashboard-secret", executionBaseUrl: "http://127.0.0.1:8642", approvedSkills: ["news-research"], primaryProvider: "openai-codex", primaryModel: "gpt-5.5" });
+const plugin = () => new HermesBoardPlugin({ dashboardBaseUrl: "http://127.0.0.1:9119", dashboardSessionToken: "dashboard-secret".repeat(2), executionBaseUrl: "http://127.0.0.1:8642", approvedSkills: ["news-research"], primaryProvider: "openai-codex", primaryModel: "gpt-5.5" });
 const essentialSkill = { name: "hermes-agent", description: "Hermes runtime instructions", category: "system", enabled: true, provenance: "bundled" };
 const compliantConfig = {
   memory: { memory_enabled: true, user_profile_enabled: true, write_approval: true, provider: "" },
@@ -37,6 +37,15 @@ const effectiveToolsets = (extra: Array<{ name: string; tools: string[] }> = [])
 afterEach(() => vi.restoreAllMocks());
 
 describe("Hermes Board internal plugin", () => {
+  it("validates the complete endpoint and secret policy at the runtime seam", () => {
+    const base = { dashboardBaseUrl: "http://127.0.0.1:9119", dashboardSessionToken: "x".repeat(32), executionBaseUrl: "https://hermes.example.com", approvedSkills: ["news-research"], primaryProvider: "openai-codex", primaryModel: "gpt-5.5" };
+    expect(() => validateHermesBoardPluginConfig(base)).not.toThrow();
+    expect(() => validateHermesBoardPluginConfig({ ...base, dashboardBaseUrl: "http://token@example.com" })).toThrow(/origin-only/u);
+    expect(() => validateHermesBoardPluginConfig({ ...base, executionBaseUrl: "http://10.0.0.8:8642" })).toThrow(/HTTPS/u);
+    expect(() => validateHermesBoardPluginConfig({ ...base, executionBaseUrl: "http://10.0.0.8:8642", allowPrivateEndpoints: true })).not.toThrow();
+    expect(() => validateHermesBoardPluginConfig({ ...base, dashboardSessionToken: "too-short" })).toThrow(/32 bytes/u);
+  });
+
   it("derives different opaque credentials and memory scopes per Board", () => {
     const a = deriveBoardRuntimeSecrets("x".repeat(32), { workspaceId: "w", brandId: "b", boardId: "a", capabilityEpoch: 1 });
     const b = deriveBoardRuntimeSecrets("x".repeat(32), { workspaceId: "w", brandId: "b", boardId: "b", capabilityEpoch: 1 });

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { BoardDetailPanel } from "./boards-workspace";
-import { parseBoard, parseBoardHermes, parseBoards } from "./board-utils";
+import { parseBoard, parseBoardHermes, parseBoardRuns, parseBoards } from "./board-utils";
 
 describe("board API view parsing", () => {
   it("keeps provider internals and raw memory out of the browser view", () => {
@@ -27,6 +27,12 @@ describe("board API view parsing", () => {
     expect(parsed.pendingWrites).toEqual([{ id: "a1b2c3d4", subsystem: "memory", action: "add", summary: "Remember Mumbai", origin: "background_review", createdAt: 1_788_000_000, sha256: "a".repeat(64) }]);
     expect(JSON.stringify(parsed)).not.toContain("not accepted in list");
   });
+
+  it("parses only the hash-only Board activity ledger", () => {
+    const runs = parseBoardRuns({ runs: [{ id: "run-1", status: "succeeded", model: "hermes-agent", requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), inputTokens: 12, outputTokens: 4, latencyMs: 250, createdAt: "2026-09-09T10:00:00.000Z", prompt: "private prompt", text: "private response", workspaceId: "private-workspace" }] });
+    expect(runs).toEqual([{ id: "run-1", status: "succeeded", model: "hermes-agent", requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), inputTokens: 12, outputTokens: 4, latencyMs: 250, createdAt: "2026-09-09T10:00:00.000Z" }]);
+    expect(JSON.stringify(runs)).not.toMatch(/private prompt|private response|private-workspace/);
+  });
 });
 
 describe("Boards detail UI", () => {
@@ -39,5 +45,14 @@ describe("Boards detail UI", () => {
     expect(markup).toContain("Existing Board memory remains private");
     expect(markup).not.toContain("secret-provider-id");
     expect(markup).not.toContain("/private/");
+  });
+
+  it("renders Board work separately from the internal plugin controls", () => {
+    const markup = renderToStaticMarkup(createElement(BoardDetailPanel, { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "ready" }, plugin: { configured: true, healthy: true, modelReady: true, memoryEnabled: true, memoryWriteApproval: true, skillWriteApproval: true, pending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] }, panel: "work", isOwner: false, canRun: true, busy: "", pendingDetail: null, runPrompt: "Find a public event", runResult: { runId: "run-1234567890", model: "Hermes 0.21", text: "Source-backed draft" }, runs: [{ id: "run-1", status: "succeeded", model: "Hermes 0.21", requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), latencyMs: 120, createdAt: "2026-09-09T10:00:00.000Z" }], onPanelChange: vi.fn(), onRunPromptChange: vi.fn(), onRun: vi.fn(), onHandoff: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() }));
+    expect(markup).toContain("Work with this Board");
+    expect(markup).toContain("Send to Content Inbox");
+    expect(markup).toContain("Activity ledger");
+    expect(markup).toContain("EPHEMERAL RESULT");
+    expect(markup).not.toContain("Memory controls");
   });
 });

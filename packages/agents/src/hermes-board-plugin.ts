@@ -225,22 +225,38 @@ export function deriveBoardRuntimeSecrets(secret: string | Buffer, input: { work
   };
 }
 
+export interface HermesBoardPluginConfig {
+  dashboardBaseUrl: string;
+  dashboardSessionToken: string;
+  executionBaseUrl: string;
+  approvedSkills: string[];
+  primaryProvider: string;
+  primaryModel: string;
+  supportedVersion?: string;
+  timeoutMs?: number;
+  allowPrivateEndpoints?: boolean;
+}
+
+export function validateHermesBoardPluginConfig(config: HermesBoardPluginConfig): void {
+  if (Buffer.byteLength(config.dashboardSessionToken, "utf8") < 32) throw new HermesBoardPluginError("policy_rejected", "The Hermes dashboard session token must contain at least 32 bytes.");
+  if ((config.supportedVersion ?? HERMES_BOARD_SUPPORTED_VERSION) !== HERMES_BOARD_SUPPORTED_VERSION) throw new HermesBoardPluginError("version_unsupported", "This OriginPost build supports Hermes 0.21.0 only.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(config.primaryProvider) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(config.primaryModel)) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board primary provider or model is invalid.");
+  if (config.approvedSkills.length > 100 || new Set(config.approvedSkills).size !== config.approvedSkills.length || config.approvedSkills.some((name) => !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/u.test(name))) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board approved-skill list is invalid.");
+  if (config.timeoutMs !== undefined && (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 1_000 || config.timeoutMs > 300_000)) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board timeout is invalid.");
+  for (const [name, value] of [["dashboard", config.dashboardBaseUrl], ["execution", config.executionBaseUrl]] as const) {
+    let url: URL;
+    try { url = new URL(value); } catch { throw new HermesBoardPluginError("policy_rejected", `The Hermes ${name} endpoint must be an absolute URL.`); }
+    const loopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname.toLowerCase());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== "/") throw new HermesBoardPluginError("policy_rejected", `The Hermes ${name} endpoint must be an origin-only HTTP(S) URL.`);
+    if (url.protocol !== "https:" && !loopback && config.allowPrivateEndpoints !== true) throw new HermesBoardPluginError("policy_rejected", `The Hermes ${name} endpoint must use HTTPS unless a trusted private network is explicitly enabled.`);
+  }
+}
+
 export class HermesBoardPlugin implements BoardRuntimePort {
   private readonly approvedSkills: ReadonlySet<string>;
 
-  constructor(private readonly config: {
-    dashboardBaseUrl: string;
-    dashboardSessionToken: string;
-    executionBaseUrl: string;
-    approvedSkills: string[];
-    primaryProvider: string;
-    primaryModel: string;
-    supportedVersion?: string;
-    timeoutMs?: number;
-  }) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(config.primaryProvider) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(config.primaryModel)) {
-      throw new HermesBoardPluginError("policy_rejected", "The Hermes Board primary provider or model is invalid.");
-    }
+  constructor(private readonly config: HermesBoardPluginConfig) {
+    validateHermesBoardPluginConfig(config);
     this.approvedSkills = new Set(config.approvedSkills);
   }
 

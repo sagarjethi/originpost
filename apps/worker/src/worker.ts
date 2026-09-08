@@ -118,6 +118,7 @@ function createSourcingProvider(): SourcingProvider {
 
 const instagramConnectorMode = process.env.INSTAGRAM_CONNECTOR_MODE ?? process.env.CONNECTOR_MODE ?? "mock";
 const facebookConnectorMode = process.env.FACEBOOK_CONNECTOR_MODE ?? "mock";
+const facebookAnalyticsConnectorMode = process.env.FACEBOOK_ANALYTICS_CONNECTOR_MODE ?? "disabled";
 const youtubeConnectorMode = process.env.YOUTUBE_CONNECTOR_MODE ?? "mock";
 const privateMessageConnectorMode = process.env.PRIVATE_MESSAGE_CONNECTOR_MODE ?? "disabled";
 const providerGrantValidationProviders: ProviderGrantProvider[] = [
@@ -144,6 +145,19 @@ if (anyOfficialConnector && !livePublishingAllowed) throw new Error("Official pu
 if (anyOfficialConnector && process.env.AUTH_MODE !== "sessions") throw new Error("Official publishing requires AUTH_MODE=sessions so the management API is not owner-open.");
 if (instagramConnectorMode === "official" && !process.env.META_GRAPH_API_VERSION) throw new Error("Official Instagram publishing requires META_GRAPH_API_VERSION.");
 if (facebookConnectorMode === "official" && (!process.env.META_GRAPH_API_VERSION || !process.env.META_APP_SECRET)) throw new Error("Official Facebook Page publishing requires META_GRAPH_API_VERSION and META_APP_SECRET.");
+if (!["disabled", "official"].includes(facebookAnalyticsConnectorMode)) throw new Error("FACEBOOK_ANALYTICS_CONNECTOR_MODE must be disabled or official.");
+const facebookAnalyticsProbeApiVersion = process.env.FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION?.trim();
+const facebookAnalyticsProbeVerifiedAt = process.env.FACEBOOK_ANALYTICS_CONTRACT_PROBE_VERIFIED_AT?.trim();
+const facebookAnalyticsProbeExpiresAt = process.env.FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT?.trim();
+const facebookAnalyticsAppReviewSha256 = process.env.FACEBOOK_ANALYTICS_APP_REVIEW_SHA256?.trim();
+const facebookAnalyticsProbeResultSha256 = process.env.FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256?.trim();
+if (facebookAnalyticsConnectorMode === "official") {
+  if (facebookConnectorMode !== "official" || !process.env.META_APP_ID || !/^[a-f0-9]{64}$/u.test(facebookAnalyticsAppReviewSha256 ?? "")) throw new Error("Official Facebook analytics requires official Facebook mode, META_APP_ID, and an App Review evidence digest.");
+  if (!/^[a-f0-9]{64}$/u.test(facebookAnalyticsProbeResultSha256 ?? "")) throw new Error("Official Facebook analytics requires a lowercase watched probe-result digest.");
+  if (!facebookAnalyticsProbeApiVersion || !facebookAnalyticsProbeVerifiedAt || !facebookAnalyticsProbeExpiresAt || facebookAnalyticsProbeApiVersion !== process.env.META_GRAPH_API_VERSION) throw new Error("Facebook analytics requires a complete contract probe for the exact META_GRAPH_API_VERSION.");
+  const verifiedAt = Date.parse(facebookAnalyticsProbeVerifiedAt); const expiresAt = Date.parse(facebookAnalyticsProbeExpiresAt); const now = Date.now();
+  if (!Number.isFinite(verifiedAt) || !Number.isFinite(expiresAt) || verifiedAt > now || expiresAt <= now || expiresAt - verifiedAt > 30 * 24 * 60 * 60_000) throw new Error("Facebook analytics contract probe must be current and expire within 30 days.");
+}
 const facebookReplyProbeApiVersion = process.env.FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION?.trim();
 const facebookReplyProbeVerifiedAt = process.env.FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT?.trim();
 const facebookDeleteProbeApiVersion=process.env.FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_API_VERSION?.trim();
@@ -200,6 +214,7 @@ const boardRuntime = hermesBoardPluginEnabled ? new HermesBoardPlugin({
   primaryProvider: process.env.HERMES_BOARD_PRIMARY_PROVIDER!,
   primaryModel: process.env.HERMES_BOARD_PRIMARY_MODEL!,
   supportedVersion: process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.0",
+  allowPrivateEndpoints: process.env.HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS === "true",
 }) : null;
 const connectors = createSafeConnectorRegistry({ privateConversationMode: privateMessageConnectorMode, nodeEnv: process.env.NODE_ENV ?? "development" });
 if (privateMessageConnectorMode === "official") {
@@ -265,6 +280,7 @@ if (facebookConnectorMode === "official") {
     ...(process.env.META_APP_ID?{appId:process.env.META_APP_ID}:{}),
     environment:(process.env.NODE_ENV??"development") as "production"|"development"|"test",
     maxCommentPages: facebookCommentReconcileMaxPages,
+    ...(facebookAnalyticsConnectorMode === "official" ? { analyticsContractProbe: { apiVersion: facebookAnalyticsProbeApiVersion!, appId: process.env.META_APP_ID!, appReviewSha256: facebookAnalyticsAppReviewSha256!, resultSha256: facebookAnalyticsProbeResultSha256!, verifiedAt: facebookAnalyticsProbeVerifiedAt!, expiresAt: facebookAnalyticsProbeExpiresAt! } } : {}),
     ...(facebookReplyProbeApiVersion && facebookReplyProbeVerifiedAt
       ? { commentReplyContractProbe: { apiVersion: facebookReplyProbeApiVersion, verifiedAt: facebookReplyProbeVerifiedAt } }
       : {}),
@@ -339,6 +355,9 @@ const monitorQueue = new Queue<MonitorJob>("originpost-monitor", { connection: r
 const analyticsQueue = new Queue<AnalyticsJob>("originpost-analytics", { connection: redisConnection(redisUrl) });
 const remoteCorrectionQueue = new Queue<RemoteCorrectionJob>("originpost-remote-correction", { connection: redisConnection(redisUrl) });
 const boardPluginQueue = boardRuntime ? new Queue<BoardPluginReconcileJob | BoardPluginDeactivateJob>("originpost-board-plugins", { connection: redisConnection(redisUrl) }) : null;
+// Reconcile/deactivate both update Hermes' shared default-profile allowlist.
+// BullMQ's global limit serializes that read-modify-write across worker replicas.
+if (boardPluginQueue) await boardPluginQueue.setGlobalConcurrency(1);
 const providerGrantValidationQueue = providerGrantValidationProviders.length ? new Queue<ProviderGrantValidationJob>("originpost-provider-grant-validation", { connection: redisConnection(redisUrl) }) : null;
 const engagementRuntime = await startEngagementWorkers({ connection: redisConnection(redisUrl), repository, engagementRepository, connectedAccountRepository, notificationRepository, connectors });
 const firstCommentRuntime = await startFirstCommentWorkers({ connection: redisConnection(redisUrl), repository, firstComments: firstCommentRepository, notifications: notificationRepository, connectors });
@@ -553,7 +572,7 @@ await pollInstagramCollaborators();
 const collaboratorPollTimer=setInterval(()=>{void pollInstagramCollaborators().catch((error)=>console.error("Instagram collaborator polling error:",error instanceof Error?error.message:"Unknown error"));},30_000);
 
 const remoteCorrectionWorker = new Worker<RemoteCorrectionJob>("originpost-remote-correction",async(job)=>processRemoteCorrectionJob(job.data,{repository,corrections:remoteCorrectionRepository,connectors,notifications:notificationRepository}),{connection:redisConnection(redisUrl),concurrency:2,lockDuration:300_000});
-const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin" ? processBoardPluginDeactivate(job.data as BoardPluginDeactivateJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!}) : processBoardPluginReconcile(job.data,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:2,lockDuration:120_000}) : null;
+const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin" ? processBoardPluginDeactivate(job.data as BoardPluginDeactivateJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!}) : processBoardPluginReconcile(job.data,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:1,lockDuration:120_000}) : null;
 const providerGrantValidationWorker = providerGrantValidationQueue ? new Worker<ProviderGrantValidationJob>("originpost-provider-grant-validation", async(job) => {
   if (!credentialEncryptionKey || !providerGrantValidationKeyring) throw new Error("Provider grant validation credentials are unavailable.");
   return processProviderGrantValidation(job.data, {
@@ -1022,6 +1041,7 @@ const publishWorker = new Worker<PublishJob>(
         connectorResponseSha256: sha256(JSON.stringify(publishResult.rawResponse)),
         approvedBy,
         sourceIds: item.sources.map((source) => source.id),
+        evidenceMode: connectorIsOfficial ? "official" : "simulation",
         disclosure: target.platform === "instagram" ? instagramAiObserved ? "ai-assisted" : "none" : proofDisclosureForTarget(target),
         ...(target.platform === "instagram" && (instagramSettings?.isAiGenerated === true || instagramAiObserved) ? { instagramAiDisclosure: { requested: instagramSettings?.isAiGenerated === true, observed: instagramAiObserved, label: "ai_info" as const } } : {}),
         ...(instagramSettings ? { approvedSettingsSha256: instagramSettings.approvedSettingsSha256 } : {}),
@@ -1034,9 +1054,9 @@ const publishWorker = new Worker<PublishJob>(
         if(!savedProof.approvedSettingsSha256||instagramSettings?.approvalBinding?.approvedSettingsSha256!==savedProof.approvedSettingsSha256)throw new Error("Instagram collaborator proof is missing its exact approved settings binding.");
         await instagramCollaboratorRepository.createPollFromStoredProof(completed.item.workspaceId,completed.item.id,savedProof.id,{nextAttemptAt:new Date(Date.now()+60_000).toISOString(),expiresAt:new Date(Date.now()+7*24*60*60_000).toISOString(),maxAttempts:20});
       }
-      if (savedProof && savedProof.platform !== "facebook") {
+      if (savedProof) {
         await analyticsQueue.add("capture-proof", { workspaceId: completed.item.workspaceId, contentItemId: completed.item.id, proofId: savedProof.id }, {
-          jobId: `analytics-${savedProof.id}-initial`, delay: 30_000, attempts: 3,
+          jobId: `analytics-${savedProof.id}-initial`, delay: savedProof.platform === "facebook" ? 24 * 60 * 60_000 : 30_000, attempts: 3,
           backoff: { type: "exponential", delay: 30_000 }, removeOnComplete: 500, removeOnFail: 1000,
         });
       }
@@ -1088,7 +1108,7 @@ const analyticsWorker = new Worker<AnalyticsJob>(
     const item = await repository.get(job.data.workspaceId, job.data.contentItemId);
     if (!item) throw new Error("Analytics content item not found.");
     const proof = item.proofs.find((entry) => entry.id === job.data.proofId);
-    if (!proof || (proof.platform !== "instagram" && proof.platform !== "youtube")) throw new Error("Analytics proof not found.");
+    if (!proof || (proof.platform !== "instagram" && proof.platform !== "facebook" && proof.platform !== "youtube")) throw new Error("Analytics proof not found.");
     const capturedAt = new Date().toISOString();
     const base = {
       id: `analytics_${crypto.randomUUID()}`,
@@ -1143,9 +1163,12 @@ const analyticsWorker = new Worker<AnalyticsJob>(
       return { proofId: proof.id, status: snapshot.status, metrics: snapshot.metrics.length };
     } catch (error) {
       const code = error instanceof ProviderAnalyticsError ? error.code : "provider_failed";
-      const status: PostAnalyticsSnapshot["status"] = code === "permission_missing" ? "permission_missing" : code === "unsupported" ? "unsupported" : "failed";
+      const retryable = code === "rate_limited" || code === "transient";
+      const willRetry = retryable && job.attemptsMade + 1 < (job.opts.attempts ?? 1);
+      const status: PostAnalyticsSnapshot["status"] = code === "permission_missing" ? "permission_missing" : code === "unsupported" ? "unsupported" : willRetry ? "pending" : "failed";
       const snapshot: PostAnalyticsSnapshot = { ...base, status, metrics: [], provider: connector.manifest.id, errorCode: code, errorSummary: (error instanceof Error ? error.message : "The provider analytics request failed.").slice(0, 500) };
       await saveSnapshot(snapshot);
+      if (willRetry) throw error;
       return { proofId: proof.id, status };
     }
   },

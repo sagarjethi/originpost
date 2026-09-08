@@ -1,10 +1,10 @@
 import { ForbiddenException, Inject, Injectable, ServiceUnavailableException } from "@nestjs/common";
-import { analyticsTrends, can, DomainError, metricValue, type Actor, type AnalyticsMetricKey, type PostAnalyticsSnapshot, type PublishProof } from "@originpost/domain";
+import { analyticsMetricContractSha256, analyticsTrends, can, DomainError, publishProofEvidenceMode, type Actor, type AnalyticsMetricKey, type PostAnalyticsSnapshot, type PublishProof } from "@originpost/domain";
 import { resolveActiveBrand } from "../common/brand-context.js";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
 
-const summaryKeys: AnalyticsMetricKey[] = ["views", "reach", "likes", "comments", "shares", "saves", "watch_time_seconds"];
+const summaryKeys: AnalyticsMetricKey[] = ["views", "reach", "clicks", "likes", "comments", "shares", "saves", "watch_time_seconds"];
 
 @Injectable()
 export class AnalyticsService {
@@ -21,7 +21,7 @@ export class AnalyticsService {
       existing.push(snapshot); snapshotsByProof.set(snapshot.proofId, existing);
     }
     const accounts = new Map((await this.infrastructure.connectedAccountRepository.list(workspaceId, brandId)).map((account) => [account.id, account]));
-    const rows = items.flatMap((item) => item.proofs.flatMap((proof) => proof.platform === "instagram" || proof.platform === "youtube" ? [{ item, proof }] : [])).map(({ item, proof }) => {
+    const rows = items.flatMap((item) => item.proofs.flatMap((proof) => proof.platform === "instagram" || proof.platform === "facebook" || proof.platform === "youtube" ? [{ item, proof }] : [])).map(({ item, proof }) => {
       const history = snapshotsByProof.get(proof.id) ?? [];
       const latest = history[0];
       const previous = history.slice(1).find((entry) => entry.status === "ready");
@@ -36,6 +36,7 @@ export class AnalyticsService {
         externalPostId: proof.externalPostId,
         liveUrl: proof.liveUrl,
         publishedAt: proof.publishedAt,
+        evidenceMode: publishProofEvidenceMode(proof),
         status,
         capturedAt: latest?.capturedAt,
         metrics: latest?.metrics ?? [],
@@ -50,11 +51,12 @@ export class AnalyticsService {
     }).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 
     const summarize = (entries: typeof rows) => Object.fromEntries(summaryKeys.map((key) => {
-      const values = entries.flatMap((row) => {
-        const value = metricValue(row.metrics, key);
-        return value === undefined ? [] : [value];
+      const metrics = entries.flatMap((row) => {
+        const metric = row.metrics.find((entry) => entry.key === key);
+        return metric ? [metric] : [];
       });
-      return [key, values.length ? values.reduce((sum, value) => sum + value, 0) : null];
+      if (!metrics.length || metrics.some((metric) => metric.aggregation === "non_additive") || new Set(metrics.map(analyticsMetricContractSha256)).size !== 1) return [key, null];
+      return [key, metrics.reduce((sum, metric) => sum + metric.value, 0)];
     }));
     const groupMap = new Map<string, typeof rows>();
     for (const row of rows) {
@@ -91,7 +93,7 @@ export class AnalyticsService {
     if (!this.infrastructure.analyticsQueue) throw new ServiceUnavailableException("Redis is required to refresh analytics.");
     const item = await this.infrastructure.repository.get(workspaceId, contentItemId);
     if (!item) throw new DomainError("Content item not found.", "not_found", 404);
-    const proof = item.proofs.find((entry) => entry.id === proofId && (entry.platform === "instagram" || entry.platform === "youtube")) as PublishProof | undefined;
+    const proof = item.proofs.find((entry) => entry.id === proofId && (entry.platform === "instagram" || entry.platform === "facebook" || entry.platform === "youtube")) as PublishProof | undefined;
     if (!proof) throw new DomainError("Published proof not found.", "proof_not_found", 404);
     await this.infrastructure.analyticsQueue.add("capture-proof", { workspaceId, contentItemId, proofId }, {
       jobId: `analytics-${proofId}-${crypto.randomUUID()}`,

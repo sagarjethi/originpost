@@ -66,11 +66,20 @@ function connectorRegistry(config: ConfigService,accounts:ConnectedAccountReposi
     if (!apiVersion || !appSecret) throw new Error("Official Facebook Page mode requires META_GRAPH_API_VERSION and META_APP_SECRET.");
     const probeApiVersion = config.get<string>("FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION");
     const probeVerifiedAt = config.get<string>("FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT");
+    const facebookAnalyticsMode = config.get<string>("FACEBOOK_ANALYTICS_CONNECTOR_MODE") ?? "disabled";
     registry.register(new FacebookPageOfficialConnector({
       apiVersion,
       appSecret,
       ...(config.get<string>("META_APP_ID")?{appId:config.get<string>("META_APP_ID")!}:{}),environment:(config.get<string>("NODE_ENV")??"development") as "production"|"development"|"test",
       ...(probeApiVersion && probeVerifiedAt ? { commentReplyContractProbe: { apiVersion: probeApiVersion, verifiedAt: probeVerifiedAt } } : {}),
+      ...(facebookAnalyticsMode === "official" ? { analyticsContractProbe: {
+        apiVersion: config.get<string>("FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION")!,
+        appId: config.get<string>("META_APP_ID")!,
+        appReviewSha256: config.get<string>("FACEBOOK_ANALYTICS_APP_REVIEW_SHA256")!,
+        resultSha256: config.get<string>("FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256")!,
+        verifiedAt: config.get<string>("FACEBOOK_ANALYTICS_CONTRACT_PROBE_VERIFIED_AT")!,
+        expiresAt: config.get<string>("FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT")!,
+      } } : {}),
       ...(config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_API_VERSION")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_VERIFIED_AT")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_EXPIRES_AT")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_ACCOUNT_ID")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_EXTERNAL_PAGE_ID")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_CREDENTIAL_VERSION")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_ACCOUNT_VERSION")&&config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_PAGE_TASKS_SHA256")&&config.get<string>("META_APP_ID")?{pageDeleteContractProbe:{apiVersion:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_API_VERSION")!,verifiedAt:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_VERIFIED_AT")!,expiresAt:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_EXPIRES_AT")!,environment:(config.get<string>("NODE_ENV")??"development") as "production"|"development"|"test",appId:config.get<string>("META_APP_ID")!,accountId:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_ACCOUNT_ID")!,externalPageId:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_EXTERNAL_PAGE_ID")!,credentialVersion:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_CREDENTIAL_VERSION")!,accountVersion:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_ACCOUNT_VERSION")!,pageTasksSha256:config.get<string>("FACEBOOK_PAGE_DELETE_CONTRACT_PROBE_PAGE_TASKS_SHA256")!,task:"page_post_delete" as const}}:{}),
       resolveCredential: async (request) => {const {account,value}=await payload(request.workspaceId,request.accountId);if(account.status!=="healthy"||value.provider!=="facebook"||value.externalAccountId!==account.externalAccountId||typeof value.accessToken!=="string")throw new Error("Facebook credential does not match the Page or needs attention.");return{externalAccountId:account.externalAccountId,accessToken:value.accessToken,...(typeof value.scope==="string"?{scope:value.scope}:{}),...(Array.isArray(value.pageTasks)&&value.pageTasks.every((task)=>typeof task==="string")?{pageTasks:value.pageTasks as string[]}:{}),...(typeof value.issuedAt==="string"?{credentialVersion:value.issuedAt}:{}),accountVersion:account.updatedAt};},
     }));
@@ -124,6 +133,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           primaryProvider: config.get<string>("HERMES_BOARD_PRIMARY_PROVIDER")!,
           primaryModel: config.get<string>("HERMES_BOARD_PRIMARY_MODEL")!,
           supportedVersion: config.get<string>("HERMES_BOARD_SUPPORTED_VERSION") ?? "0.21.0",
+          allowPrivateEndpoints: config.get<boolean>("HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS") === true,
         }) : null;
         const queue = (name: string) => redisUrl ? new Queue(name, { connection: redisConnection(redisUrl) }) : null;
         const s3Endpoint = config.get<string>("S3_ENDPOINT");

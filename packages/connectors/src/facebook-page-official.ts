@@ -1,8 +1,8 @@
 import { createHmac } from "node:crypto";
 import { canonicalSha256 } from "@originpost/domain";
 import { MockFacebookConnector } from "./mock.js";
-import { ProviderEngagementError } from "./types.js";
-import type { CommentPage, ConnectorManifest, EngagementConnector, EngagementRequestScope, PlatformConnector, ProviderEngagementComment, PublishRequest, PublishResult, ReadCommentsRequest, ReplyToCommentRequest, ReplyToCommentResult, SubscribeCommentsRequest, SubscriptionResult, ValidationIssue } from "./types.js";
+import { ProviderAnalyticsError, ProviderEngagementError } from "./types.js";
+import type { AnalyticsRequest, AnalyticsResult, CommentPage, ConnectorManifest, EngagementConnector, EngagementRequestScope, PlatformConnector, ProviderEngagementComment, PublishRequest, PublishResult, ReadCommentsRequest, ReplyToCommentRequest, ReplyToCommentResult, SubscribeCommentsRequest, SubscriptionResult, ValidationIssue } from "./types.js";
 import { assertCorrectionExecution, correctionLineage, correctionResult, ProviderRemoteCorrectionError, remoteSnapshot } from "./remote-correction.js";
 import type { ExecuteRemoteCorrectionRequest, ReconcileRemoteCorrectionRequest, RemoteContentObservation, RemoteContentSnapshot, RemoteCorrectionCapabilityRequest, RemoteCorrectionCapabilitySet, RemoteCorrectionConnector, RemoteCorrectionOutcome, RemoteCorrectionTarget } from "./remote-correction.js";
 import { ProviderFirstCommentError } from "./first-comment.js";
@@ -27,6 +27,18 @@ export interface FacebookPageOfficialConnectorOptions {
   appId?: string;
   environment?: "production" | "development" | "test";
   maxCommentPages?: number;
+  /**
+   * Production analytics remains closed unless App Review evidence and a recent
+   * operator-watched owned-Page probe result are bound to this app and version.
+   */
+  analyticsContractProbe?: {
+    apiVersion: string;
+    appId: string;
+    appReviewSha256: string;
+    resultSha256: string;
+    verifiedAt: string;
+    expiresAt: string;
+  };
   /**
    * Enables only a live contract probe of Meta's generic Object Comments edge.
    * Meta's v26 endpoint-specific reply documentation conflicts with that edge,
@@ -78,6 +90,37 @@ type GraphBody = {
   error?: GraphError;
 };
 
+type FacebookInsightResult = { name?: unknown; period?: unknown; values?: unknown };
+type FacebookInsightValue = { value?: unknown };
+type FacebookPostInsightName = "post_media_view" | "post_total_media_view_unique" | "post_clicks";
+
+const facebookPostInsightNames: readonly FacebookPostInsightName[] = ["post_media_view", "post_total_media_view_unique", "post_clicks"];
+const facebookAnalyticsBodyLimit = 1024 * 1024;
+
+async function boundedJson(response: Response): Promise<GraphBody> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > facebookAnalyticsBodyLimit) throw new ProviderAnalyticsError("Facebook returned an oversized analytics response.", "provider_failed");
+  if (!response.body) return {};
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    size += chunk.value.byteLength;
+    if (size > facebookAnalyticsBodyLimit) {
+      await reader.cancel().catch(() => undefined);
+      throw new ProviderAnalyticsError("Facebook returned an oversized analytics response.", "provider_failed");
+    }
+    chunks.push(chunk.value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as GraphBody; }
+  catch { throw new ProviderAnalyticsError("Facebook returned invalid analytics JSON.", "provider_failed"); }
+}
+
 type FacebookGraphComment = {
   id?: unknown;
   message?: unknown;
@@ -104,22 +147,6 @@ function validFacebookPermalink(value: unknown): value is string {
 }
 
 export class FacebookPageOfficialConnector implements PlatformConnector, EngagementConnector, RemoteCorrectionConnector, FirstCommentConnector {
-  readonly manifest = {
-    id: "originpost.facebook.official",
-    name: "Facebook Page",
-    platform: "facebook",
-    version: "0.1.0",
-    apiMode: "official",
-    capabilities: {
-      formats: ["text", "image"],
-      analytics: false,
-      comments: true,
-      tokenRefresh: true,
-      pendingPublishing: false,
-    },
-    limits: { captionCharacters: 63_206, maxMedia: 1, maxVideoBytes: 0 },
-  } satisfies ConnectorManifest;
-
   private readonly transport: typeof fetch;
   private readonly baseUrl: string;
 
@@ -130,6 +157,24 @@ export class FacebookPageOfficialConnector implements PlatformConnector, Engagem
     this.baseUrl = (options.baseUrl ?? "https://graph.facebook.com").replace(/\/$/, "");
     const origin = new URL(this.baseUrl);
     if (origin.protocol !== "https:" || origin.username || origin.password || origin.search || origin.hash) throw new Error("Facebook provider origin must be an HTTPS URL without credentials, query, or fragment.");
+  }
+
+  get manifest(): ConnectorManifest & { platform: "facebook"; capabilities: ConnectorManifest["capabilities"] & { comments: true } } {
+    return {
+      id: "originpost.facebook.official",
+      name: "Facebook Page",
+      platform: "facebook",
+      version: "0.2.0",
+      apiMode: "official",
+      capabilities: {
+        formats: ["text", "image"],
+        analytics: this.analyticsProbeEnabled(),
+        comments: true,
+        tokenRefresh: true,
+        pendingPublishing: false,
+      },
+      limits: { captionCharacters: 63_206, maxMedia: 1, maxVideoBytes: 0 },
+    };
   }
 
   validate(request: PublishRequest): Promise<ValidationIssue[]> {
@@ -349,6 +394,73 @@ export class FacebookPageOfficialConnector implements PlatformConnector, Engagem
     return { status: "published", externalPostId: verified.externalPostId, liveUrl: verified.liveUrl, rawResponse: { create: created.rawResponse, verify: verified.rawResponse } };
   }
 
+  async readPostAnalytics(request: AnalyticsRequest): Promise<AnalyticsResult> {
+    if (request.platform !== "facebook") throw new ProviderAnalyticsError("This connector only reads Facebook Page Post analytics.", "unsupported");
+    if (!this.analyticsProbeEnabled()) throw new ProviderAnalyticsError("Facebook Page analytics are disabled until App Review evidence and the current Graph-version probe are recorded.", "unsupported");
+    const credential = await this.analyticsCredential(request);
+    if (!request.externalPostId.startsWith(`${credential.externalAccountId}_`)) throw new ProviderAnalyticsError("The Facebook Page Post proof does not belong to this connected Page.", "permission_missing");
+
+    const responses: Array<{ requested: FacebookPostInsightName[]; data: unknown[] }> = [];
+    const parsed = new Map<FacebookPostInsightName, number>();
+    const caveats: string[] = [
+      "Facebook Page Post media views may include paid and organic delivery.",
+      "Unique media viewers are approximate and are never summed across posts.",
+    ];
+    let firstFailure: ProviderAnalyticsError | undefined;
+    try {
+      const initial = await this.readInsightMetrics(request.externalPostId, credential.accessToken, [...facebookPostInsightNames]);
+      responses.push(initial.raw);
+      for (const [name, value] of this.parseInsightMetrics(initial.data, facebookPostInsightNames)) parsed.set(name, value);
+    } catch (error) {
+      if (!(error instanceof ProviderAnalyticsError) || error.code !== "unsupported") throw error;
+      firstFailure = error;
+    }
+
+    const omitted = facebookPostInsightNames.filter((name) => !parsed.has(name));
+    for (const name of omitted) {
+      try {
+        const retry = await this.readInsightMetrics(request.externalPostId, credential.accessToken, [name]);
+        responses.push(retry.raw);
+        const isolated = this.parseInsightMetrics(retry.data, [name]);
+        if (isolated.has(name)) parsed.set(name, isolated.get(name)!);
+      } catch (error) {
+        if (!(error instanceof ProviderAnalyticsError)) throw error;
+        if (error.code === "permission_missing") throw error;
+        if ((error.code === "rate_limited" || error.code === "transient") && parsed.size === 0) throw error;
+        firstFailure ??= error;
+      }
+    }
+
+    const stillMissing = facebookPostInsightNames.filter((name) => !parsed.has(name));
+    if (stillMissing.length) caveats.push(`Facebook did not return ${stillMissing.join(", ")}; missing values are not zero.`);
+    if (firstFailure?.code === "unsupported") caveats.push("At least one pinned Facebook Page Post metric is unavailable for this object or Graph contract.");
+    const capturedAt = new Date().toISOString();
+    const metrics = facebookPostInsightNames.flatMap((rawMetric) => {
+      const value = parsed.get(rawMetric);
+      if (value === undefined) return [];
+      const key = rawMetric === "post_media_view" ? "views" as const : rawMetric === "post_total_media_view_unique" ? "reach" as const : "clicks" as const;
+      return [{
+        key,
+        value,
+        unit: "count" as const,
+        rawMetric,
+        source: "facebook_page_post_insights" as const,
+        coverage: rawMetric === "post_clicks" ? "unknown" as const : "paid_and_organic" as const,
+        definitionVersion: `${this.options.apiVersion}:${rawMetric}`,
+        aggregation: rawMetric === "post_total_media_view_unique" ? "non_additive" as const : "sum" as const,
+      }];
+    });
+    const ageMs = Date.now() - Date.parse(request.publishedAt);
+    return {
+      capturedAt,
+      period: "lifetime",
+      metrics,
+      status: metrics.length ? "ready" : Number.isFinite(ageMs) && ageMs < 24 * 60 * 60_000 ? "pending" : "unavailable",
+      caveats,
+      rawResponse: { provider: "facebook", apiVersion: this.options.apiVersion, responses },
+    };
+  }
+
   async createPost(request: PublishRequest): Promise<FacebookCreatedPost> {
     const errors = (await this.validate(request)).filter((issue) => issue.severity === "error");
     if (errors.length) throw new Error(errors.map((issue) => issue.message).join(" "));
@@ -378,6 +490,68 @@ export class FacebookPageOfficialConnector implements PlatformConnector, Engagem
 
   private assertCredential(credential: FacebookPagePublishingCredential): void {
     if (!credential.accessToken || !credential.externalAccountId) throw new Error("Facebook Page publishing credential is unavailable.");
+  }
+
+  private analyticsProbeEnabled(): boolean {
+    const probe = this.options.analyticsContractProbe;
+    if (!probe || !this.options.appId || probe.apiVersion !== this.options.apiVersion || probe.appId !== this.options.appId || !/^[a-f0-9]{64}$/u.test(probe.appReviewSha256) || !/^[a-f0-9]{64}$/u.test(probe.resultSha256)) return false;
+    const verifiedAt = Date.parse(probe.verifiedAt); const expiresAt = Date.parse(probe.expiresAt); const now = Date.now();
+    return Number.isFinite(verifiedAt) && Number.isFinite(expiresAt) && verifiedAt <= now && now < expiresAt && expiresAt - verifiedAt <= 30 * 24 * 60 * 60_000;
+  }
+
+  private async analyticsCredential(request: AnalyticsRequest): Promise<FacebookPagePublishingCredential> {
+    let credential: FacebookPagePublishingCredential;
+    try { credential = await this.options.resolveCredential(request); }
+    catch { throw new ProviderAnalyticsError("Facebook Page analytics access is unavailable. Reconnect the Page.", "permission_missing"); }
+    if (!credential.externalAccountId || !credential.accessToken) throw new ProviderAnalyticsError("Facebook Page analytics credential is unavailable.", "permission_missing");
+    const scopes = new Set([...(credential.scopes ?? []), ...(credential.scope?.split(/[\s,]+/u).filter(Boolean) ?? [])]);
+    const missing = ["pages_show_list", "pages_read_engagement", "read_insights"].filter((scope) => !scopes.has(scope));
+    if (missing.length || !credential.pageTasks?.includes("ANALYZE")) throw new ProviderAnalyticsError("Facebook Page analytics require read_insights, Page reading access, and the Page ANALYZE task. Reconnect the Page.", "permission_missing");
+    return credential;
+  }
+
+  private async readInsightMetrics(externalPostId: string, accessToken: string, metrics: FacebookPostInsightName[]): Promise<{ data: unknown[]; raw: { requested: FacebookPostInsightName[]; data: unknown[] } }> {
+    const query = new URLSearchParams({ metric: metrics.join(","), period: "lifetime" });
+    const url = this.correctionUrl(`/${encodeURIComponent(externalPostId)}/insights`, accessToken, query);
+    let response: Response;
+    try {
+      response = await this.transport(url, { method: "GET", headers: { authorization: `Bearer ${accessToken}` }, redirect: "error", signal: AbortSignal.timeout(20_000) });
+    } catch {
+      throw new ProviderAnalyticsError("Facebook Page analytics are temporarily unavailable.", "transient");
+    }
+    const value = await boundedJson(response);
+    if (!response.ok || value.error) throw this.analyticsError(response, value);
+    if (!Array.isArray(value.data)) throw new ProviderAnalyticsError("Facebook returned an invalid Page Post insights result.", "provider_failed");
+    return { data: value.data, raw: { requested: [...metrics], data: value.data } };
+  }
+
+  private parseInsightMetrics(rows: unknown[], requested: readonly FacebookPostInsightName[]): Map<FacebookPostInsightName, number> {
+    const allowed = new Set<FacebookPostInsightName>(requested);
+    const values = new Map<FacebookPostInsightName, number>();
+    for (const raw of rows) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ProviderAnalyticsError("Facebook returned a malformed Page Post insight.", "provider_failed");
+      const row = raw as FacebookInsightResult;
+      if (typeof row.name !== "string" || !allowed.has(row.name as FacebookPostInsightName)) throw new ProviderAnalyticsError("Facebook returned an unexpected Page Post metric.", "provider_failed");
+      const name = row.name as FacebookPostInsightName;
+      if (values.has(name) || row.period !== "lifetime" || !Array.isArray(row.values) || row.values.length !== 1) throw new ProviderAnalyticsError("Facebook returned an incompatible Page Post metric definition.", "provider_failed");
+      const metricValue = (row.values[0] as FacebookInsightValue | undefined)?.value;
+      if (typeof metricValue !== "number" || !Number.isFinite(metricValue) || metricValue < 0) throw new ProviderAnalyticsError("Facebook returned an invalid Page Post metric value.", "provider_failed");
+      values.set(name, metricValue);
+    }
+    return values;
+  }
+
+  private analyticsError(response: Response, value: GraphBody): ProviderAnalyticsError {
+    const providerCode = typeof value.error?.code === "number" ? value.error.code : response.status;
+    const providerSubcode = typeof value.error?.error_subcode === "number" ? value.error.error_subcode : undefined;
+    const retryHeader = Number(response.headers.get("retry-after"));
+    const detail = { providerCode, ...(providerSubcode !== undefined ? { providerSubcode } : {}), ...(Number.isFinite(retryHeader) && retryHeader > 0 ? { retryAfterSeconds: Math.min(86_400, retryHeader) } : {}) };
+    if (response.status === 401 || providerCode === 190) return new ProviderAnalyticsError("Facebook Page analytics access expired or was revoked. Reconnect the Page.", "permission_missing", detail);
+    if (response.status === 403 || providerCode === 10 || (providerCode >= 200 && providerCode <= 299)) return new ProviderAnalyticsError("Facebook Page analytics permission is missing. Reconnect the Page.", "permission_missing", detail);
+    if (response.status === 429 || [4, 17, 32, 341, 613, 80001].includes(providerCode)) return new ProviderAnalyticsError("Facebook rate-limited Page analytics.", "rate_limited", detail);
+    if (response.status >= 500 || providerCode === 1 || providerCode === 2) return new ProviderAnalyticsError("Facebook Page analytics are temporarily unavailable.", "transient", detail);
+    if (providerCode === 100) return new ProviderAnalyticsError("A pinned Facebook Page Post metric is unsupported by this Graph contract.", "unsupported", detail);
+    return new ProviderAnalyticsError("Facebook could not return Page Post analytics.", "provider_failed", detail);
   }
 
   private async deleteProbeEnabled(request: RemoteCorrectionCapabilityRequest, credential: FacebookPagePublishingCredential): Promise<boolean> {

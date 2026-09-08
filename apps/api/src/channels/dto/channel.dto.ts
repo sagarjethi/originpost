@@ -1,7 +1,7 @@
 import { ArrayMaxSize, IsArray, IsEnum, IsISO8601, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 
 const platforms = ["instagram", "facebook", "youtube"] as const;
-const capabilities = ["profile_read", "page_read", "media_publish", "channel_read", "video_upload", "comment_read", "comment_reply"] as const;
+const capabilities = ["profile_read", "page_read", "media_publish", "channel_read", "video_upload", "analytics_read", "comment_read", "comment_reply"] as const;
 
 export class CreateConnectedAccountDto {
   @IsOptional() @IsString() @MaxLength(100) workspaceId = "default";

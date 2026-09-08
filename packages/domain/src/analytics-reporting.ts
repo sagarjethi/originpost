@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { utf8Csv } from "./csv.js";
 import { DomainError } from "./errors.js";
-import type { Actor, AnalyticsMetric, AnalyticsMetricKey, AnalyticsMetricUnit, AnalyticsSnapshotStatus, AuditEvent } from "./types.js";
+import type { Actor, AnalyticsMetric, AnalyticsMetricKey, AnalyticsMetricUnit, AnalyticsSnapshotStatus, AuditEvent, PublishEvidenceMode } from "./types.js";
 
 export const analyticsReportMetricKeys = [
   "views",
   "engaged_views",
   "reach",
   "impressions",
+  "clicks",
   "likes",
   "comments",
   "shares",
@@ -17,7 +18,7 @@ export const analyticsReportMetricKeys = [
   "subscribers_gained",
 ] as const satisfies readonly AnalyticsMetricKey[];
 
-export type AnalyticsReportPlatform = "instagram" | "youtube";
+export type AnalyticsReportPlatform = "instagram" | "facebook" | "youtube";
 export type AnalyticsReportStatus = "active" | "archived";
 export type AnalyticsReportRange =
   | { mode: "rolling"; days: number }
@@ -53,6 +54,7 @@ export interface AnalyticsReportProofInput {
   externalPostId: string;
   liveUrl: string;
   publishedAt: string;
+  evidenceMode?: PublishEvidenceMode | undefined;
   status: AnalyticsReportDataStatus;
   analyticsSnapshotId?: string | undefined;
   analyticsRawPayloadSha256?: string | undefined;
@@ -78,6 +80,7 @@ export interface AnalyticsReportGroupMetric {
   source?: AnalyticsMetric["source"] | undefined;
   coverage?: AnalyticsMetric["coverage"] | undefined;
   definitionVersion?: string | undefined;
+  aggregation?: AnalyticsMetric["aggregation"] | undefined;
 }
 
 export interface AnalyticsReportGroup {
@@ -94,7 +97,7 @@ export interface AnalyticsReportGroup {
 }
 
 export interface AnalyticsReportWarning {
-  code: "metric_not_comparable" | "missing_provider_data" | "stale_provider_data";
+  code: "metric_not_comparable" | "missing_provider_data" | "stale_provider_data" | "simulation_data" | "unverified_evidence";
   message: string;
   groupKey?: string | undefined;
   metricKey?: AnalyticsMetricKey | undefined;
@@ -196,7 +199,7 @@ export function createAnalyticsReportDefinition(input: {
   const brandIds = uniqueSorted(input.brandIds);
   if (!brandIds.length || brandIds.length > 50) throw new DomainError("Choose between 1 and 50 brands.", "analytics_report_invalid");
   const platforms = uniqueSorted(input.platforms) as AnalyticsReportPlatform[];
-  if (!platforms.length || platforms.some((platform) => platform !== "instagram" && platform !== "youtube")) throw new DomainError("Choose Instagram, YouTube, or both.", "analytics_report_invalid");
+  if (!platforms.length || platforms.some((platform) => platform !== "instagram" && platform !== "facebook" && platform !== "youtube")) throw new DomainError("Choose Instagram, Facebook, YouTube, or a combination.", "analytics_report_invalid");
   const metricKeys = uniqueSorted(input.metricKeys) as AnalyticsMetricKey[];
   if (!metricKeys.length || metricKeys.some((key) => !analyticsReportMetricKeys.includes(key))) throw new DomainError("Choose at least one supported metric.", "analytics_report_invalid");
   if (input.range.mode === "rolling") {
@@ -252,7 +255,7 @@ export function archiveAnalyticsReportDefinition(definition: AnalyticsReportDefi
   };
 }
 
-function metricContract(metric: AnalyticsMetric): string {
+export function analyticsMetricContractSha256(metric: AnalyticsMetric): string {
   return canonicalSha256({
     key: metric.key,
     unit: metric.unit,
@@ -260,6 +263,7 @@ function metricContract(metric: AnalyticsMetric): string {
     source: metric.source ?? null,
     coverage: metric.coverage ?? null,
     definitionVersion: metric.definitionVersion ?? null,
+    aggregation: metric.aggregation ?? "sum",
   });
 }
 
@@ -297,7 +301,7 @@ export function createAnalyticsReportSnapshot(input: {
         ? row.metrics.filter((metric) => metric.key === metricKey)
         : []);
       if (!values.length) return { key: metricKey, status: "unavailable", measuredPosts: 0 };
-      const contracts = new Set(values.map(metricContract));
+      const contracts = new Set(values.map(analyticsMetricContractSha256));
       if (contracts.size !== 1) {
         warnings.push({
           code: "metric_not_comparable", groupKey: key, metricKey,
@@ -306,6 +310,23 @@ export function createAnalyticsReportSnapshot(input: {
         return { key: metricKey, status: "not_comparable", measuredPosts: values.length };
       }
       const first = values[0]!;
+      if (first.aggregation === "non_additive") {
+        warnings.push({
+          code: "metric_not_comparable", groupKey: key, metricKey,
+          message: `${metricKey.replaceAll("_", " ")} is unique per post and was not summed across posts.`,
+        });
+        return {
+          key: metricKey,
+          unit: first.unit,
+          status: "not_comparable",
+          measuredPosts: values.length,
+          ...(first.rawMetric ? { rawMetric: first.rawMetric } : {}),
+          ...(first.source ? { source: first.source } : {}),
+          ...(first.coverage ? { coverage: first.coverage } : {}),
+          ...(first.definitionVersion ? { definitionVersion: first.definitionVersion } : {}),
+          aggregation: "non_additive",
+        };
+      }
       return {
         key: metricKey,
         unit: first.unit,
@@ -316,6 +337,7 @@ export function createAnalyticsReportSnapshot(input: {
         ...(first.source ? { source: first.source } : {}),
         ...(first.coverage ? { coverage: first.coverage } : {}),
         ...(first.definitionVersion ? { definitionVersion: first.definitionVersion } : {}),
+        ...(first.aggregation ? { aggregation: first.aggregation } : {}),
       };
     });
     return {
@@ -333,8 +355,12 @@ export function createAnalyticsReportSnapshot(input: {
   }).sort((left, right) => compareText(left.brandName, right.brandName) || compareText(left.platform, right.platform) || compareText(left.accountName, right.accountName));
   const missingCount = rows.filter((row) => !["ready", "stale"].includes(row.status)).length;
   const staleCount = rows.filter((row) => row.status === "stale").length;
+  const simulationCount = rows.filter((row) => row.evidenceMode === "simulation").length;
+  const legacyUnknownCount = rows.filter((row) => row.evidenceMode === "legacy_unknown").length;
   if (missingCount) warnings.push({ code: "missing_provider_data", count: missingCount, message: `${missingCount} published post${missingCount === 1 ? " has" : "s have"} no usable provider metrics.` });
   if (staleCount) warnings.push({ code: "stale_provider_data", count: staleCount, message: `${staleCount} published post${staleCount === 1 ? " has" : "s have"} an out-of-date provider snapshot.` });
+  if (simulationCount) warnings.push({ code: "simulation_data", count: simulationCount, message: `${simulationCount} proof record${simulationCount === 1 ? " is" : "s are"} simulated and cannot be shared as live client reporting.` });
+  if (legacyUnknownCount) warnings.push({ code: "unverified_evidence", count: legacyUnknownCount, message: `${legacyUnknownCount} legacy proof record${legacyUnknownCount === 1 ? " has" : "s have"} unknown provenance and cannot be shared as live client reporting.` });
 
   const unhashed = {
     id: id("analytics_snapshot"),
@@ -371,10 +397,10 @@ export function verifyAnalyticsReportSnapshot(snapshot: AnalyticsReportSnapshot)
 
 export function analyticsReportCsv(snapshot: AnalyticsReportSnapshot): string {
   if (!verifyAnalyticsReportSnapshot(snapshot)) throw new DomainError("The saved report snapshot failed its integrity check.", "analytics_report_integrity_failed", 409);
-  const headers = ["brand", "platform", "account", "title", "published_at", "status", "live_url", ...snapshot.metricKeys];
+  const headers = ["brand", "platform", "account", "title", "published_at", "status", "evidence_mode", "live_url", ...snapshot.metricKeys];
   const rows = snapshot.proofRows.map((row) => {
     const metrics = new Map(row.metrics.map((metric) => [metric.key, metric.value]));
-    return [row.brandName, row.platform, row.accountName, row.title, row.publishedAt, row.status, row.liveUrl, ...snapshot.metricKeys.map((key) => metrics.get(key))];
+    return [row.brandName, row.platform, row.accountName, row.title, row.publishedAt, row.status, row.evidenceMode ?? "legacy_unknown", row.liveUrl, ...snapshot.metricKeys.map((key) => metrics.get(key))];
   });
   return utf8Csv(headers, rows);
 }

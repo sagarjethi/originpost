@@ -23,7 +23,8 @@ OriginPost is an open-source, self-hosted social content operating system. It br
 - Instagram feed posts, Reels, basic image/video Stories, Facebook Pages, and YouTube Shorts as first-class publishing targets
 - Mock connectors for safe local testing
 - Permanent Proof of Publish records
-- Proof-linked Instagram and YouTube post analytics with explicit missing, stale, unsupported, and permission states; compatible-snapshot trends only
+- Proof-linked Instagram, Facebook Page, and YouTube post analytics with explicit missing, stale, unsupported, and permission states; compatible-snapshot trends only
+- Explicit publication evidence provenance: mock runs stay labeled as simulations; simulations and unverified legacy proofs never expose fake live links or enter client reports
 - Proof-backed Client Report Studio with reusable multi-brand definitions, immutable snapshots, honest cross-provider metric rules, revocable read-only links, and CSV export
 - Proof-linked Instagram Engagement Inbox with signed webhooks, durable reconciliation, per-user read state, and human-approved replies
 - Governed Instagram and Facebook Page First Comments with exact publish-proof lineage, separate human approval, read-back evidence, and reconcile-only uncertainty recovery

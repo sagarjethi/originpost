@@ -25,13 +25,13 @@ export type RightsState = "unknown" | "reference-only" | "cleared" | "owned";
 export type ResearchRunStatus = "queued" | "running" | "completed" | "failed";
 export type MonitorRunStatus = "running" | "completed" | "failed" | "skipped";
 export type ConnectedAccountStatus = "setup_required" | "healthy" | "expiring" | "refresh_failed" | "disconnected";
-export type ChannelCapability = "profile_read" | "page_read" | "media_publish" | "channel_read" | "video_upload" | "comment_read" | "comment_reply" | "private_message_read" | "private_message_send" | "collaborator_publish" | "collaborator_status_read";
+export type ChannelCapability = "profile_read" | "page_read" | "media_publish" | "channel_read" | "video_upload" | "analytics_read" | "comment_read" | "comment_reply" | "private_message_read" | "private_message_send" | "collaborator_publish" | "collaborator_status_read";
 export type YouTubePrivacyStatus = "private" | "unlisted" | "public";
 export type NotificationKind = "publish_failed" | "action_required" | "monitor_new_findings" | "monitor_failed" | "connection_attention" | "approval_needed" | "engagement_reply_failed" | "engagement_permission_missing" | "engagement_new_activity" | "private_message_new_activity" | "private_message_reply_failed" | "private_message_permission_missing" | "system";
 export type NotificationSeverity = "info" | "warning" | "error";
 export type BrandStatus = "active" | "archived";
 export type AnalyticsSnapshotStatus = "ready" | "pending" | "unavailable" | "privacy_threshold" | "expired" | "hidden" | "permission_missing" | "unsupported" | "failed";
-export type AnalyticsMetricKey = "views" | "engaged_views" | "reach" | "impressions" | "likes" | "comments" | "shares" | "saves" | "watch_time_seconds" | "average_view_duration_seconds" | "subscribers_gained";
+export type AnalyticsMetricKey = "views" | "engaged_views" | "reach" | "impressions" | "clicks" | "likes" | "comments" | "shares" | "saves" | "watch_time_seconds" | "average_view_duration_seconds" | "subscribers_gained";
 export type AnalyticsMetricUnit = "count" | "seconds";
 
 export interface YouTubePublishSettings extends Record<string, unknown> {
@@ -316,6 +316,8 @@ export interface PublishProof {
   approvedBy: string;
   sourceIds: string[];
   disclosure: "none" | "ai-assisted" | "synthetic-media";
+  /** How OriginPost established that the platform object exists. Legacy rows are classified at read time. */
+  evidenceMode?: PublishEvidenceMode | undefined;
   instagramAiDisclosure?: { requested: boolean; observed: boolean; label: "ai_info" } | undefined;
   screenshotUrl?: string | undefined;
   approvedSettingsSha256?: string | undefined;
@@ -323,14 +325,18 @@ export interface PublishProof {
   instagramReelCoverProof?: InstagramReelCoverSelection | undefined;
 }
 
+export type PublishEvidenceMode = "official" | "manual_attestation" | "provider_reconciliation" | "simulation" | "legacy_unknown";
+
 export interface AnalyticsMetric {
   key: AnalyticsMetricKey;
   value: number;
   unit: AnalyticsMetricUnit;
   rawMetric?: string | undefined;
-  source?: "instagram_media_insights" | "instagram_media_field" | "youtube_analytics_query" | "youtube_reporting_bulk" | "youtube_data_api" | "mock" | undefined;
+  source?: "instagram_media_insights" | "instagram_media_field" | "facebook_page_post_insights" | "youtube_analytics_query" | "youtube_reporting_bulk" | "youtube_data_api" | "mock" | undefined;
   coverage?: "organic" | "paid_and_organic" | "instagram_only" | "facebook_only" | "cross_platform" | "unknown" | undefined;
   definitionVersion?: string | undefined;
+  /** Whether values may be added across proof snapshots in account/report rollups. */
+  aggregation?: "sum" | "non_additive" | undefined;
   caveats?: string[] | undefined;
 }
 
@@ -340,7 +346,7 @@ export interface PostAnalyticsSnapshot {
   brandId: string;
   contentItemId: string;
   proofId: string;
-  platform: Extract<Platform, "instagram" | "youtube">;
+  platform: Extract<Platform, "instagram" | "facebook" | "youtube">;
   accountId: string;
   externalPostId: string;
   status: AnalyticsSnapshotStatus;

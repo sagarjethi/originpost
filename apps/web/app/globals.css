@@ -834,3 +834,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .proof-form .proof-attestation{display:flex;flex-direction:row;align-items:flex-start;gap:9px;padding:11px 12px;border:1px solid #d9c8ae;border-radius:11px;background:#fff8e8;font-weight:700;line-height:1.4}.proof-form .proof-attestation input{width:auto;margin-top:3px;accent-color:#7c2d12}
 /* Account-scoped posting queue confirmation stays inside the existing scheduler. */
 .studio-queue-choice{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px;border:1px solid #d9d2c8;border-radius:12px;background:#f8f6f2}.studio-queue-choice>div{display:grid;gap:3px;min-width:0}.studio-queue-choice span,.studio-queue-choice small{color:#6c675f}.studio-queue-choice small{overflow-wrap:anywhere}@media(max-width:520px){.studio-queue-choice{align-items:stretch;flex-direction:column}.studio-queue-choice button{width:100%}}
+
+/* Provider-specific proof analytics remain visually distinct and truthful. */
+.analytics-platform.facebook{background:#e6edf8;color:#315ca8}.analytics-post-metrics.facebook{grid-template-columns:repeat(3,minmax(0,1fr))}
+.analytics-evidence{border-radius:999px;padding:4px 7px;font-size:8px;font-weight:800}.analytics-evidence.verified{background:#e2f1e9;color:#276348}.analytics-evidence.simulation,.analytics-simulation-link{background:#fff0ed;color:#8a3128}.analytics-simulation-link{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:7px 9px;font-size:9px;font-weight:800}
+@media(max-width:760px){.analytics-post-metrics.facebook{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.analytics-post-metrics.facebook{grid-template-columns:1fr}}

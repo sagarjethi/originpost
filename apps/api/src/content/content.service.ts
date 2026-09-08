@@ -109,13 +109,10 @@ export class ContentService implements OnModuleInit {
       });
     }
     if (!this.infrastructure.analyticsQueue) return;
-    // Facebook Page analytics are deliberately unsupported in the first
-    // release. Do not enqueue a job that can never produce a domain snapshot.
-    if (proof.platform === "facebook") return;
-    if (proof.platform !== "instagram" && proof.platform !== "youtube") return;
+    if (proof.platform !== "instagram" && proof.platform !== "facebook" && proof.platform !== "youtube") return;
     await this.infrastructure.analyticsQueue.add("capture-proof", { workspaceId: item.workspaceId, contentItemId: item.id, proofId: proof.id }, {
       jobId: `analytics-${proof.id}-initial`,
-      delay: 30_000,
+      delay: proof.platform === "facebook" ? 24 * 60 * 60_000 : 30_000,
       attempts: 3,
       backoff: { type: "exponential", delay: 30_000 },
       removeOnComplete: 500,

@@ -127,13 +127,17 @@ async function validateFacebookLoginAccount(account: ConnectedAccount, credentia
   assertLookupIdentity(grant, data.user_id, deps);
 
   const identityUrl = new URL(`https://graph.facebook.com/${apiVersion}/${encodeURIComponent(account.externalAccountId)}`);
-  identityUrl.searchParams.set("fields", "id");
+  identityUrl.searchParams.set("fields", account.platform === "facebook" ? "id,tasks" : "id");
   identityUrl.searchParams.set("appsecret_proof", createHmac("sha256", appSecret).update(credential.accessToken).digest("hex"));
   identityUrl.searchParams.set("appsecret_time", String(nowSeconds));
   const identityResponse = await request(fetcher, "Meta", identityUrl, { headers: { authorization: `Bearer ${credential.accessToken}` } });
-  const identity = await identityResponse.json().catch(() => ({})) as { id?: unknown; error?: unknown };
+  const identity = await identityResponse.json().catch(() => ({})) as { id?: unknown; tasks?: unknown; error?: unknown };
   if (!identityResponse.ok) throw providerHttpError("Meta", identityResponse.status);
   if (identity.error || String(identity.id ?? "") !== account.externalAccountId) throw new ProviderGrantValidationError("Meta did not return this linked account. Review only the affected account before changing shared access.", false, "provider_target_review_required");
+  if (account.platform === "facebook") {
+    const tasks = Array.isArray(identity.tasks) ? identity.tasks.filter((task): task is string => typeof task === "string") : [];
+    if (!tasks.includes("CREATE_CONTENT") || (account.capabilities.includes("analytics_read") && !tasks.includes("ANALYZE"))) throw new ProviderGrantValidationError("Meta no longer confirms the Page tasks required by this account. Review only the affected Page before changing shared access.", false, "provider_page_task_review_required");
+  }
 }
 
 function assertGoogleConfiguration(grant: ProviderGrant, deps: ProviderGrantValidationDependencies): { clientId: string; clientSecret: string } {

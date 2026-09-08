@@ -69,7 +69,9 @@ describe("remote correction UI helpers", () => {
   it("hides the surface without a supported publish proof", () => {
     expect(hasEligiblePublishProofs([])).toBe(false);
     expect(hasEligiblePublishProofs([{ id: "proof-1", platform: "linkedin", liveUrl: "https://example.test/post" }])).toBe(false);
-    expect(hasEligiblePublishProofs([{ id: "proof-2", platform: "instagram", liveUrl: "https://instagram.com/p/1" }])).toBe(true);
+    expect(hasEligiblePublishProofs([{ id: "proof-2", platform: "instagram", liveUrl: "https://instagram.com/p/1", evidenceMode: "official" }])).toBe(true);
+    expect(hasEligiblePublishProofs([{ id: "proof-legacy", platform: "instagram", liveUrl: "https://instagram.com/p/legacy", evidenceMode: "legacy_unknown" }])).toBe(false);
+    expect(hasEligiblePublishProofs([{ id: "proof-3", platform: "instagram", liveUrl: "https://instagram.example.invalid/p/1", evidenceMode: "simulation" }])).toBe(false);
   });
 
   it("maps request, approval, reconciliation, and manual evidence states", () => {

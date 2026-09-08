@@ -798,6 +798,7 @@ export function confirmManualPublication(
     approvedBy: approval.actorId,
     sourceIds: item.sources.map((source) => source.id),
     disclosure: target.platform === "instagram" ? target.settings?.isAiGenerated === true ? "ai-assisted" : "none" : input.disclosure,
+    evidenceMode: "manual_attestation",
     ...(target.platform === "instagram" && (target.settings?.isAiGenerated === true || input.disclosure === "ai-assisted") ? {
       instagramAiDisclosure: { requested: target.settings?.isAiGenerated === true, observed: input.disclosure === "ai-assisted", label: "ai_info" as const },
     } : {}),
@@ -871,6 +872,7 @@ export function confirmProviderPublication(
     disclosure: target.platform === "youtube"
       ? target.settings && "containsSyntheticMedia" in target.settings && target.settings.containsSyntheticMedia === true ? "synthetic-media" : "none"
       : target.platform === "instagram" && target.settings?.isAiGenerated === true ? "ai-assisted" : input.disclosure,
+    evidenceMode: "provider_reconciliation",
     ...(target.platform === "instagram" && (target.settings?.isAiGenerated === true || input.instagramAiDisclosureObserved === true) ? { instagramAiDisclosure: { requested: target.settings?.isAiGenerated === true, observed: input.instagramAiDisclosureObserved === true, label: "ai_info" as const } } : {}),
     ...(target.platform === "instagram" && target.settings && typeof target.settings.approvedSettingsSha256 === "string"
       ? { approvedSettingsSha256: target.settings.approvedSettingsSha256 }

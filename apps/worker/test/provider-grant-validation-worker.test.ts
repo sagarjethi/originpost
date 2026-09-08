@@ -92,7 +92,8 @@ describe("provider grant validation", () => {
     const fetch = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
       if (url.pathname.endsWith("/debug_token")) return new Response(JSON.stringify({ data: { app_id: "meta-client", user_id: "meta-user-1", is_valid: true, expires_at: 0, data_access_expires_at: 0, scopes: ["pages_manage_posts"] } }), { status: 200 });
-      return new Response(JSON.stringify({ id: decodeURIComponent(url.pathname.split("/").at(-1)!) }), { status: 200 });
+      const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
+      return new Response(JSON.stringify({ id, ...(id === "page-1" ? { tasks: ["CREATE_CONTENT", "ANALYZE"] } : {}) }), { status: 200 });
     }) as typeof globalThis.fetch;
 
     await expect(processProviderGrantValidation(

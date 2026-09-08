@@ -41,6 +41,7 @@ export function validateConfig(input: Record<string, unknown>) {
   const oidcAutoProvision = String(input.OIDC_AUTO_PROVISION ?? "false") === "true";
   const instagramMode = String(input.INSTAGRAM_CONNECTOR_MODE ?? input.CONNECTOR_MODE ?? "mock");
   const facebookMode = String(input.FACEBOOK_CONNECTOR_MODE ?? "mock");
+  const facebookAnalyticsMode = String(input.FACEBOOK_ANALYTICS_CONNECTOR_MODE ?? "disabled");
   const youtubeMode = String(input.YOUTUBE_CONNECTOR_MODE ?? "mock");
   const privateMessageMode = String(input.PRIVATE_MESSAGE_CONNECTOR_MODE ?? "disabled");
   const livePublishing = String(input.ALLOW_LIVE_PUBLISH ?? "false") === "true";
@@ -51,6 +52,7 @@ export function validateConfig(input: Record<string, unknown>) {
   if (!["true", "false"].includes(String(input.OIDC_AUTO_PROVISION ?? "false"))) throw new Error("OIDC_AUTO_PROVISION must be true or false.");
   if (oidcEnabled && authMode !== "sessions") throw new Error("OIDC single sign-on requires AUTH_MODE=sessions.");
   if (!["mock", "official"].includes(instagramMode) || !["mock", "official"].includes(facebookMode) || !["mock", "official"].includes(youtubeMode)) throw new Error("Connector modes must be mock or official.");
+  if (!["disabled", "official"].includes(facebookAnalyticsMode)) throw new Error("FACEBOOK_ANALYTICS_CONNECTOR_MODE must be disabled or official.");
   if (!["disabled", "mock", "official"].includes(privateMessageMode)) throw new Error("PRIVATE_MESSAGE_CONNECTOR_MODE must be disabled, mock, or official.");
   if (!["disabled", "clamav"].includes(mediaMalwareScanMode)) throw new Error("MEDIA_MALWARE_SCAN_MODE must be disabled or clamav.");
   if (livePublishing && mediaMalwareScanMode !== "clamav") throw new Error("Live publishing requires MEDIA_MALWARE_SCAN_MODE=clamav so every uploaded file is scanned before use.");
@@ -141,6 +143,17 @@ export function validateConfig(input: Record<string, unknown>) {
     if (!String(input.META_GRAPH_API_VERSION ?? "").trim() || !metaSecret) throw new Error("Official Facebook Page mode requires META_GRAPH_API_VERSION and META_APP_SECRET.");
     if (!encryptionKey) throw new Error("Official Facebook Page mode requires CREDENTIAL_ENCRYPTION_KEY.");
   }
+  if (facebookAnalyticsMode === "official") {
+    if (facebookMode !== "official") throw new Error("Official Facebook analytics requires FACEBOOK_CONNECTOR_MODE=official.");
+    const analyticsReview = String(input.FACEBOOK_ANALYTICS_APP_REVIEW_SHA256 ?? "").trim();
+    const analyticsProbeResult = String(input.FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256 ?? "").trim();
+    const analyticsProbe = ["FACEBOOK_ANALYTICS_CONTRACT_PROBE_API_VERSION", "FACEBOOK_ANALYTICS_CONTRACT_PROBE_VERIFIED_AT", "FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT"].map((key) => String(input[key] ?? "").trim());
+    if (!metaId || !/^[a-f0-9]{64}$/u.test(analyticsReview)) throw new Error("Official Facebook analytics requires META_APP_ID and a lowercase FACEBOOK_ANALYTICS_APP_REVIEW_SHA256 evidence digest.");
+    if (!/^[a-f0-9]{64}$/u.test(analyticsProbeResult)) throw new Error("Official Facebook analytics requires FACEBOOK_ANALYTICS_CONTRACT_PROBE_RESULT_SHA256 as a lowercase digest of the watched probe result.");
+    if (!analyticsProbe.every(Boolean) || analyticsProbe[0] !== String(input.META_GRAPH_API_VERSION ?? "").trim()) throw new Error("Facebook analytics requires a complete contract probe for the exact META_GRAPH_API_VERSION.");
+    const verifiedAt = Date.parse(analyticsProbe[1]!); const expiresAt = Date.parse(analyticsProbe[2]!); const now = Date.now();
+    if (!Number.isFinite(verifiedAt) || !Number.isFinite(expiresAt) || verifiedAt > now || expiresAt <= now || expiresAt - verifiedAt > 30 * 24 * 60 * 60_000) throw new Error("Facebook analytics contract probe must be current and expire within 30 days.");
+  }
   const webhookVerifyToken = String(input.META_WEBHOOK_VERIFY_TOKEN ?? "").trim();
   const facebookWebhookTokenOverride = String(input.META_FACEBOOK_WEBHOOK_VERIFY_TOKEN ?? "").trim();
   const facebookWebhookVerifyToken = facebookWebhookTokenOverride || webhookVerifyToken;
@@ -220,6 +233,7 @@ export function validateConfig(input: Record<string, unknown>) {
     AGENT_ALLOW_PRIVATE_ENDPOINTS: agentAllowPrivateEndpoints,
     HERMES_BOARD_PLUGIN_ENABLED: hermesBoardPluginEnabled,
     HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS: hermesBoardAllowPrivateEndpoints,
+    FACEBOOK_ANALYTICS_CONNECTOR_MODE: facebookAnalyticsMode,
     META_PROVIDER_CALLBACKS_ENABLED: providerCallbacksEnabled,
     API_PORT: Number(input.API_PORT ?? 4000), CORS_ORIGIN: String(input.CORS_ORIGIN ?? "http://localhost:3000"),
   };

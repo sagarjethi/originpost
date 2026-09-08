@@ -11,7 +11,7 @@ export class AnalyticsProofParamDto {
   @IsString() @MaxLength(120) proofId!: string;
 }
 
-const reportMetrics = ["views", "engaged_views", "reach", "impressions", "likes", "comments", "shares", "saves", "watch_time_seconds", "average_view_duration_seconds", "subscribers_gained"] as const;
+const reportMetrics = ["views", "engaged_views", "reach", "impressions", "clicks", "likes", "comments", "shares", "saves", "watch_time_seconds", "average_view_duration_seconds", "subscribers_gained"] as const;
 
 export class CreateAnalyticsReportDto {
   @IsOptional() @IsString() @MaxLength(100) workspaceId?: string;
@@ -21,7 +21,7 @@ export class CreateAnalyticsReportDto {
   @ValidateIf((value: CreateAnalyticsReportDto) => value.rangeMode === "rolling") @Type(() => Number) @IsInt() @Min(1) @Max(366) rollingDays?: number;
   @ValidateIf((value: CreateAnalyticsReportDto) => value.rangeMode === "fixed") @IsISO8601() from?: string;
   @ValidateIf((value: CreateAnalyticsReportDto) => value.rangeMode === "fixed") @IsISO8601() to?: string;
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(2) @IsEnum(["instagram", "youtube"], { each: true }) platforms!: Array<"instagram" | "youtube">;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(3) @IsEnum(["instagram", "facebook", "youtube"], { each: true }) platforms!: Array<"instagram" | "facebook" | "youtube">;
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) accountIds: string[] = [];
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(reportMetrics.length) @IsEnum(reportMetrics, { each: true }) metricKeys!: typeof reportMetrics[number][];
 }
