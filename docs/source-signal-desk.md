@@ -4,18 +4,18 @@ Source Signal Desk is the review queue between a tracked public source and the C
 
 ## Luma Mumbai event watch
 
-The built-in **Luma Mumbai events** preset watches the official public city page at <https://luma.com/mumbai>. It asks the configured research provider for:
+The built-in **Luma Mumbai events** preset watches the official public city page at <https://luma.com/mumbai>. A dedicated bounded adapter reads that one page's structured public listing directly, even when general source research remains in safe mock mode. It keeps only:
 
 - event title and official Luma event URL;
-- published date and time;
-- venue;
+- scheduled date and time;
+- the publicly displayed or approximate venue;
 - public host or organizer names.
 
-It never asks for attendees, private guest lists, email addresses, or other registration data. The Mumbai image in the interface is a city reference supplied by the workspace owner. It is not documentary proof of a listed event.
+The adapter rejects non-public and online events, caps the page and result count, validates direct event URLs, and fails closed if Luma's structured page contract changes. It never returns or persists attendee counts, featured guests, private guest records, email addresses, or guest-only exact venue details. It does not open individual event pages or bypass login, rate limits, or visibility controls. The Mumbai image in the interface is a city reference supplied by the workspace owner. It is not documentary proof of a listed event.
 
-Luma describes its public MCP server as read-only and able to search public events. Calendar API access is a separate Luma Plus feature and requires a calendar-scoped API key. OriginPost does not ask for that private key in this first slice. See [Luma MCP](https://help.luma.com/p/mcp), [Luma API](https://help.luma.com/p/luma-api), and [Luma calendar syncing](https://help.luma.com/p/ical-syncing).
+Luma documents city pages and city iCal subscriptions as public discovery surfaces. Calendar API access is a separate Luma Plus feature and requires a calendar-scoped API key; OriginPost does not request that private key for public Mumbai discovery. See [Luma event search](https://help.luma.com/p/searching-for-events), [Luma API](https://help.luma.com/p/luma-api), and [Luma calendar syncing](https://help.luma.com/p/ical-syncing).
 
-The preset checks every 60 minutes. **Check Luma now** asks the existing monitor queue to run immediately. A result appears only after the configured research provider completes the run. This is a useful public-source watch, not a promise that every Mumbai event is present.
+The preset checks every 60 minutes. **Check Luma now** asks the existing monitor queue to run immediately. A result appears only after the bounded public adapter completes the run. This is a curated public-source watch, not a promise that every Mumbai event is present.
 
 ## Supported tracked sources
 

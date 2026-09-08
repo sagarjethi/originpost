@@ -98,6 +98,8 @@ Durable Monitor Rule in PostgreSQL
 
 Only one run may be active for a monitor. PostgreSQL enforces this with a partial unique index, so concurrent workers cannot create duplicate suggestions. A competing run is recorded as `skipped` with `monitor_already_running`; it does not hide the overlap. Source fingerprints are unique per monitor and ignore common tracking noise. The content item and its fingerprints share one database transaction, preventing crash-created duplicates. Redis schedules are rebuilt from every enabled PostgreSQL rule when the worker starts.
 
+Luma-only tracked-source monitors use a hard-coded, bounded read of Luma's official Mumbai city page. The adapter validates the structured public payload and direct event URLs, retains only scheduled event facts, public or approximate venue text, and displayed host names, and discards guest, attendee, registration-person, and guest-only exact-location fields before returning a result. It fails closed on contract drift and cannot be pointed at another host.
+
 The Automations workspace derives `paused`, `waiting`, `healthy`, `running`, `failed`, `stale`, or `coalesced` health from the durable rule and recent runs. Operators can request a one-off check without changing the repeat schedule. Both scheduled and manual work use the same queue, lock, sourcing adapter, fingerprint rule, and run history. See [monitoring.md](monitoring.md).
 
 ## Planned deep modules

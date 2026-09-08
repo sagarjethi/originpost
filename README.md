@@ -35,7 +35,7 @@ OriginPost is an open-source, self-hosted social content operating system. It br
 - PostgreSQL persistence with an in-memory development fallback
 - Redis/BullMQ background jobs
 - Scheduled source monitors with startup recovery, event grouping, tracking-safe URL deduplication, atomic inbox delivery, cross-check status, and run history
-- Source Signal Desk with transparent ranking, human promotion into the Content Inbox, RSS/Atom tracking, and a public-host-only Luma Mumbai event watch
+- Source Signal Desk with transparent ranking, human promotion into the Content Inbox, RSS/Atom tracking, and a bounded public-host-only Luma Mumbai adapter that runs independently of the mock general researcher
 - Evergreen Refresh Queue that turns a proven publish proof into a fresh human-reviewed draft with bounded dates and repeat counts
 - Delivery health and recovery status in the Automations workspace
 - Owner/manager operations health for ClamAV signatures, webhook dead letters, media cleanup, uncertain publishing, and durable delivery queues

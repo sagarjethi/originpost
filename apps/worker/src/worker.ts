@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createHash } from "node:crypto";
-import { HermesBoardPlugin, HermesSourcingProvider, MockSourcingProvider, type SourcingProvider } from "@originpost/agents";
+import { HermesBoardPlugin, HermesSourcingProvider, LumaMumbaiSourcingProvider, MockSourcingProvider, type SourcingProvider } from "@originpost/agents";
 import {
   createMediaDeliveryToken,
   createSafeConnectorRegistry,
@@ -73,6 +73,7 @@ import { processBoardPluginDeactivate, processBoardPluginReconcile, type BoardPl
 import { CredentialRefreshError, processCredentialRefreshJob } from "./credential-refresh-worker.js";
 import { processProviderDataDeletion } from "./provider-data-deletion-worker.js";
 import { processProviderGrantValidation, type ProviderGrantValidationJob } from "./provider-grant-validation-worker.js";
+import { selectMonitorSourcingProvider } from "./monitor-sourcing.js";
 
 interface PublishJob { workspaceId: string; contentItemId: string; targetId: string }
 interface ResearchJob { workspaceId: string; contentItemId: string; researchRunId: string }
@@ -303,6 +304,7 @@ if (youtubeConnectorMode === "official") {
   }));
 }
 const sourcing = createSourcingProvider();
+const lumaMumbaiSourcing = new LumaMumbaiSourcingProvider();
 const telegram = process.env.TELEGRAM_BOT_TOKEN ? new TelegramBotClient(process.env.TELEGRAM_BOT_TOKEN) : null;
 const allowedTelegramChats = new Set((process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
 const systemActor: Actor = { id: "originpost-worker", name: "OriginPost Worker", role: "owner" };
@@ -1233,7 +1235,8 @@ const monitorWorker = new Worker<MonitorJob>(
     }
 
     try {
-      const result = await sourcing.research({
+      const monitorSourcing = selectMonitorSourcingProvider(monitor, sourcing, lumaMumbaiSourcing);
+      const result = await monitorSourcing.research({
         sessionKey: `originpost-monitor:${monitor.workspaceId}:${monitor.id}`,
         query: monitor.query,
         context: monitor.sourceIntelligence ? `Scheduled monitor: ${monitor.name}\n${sourceIntelligenceResearchContext(monitor.sourceIntelligence)}` : `Scheduled monitor: ${monitor.name}`,

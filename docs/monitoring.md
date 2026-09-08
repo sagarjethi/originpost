@@ -15,6 +15,7 @@ OriginPost source monitors turn a saved topic into sourced inbox suggestions. A 
 - Each suggestion, its completed research record, source links, claim links, and deduplication fingerprints are committed together. A crash cannot save the suggestion while forgetting its deduplication record.
 - A monitor may create several content items in one run. The run keeps the first `contentItemId` for compatibility and all IDs in `contentItemIds`.
 - Monitor suggestions are tagged `multi-source` or `single-source`. The inbox shows a plain cross-check summary based on independent publishers and supported claims.
+- A monitor whose enabled tracked sources are exclusively `luma_city` uses the built-in read-only Mumbai adapter instead of the configured general research provider. Mixed-source monitors remain on the configured provider so OriginPost never pretends one city-page read checked unrelated sources.
 
 ## Operator view
 
