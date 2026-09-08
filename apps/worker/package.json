@@ -1,0 +1,29 @@
+{
+  "name": "@originpost/worker",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/worker.ts",
+    "start": "node dist/worker.js",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@originpost/agents": "workspace:*",
+    "@originpost/connectors": "workspace:*",
+    "@originpost/db": "workspace:*",
+    "@originpost/domain": "workspace:*",
+    "@originpost/telegram": "workspace:*",
+    "bullmq": "6.3.1",
+    "dotenv": "17.4.2",
+    "ioredis": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

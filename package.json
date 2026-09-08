@@ -1,0 +1,30 @@
+{
+  "name": "originpost",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "Self-hosted, evidence-backed social content operating system",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --env-mode=loose --filter=@originpost/api --filter=@originpost/worker --filter=@originpost/web",
+    "test": "turbo run test --concurrency=1 -- --maxWorkers=1",
+    "typecheck": "turbo run typecheck",
+    "db:migrate": "pnpm --filter @originpost/db migrate",
+    "ops:backup": "node --env-file-if-exists=.env apps/api/scripts/backup-compose.mjs",
+    "ops:restore-drill": "node apps/api/scripts/restore-drill.mjs",
+    "ops:check": "node --check apps/api/scripts/backup-compose.mjs && node --check apps/api/scripts/restore-drill.mjs && node --check scripts/runtime-media-malware-smoke.mjs",
+    "check": "pnpm typecheck && pnpm ops:check && pnpm test && pnpm build",
+    "release:audit": "node scripts/public-release-audit.mjs",
+    "security:audit": "pnpm audit --prod --audit-level high",
+    "security:secrets": "docker run --rm -v \"$PWD:/repo:ro\" zricethezav/gitleaks:v8.28.0 dir /repo --config /repo/.gitleaks.toml --no-banner --no-color --redact=100 --verbose --exit-code 1",
+    "release:check": "pnpm check && pnpm release:audit && pnpm security:audit && pnpm security:secrets && docker compose config --quiet"
+  },
+  "devDependencies": {
+    "turbo": "2.10.12",
+    "typescript": "7.0.2"
+  }
+}

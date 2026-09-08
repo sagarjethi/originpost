@@ -1,0 +1,24 @@
+import { Body, Controller, Get, Headers, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
+import type { FastifyRequest } from "fastify";
+import { actorFrom, expectedVersionFrom, workspaceFrom } from "../common/request-context.js";
+import { BoardsService } from "./boards.service.js";
+import { BoardQueryDto, CreateBoardDto, DecideBoardPendingWriteDto, ReplaceBoardSkillsDto, RunBoardDto, TestBoardDto, UpdateBoardDto, UpdateBoardSkillDto } from "./dto/boards.dto.js";
+
+@Controller({ path: "boards", version: "1" })
+export class BoardsController {
+  constructor(private readonly boards: BoardsService) {}
+  @Get() list(@Req() request: FastifyRequest, @Query() query: BoardQueryDto) { return this.boards.list(workspaceFrom(request, query.workspaceId), query, actorFrom(request)); }
+  @Post() create(@Req() request: FastifyRequest, @Body() dto: CreateBoardDto) { return this.boards.create(workspaceFrom(request, dto.workspaceId), dto, actorFrom(request)); }
+  @Get(":id") get(@Req() request: FastifyRequest, @Query() query: BoardQueryDto, @Param("id") id: string) { return this.boards.get(workspaceFrom(request, query.workspaceId), query.brandId, id, actorFrom(request)); }
+  @Patch(":id") update(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: UpdateBoardDto) { return this.boards.update(workspaceFrom(request, dto.workspaceId), dto.brandId, id, expectedVersionFrom(request), dto, actorFrom(request)); }
+  @Get(":id/plugins/hermes") plugin(@Req() request: FastifyRequest, @Query() query: BoardQueryDto, @Param("id") id: string) { return this.boards.plugin(workspaceFrom(request, query.workspaceId), query.brandId, id, actorFrom(request)); }
+  @Put(":id/plugins/hermes/skills") skill(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: UpdateBoardSkillDto) { return this.boards.skill(workspaceFrom(request, dto.workspaceId), dto.brandId, id, expectedVersionFrom(request), dto, actorFrom(request)); }
+  @Put(":id/plugins/hermes/skill-policy") skills(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: ReplaceBoardSkillsDto) { return this.boards.skills(workspaceFrom(request, dto.workspaceId), dto.brandId, id, expectedVersionFrom(request), dto.enabledSkills, actorFrom(request)); }
+  @Post(":id/plugins/hermes/reconcile") reconcile(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: TestBoardDto) { return this.boards.reconcile(workspaceFrom(request, dto.workspaceId), dto.brandId, id, expectedVersionFrom(request), actorFrom(request)); }
+  @Get(":id/plugins/hermes/pending/:subsystem/:pendingId") pendingWrite(@Req() request: FastifyRequest, @Query() query: BoardQueryDto, @Param("id") id: string, @Param("subsystem") subsystem: string, @Param("pendingId") pendingId: string) { return this.boards.pendingWrite(workspaceFrom(request, query.workspaceId), query.brandId, id, subsystem, pendingId, actorFrom(request)); }
+  @Post(":id/plugins/hermes/pending/:subsystem/:pendingId/decision") decidePendingWrite(@Req() request: FastifyRequest, @Param("id") id: string, @Param("subsystem") subsystem: string, @Param("pendingId") pendingId: string, @Headers("idempotency-key") idempotencyKey: string | undefined, @Body() dto: DecideBoardPendingWriteDto) { return this.boards.decidePendingWrite(workspaceFrom(request, dto.workspaceId), dto.brandId, id, subsystem, pendingId, dto, idempotencyKey, actorFrom(request)); }
+  @Post(":id/test") test(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: TestBoardDto) { return this.boards.test(workspaceFrom(request, dto.workspaceId), dto.brandId, id, actorFrom(request)); }
+  @Post(":id/plugins/hermes/test") pluginTest(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: TestBoardDto) { return this.boards.test(workspaceFrom(request, dto.workspaceId), dto.brandId, id, actorFrom(request)); }
+  @Post(":id/runs") run(@Req() request: FastifyRequest, @Param("id") id: string, @Body() dto: RunBoardDto) { return this.boards.run(workspaceFrom(request, dto.workspaceId), dto.brandId, id, dto.prompt, actorFrom(request)); }
+  @Get(":id/runs") runs(@Req() request: FastifyRequest, @Query() query: BoardQueryDto, @Param("id") id: string) { return this.boards.runs(workspaceFrom(request, query.workspaceId), query.brandId, id, query.limit, actorFrom(request)); }
+}

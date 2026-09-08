@@ -1,0 +1,255 @@
+name: originpost
+
+services:
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      target: web
+      args:
+        ORIGINPOST_API_UPSTREAM: http://api:4000
+    restart: unless-stopped
+    environment:
+      WEB_PORT: 3000
+      ORIGINPOST_API_UPSTREAM: http://api:4000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    command: ["sh", "-c", "pnpm db:migrate && node apps/api/dist/main.js"]
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      CORS_ORIGIN: http://localhost:3000
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:3000}
+      REVIEW_LINK_SECRET: ${REVIEW_LINK_SECRET:?Set REVIEW_LINK_SECRET to at least 32 random characters in .env}
+      MEDIA_DELIVERY_SECRET: ${MEDIA_DELIVERY_SECRET:?Set MEDIA_DELIVERY_SECRET to a different 32-byte secret in .env}
+      MEDIA_UPLOAD_LEASE_MINUTES: ${MEDIA_UPLOAD_LEASE_MINUTES:-60}
+      MEDIA_TRASH_RETENTION_DAYS: ${MEDIA_TRASH_RETENTION_DAYS:-7}
+      MEDIA_CLEANUP_INTERVAL_MINUTES: ${MEDIA_CLEANUP_INTERVAL_MINUTES:-15}
+      MEDIA_CLEANUP_ENABLED: ${MEDIA_CLEANUP_ENABLED:-true}
+      MEDIA_FFPROBE_PATH: ${MEDIA_FFPROBE_PATH:-ffprobe}
+      MEDIA_INSPECTION_TIMEOUT_MS: ${MEDIA_INSPECTION_TIMEOUT_MS:-15000}
+      MEDIA_MALWARE_SCAN_MODE: ${MEDIA_MALWARE_SCAN_MODE:-disabled}
+      MEDIA_CLAMAV_HOST: clamav
+      MEDIA_CLAMAV_PORT: 3310
+      MEDIA_CLAMAV_SIGNATURE_MAX_AGE_HOURS: ${MEDIA_CLAMAV_SIGNATURE_MAX_AGE_HOURS:-48}
+      MEDIA_MALWARE_SCAN_TIMEOUT_MS: ${MEDIA_MALWARE_SCAN_TIMEOUT_MS:-120000}
+      MEDIA_MALWARE_SCAN_MAX_BYTES: ${MEDIA_MALWARE_SCAN_MAX_BYTES:-536870912}
+      AUTOMATION_DELIVERY_ENABLED: ${AUTOMATION_DELIVERY_ENABLED:-true}
+      AUTOMATION_DELIVERY_INTERVAL_SECONDS: ${AUTOMATION_DELIVERY_INTERVAL_SECONDS:-5}
+      OPERATIONS_HEALTH_ENABLED: ${OPERATIONS_HEALTH_ENABLED:-true}
+      OPERATIONS_HEALTH_INTERVAL_MINUTES: ${OPERATIONS_HEALTH_INTERVAL_MINUTES:-5}
+      OPERATIONS_PUBLISH_STALE_MINUTES: ${OPERATIONS_PUBLISH_STALE_MINUTES:-30}
+      OPERATIONS_OUTBOX_STALE_MINUTES: ${OPERATIONS_OUTBOX_STALE_MINUTES:-15}
+      AUTOMATION_ALLOW_PRIVATE_WEBHOOKS: ${AUTOMATION_ALLOW_PRIVATE_WEBHOOKS:-false}
+      DATABASE_URL: postgres://originpost:originpost@postgres:5432/originpost
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:60900}
+      S3_REGION: us-east-1
+      S3_BUCKET: originpost-media
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-originpost}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+      CONNECTOR_MODE: ${CONNECTOR_MODE:-mock}
+      INSTAGRAM_CONNECTOR_MODE: ${INSTAGRAM_CONNECTOR_MODE:-mock}
+      FACEBOOK_CONNECTOR_MODE: ${FACEBOOK_CONNECTOR_MODE:-mock}
+      YOUTUBE_CONNECTOR_MODE: ${YOUTUBE_CONNECTOR_MODE:-mock}
+      ALLOW_LIVE_PUBLISH: ${ALLOW_LIVE_PUBLISH:-false}
+      AUTH_MODE: ${AUTH_MODE:-single-user}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-owner@example.com}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-OriginPost Owner}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      OIDC_ENABLED: ${OIDC_ENABLED:-false}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Company SSO}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:4000/v1/auth/oidc/callback}
+      OIDC_WEB_RETURN_URL: ${OIDC_WEB_RETURN_URL:-http://localhost:3000/}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      OIDC_ALLOWED_EMAIL_DOMAINS: ${OIDC_ALLOWED_EMAIL_DOMAINS:-}
+      OIDC_ALLOWED_GROUPS: ${OIDC_ALLOWED_GROUPS:-}
+      OIDC_OWNER_GROUPS: ${OIDC_OWNER_GROUPS:-}
+      OIDC_MANAGER_GROUPS: ${OIDC_MANAGER_GROUPS:-}
+      OIDC_CREATOR_GROUPS: ${OIDC_CREATOR_GROUPS:-}
+      OIDC_AUTO_PROVISION: ${OIDC_AUTO_PROVISION:-false}
+      OIDC_DEFAULT_WORKSPACE_ID: ${OIDC_DEFAULT_WORKSPACE_ID:-default}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-viewer}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      PROVIDER_LOOKUP_HMAC_KEYS: ${PROVIDER_LOOKUP_HMAC_KEYS:-}
+      PROVIDER_LOOKUP_HMAC_ACTIVE_VERSION: ${PROVIDER_LOOKUP_HMAC_ACTIVE_VERSION:-}
+      PROVIDER_DELETION_STATUS_KEY: ${PROVIDER_DELETION_STATUS_KEY:-}
+      PRIVATE_MESSAGE_CONNECTOR_MODE: ${PRIVATE_MESSAGE_CONNECTOR_MODE:-disabled}
+      PRIVATE_MESSAGE_ENCRYPTION_KEY: ${PRIVATE_MESSAGE_ENCRYPTION_KEY:-}
+      PRIVATE_MESSAGE_HASH_KEY: ${PRIVATE_MESSAGE_HASH_KEY:-}
+      META_PRIVATE_MESSAGING_APP_REVIEW_SHA256: ${META_PRIVATE_MESSAGING_APP_REVIEW_SHA256:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_PROVIDER_CALLBACKS_ENABLED: ${META_PROVIDER_CALLBACKS_ENABLED:-false}
+      META_DEAUTH_CALLBACK_CONTRACT_PROBE_SHA256: ${META_DEAUTH_CALLBACK_CONTRACT_PROBE_SHA256:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      META_FACEBOOK_WEBHOOK_VERIFY_TOKEN: ${META_FACEBOOK_WEBHOOK_VERIFY_TOKEN:-}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-}
+      FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION: ${FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION:-}
+      FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT: ${FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT:-}
+      FACEBOOK_COMMENT_RECONCILE_MAX_PAGES: ${FACEBOOK_COMMENT_RECONCILE_MAX_PAGES:-10}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      AGENT_ALLOW_PRIVATE_ENDPOINTS: ${AGENT_ALLOW_PRIVATE_ENDPOINTS:-false}
+      HERMES_API_URL: ${HERMES_API_URL:-http://host.docker.internal:8642}
+      HERMES_MODEL: ${HERMES_MODEL:-hermes-agent}
+      HERMES_BOARD_PLUGIN_ENABLED: ${HERMES_BOARD_PLUGIN_ENABLED:-false}
+      HERMES_BOARD_SUPPORTED_VERSION: ${HERMES_BOARD_SUPPORTED_VERSION:-0.21.0}
+      HERMES_BOARD_SECRET: ${HERMES_BOARD_SECRET:-}
+      HERMES_DASHBOARD_URL: ${HERMES_DASHBOARD_URL:-http://host.docker.internal:9119}
+      HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN:-}
+      HERMES_BOARD_PRIMARY_PROVIDER: ${HERMES_BOARD_PRIMARY_PROVIDER:-}
+      HERMES_BOARD_PRIMARY_MODEL: ${HERMES_BOARD_PRIMARY_MODEL:-}
+      HERMES_BOARD_APPROVED_SKILLS: ${HERMES_BOARD_APPROVED_SKILLS:-}
+      HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS: ${HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS:-false}
+      PLUGIN_DIRECTORY: ${PLUGIN_DIRECTORY:-/app/plugins}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://originpost:originpost@postgres:5432/originpost
+      REDIS_URL: redis://redis:6379
+      AUTH_MODE: ${AUTH_MODE:-single-user}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
+      MEDIA_DELIVERY_SECRET: ${MEDIA_DELIVERY_SECRET:?Set MEDIA_DELIVERY_SECRET to a different 32-byte secret in .env}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      PRIVATE_MESSAGE_CONNECTOR_MODE: ${PRIVATE_MESSAGE_CONNECTOR_MODE:-disabled}
+      PRIVATE_MESSAGE_ENCRYPTION_KEY: ${PRIVATE_MESSAGE_ENCRYPTION_KEY:-}
+      PRIVATE_MESSAGE_HASH_KEY: ${PRIVATE_MESSAGE_HASH_KEY:-}
+      META_PRIVATE_MESSAGING_APP_REVIEW_SHA256: ${META_PRIVATE_MESSAGING_APP_REVIEW_SHA256:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-}
+      FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION: ${FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_API_VERSION:-}
+      FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT: ${FACEBOOK_COMMENT_REPLY_CONTRACT_PROBE_VERIFIED_AT:-}
+      FACEBOOK_COMMENT_RECONCILE_MAX_PAGES: ${FACEBOOK_COMMENT_RECONCILE_MAX_PAGES:-10}
+      CONNECTOR_MODE: ${CONNECTOR_MODE:-mock}
+      INSTAGRAM_CONNECTOR_MODE: ${INSTAGRAM_CONNECTOR_MODE:-mock}
+      FACEBOOK_CONNECTOR_MODE: ${FACEBOOK_CONNECTOR_MODE:-mock}
+      YOUTUBE_CONNECTOR_MODE: ${YOUTUBE_CONNECTOR_MODE:-mock}
+      ALLOW_LIVE_PUBLISH: ${ALLOW_LIVE_PUBLISH:-false}
+      MEDIA_MALWARE_SCAN_MODE: ${MEDIA_MALWARE_SCAN_MODE:-disabled}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      HERMES_API_URL: ${HERMES_API_URL:-http://host.docker.internal:8642}
+      HERMES_MODEL: ${HERMES_MODEL:-hermes-agent}
+      HERMES_BOARD_PLUGIN_ENABLED: ${HERMES_BOARD_PLUGIN_ENABLED:-false}
+      HERMES_BOARD_SUPPORTED_VERSION: ${HERMES_BOARD_SUPPORTED_VERSION:-0.21.0}
+      HERMES_BOARD_SECRET: ${HERMES_BOARD_SECRET:-}
+      HERMES_DASHBOARD_URL: ${HERMES_DASHBOARD_URL:-http://host.docker.internal:9119}
+      HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN:-}
+      HERMES_BOARD_PRIMARY_PROVIDER: ${HERMES_BOARD_PRIMARY_PROVIDER:-}
+      HERMES_BOARD_PRIMARY_MODEL: ${HERMES_BOARD_PRIMARY_MODEL:-}
+      HERMES_BOARD_APPROVED_SKILLS: ${HERMES_BOARD_APPROVED_SKILLS:-}
+      HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS: ${HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS:-false}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: originpost
+      POSTGRES_USER: originpost
+      POSTGRES_PASSWORD: originpost
+    ports:
+      - "127.0.0.1:65432:5432"
+    volumes:
+      - originpost-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U originpost -d originpost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:63879:6379"
+    volumes:
+      - originpost-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: originpost
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+    ports:
+      - "127.0.0.1:60900:9000"
+      - "127.0.0.1:60901:9001"
+    volumes:
+      - originpost-minio:/data
+
+  clamav:
+    profiles: ["malware-scan"]
+    image: clamav/clamav-debian:1.4
+    restart: unless-stopped
+    environment:
+      CLAMD_CONF_StreamMaxLength: 512M
+      CLAMD_CONF_MaxFileSize: 512M
+      CLAMD_CONF_MaxScanSize: 512M
+      CLAMD_CONF_MaxScanTime: 120000
+      CLAMD_CONF_ReadTimeout: 180
+      CLAMD_CONF_AlertExceedsMax: "yes"
+    ports:
+      - "127.0.0.1:${MEDIA_CLAMAV_HOST_PORT:-63310}:3310"
+    volumes:
+      - originpost-clamav:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 5m
+
+volumes:
+  originpost-postgres:
+  originpost-redis:
+  originpost-minio:
+  originpost-clamav:

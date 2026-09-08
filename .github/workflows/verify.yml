@@ -1,0 +1,44 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: originpost_test
+          POSTGRES_USER: originpost
+          POSTGRES_PASSWORD: originpost
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U originpost -d originpost_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://originpost:originpost@127.0.0.1:5432/originpost_test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Create ephemeral Compose validation secrets
+        run: |
+          echo "REVIEW_LINK_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "MEDIA_DELIVERY_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "S3_SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:check
+      - run: pnpm db:migrate

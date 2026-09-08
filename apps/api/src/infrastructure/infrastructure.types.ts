@@ -1,0 +1,48 @@
+import type { BoardRuntimePort, HermesAgentProvider } from "@originpost/agents";
+import type { ConnectorRegistry } from "@originpost/connectors";
+import type { AgentBoardRepository, AgentRuntimeRepository, AnalyticsRepository, AnalyticsReportRepository, AutomationRepository, BatchPlanRepository, AuthRepository, ConnectedAccountRepository, ContentItemRepository, CreativeStudioRepository, EngagementRepository, EvergreenRepository, FirstCommentRepository, InstagramCollaboratorRepository, MediaOrganizationRepository, MediaRepository, MonitorRepository, NotificationRepository, OAuthRepository, OperationalIncidentRepository, OrganizationRepository, OutboxRepository, PostingQueueRepository, PrivateConversationRepository, ProviderLifecycleRepository, ProviderPublishOperationRepository, RemoteCorrectionRepository, ShareCaptureRepository, SourceSignalRepository } from "@originpost/domain";
+import type { Queue } from "bullmq";
+import type { MediaObjectStore } from "../media/media-object-store.js";
+
+export interface OriginPostInfrastructure {
+  repository: ContentItemRepository;
+  postingQueueRepository: PostingQueueRepository;
+  analyticsRepository: AnalyticsRepository;
+  analyticsReportRepository: AnalyticsReportRepository;
+  automationRepository: AutomationRepository;
+  batchPlanRepository: BatchPlanRepository;
+  creativeStudioRepository: CreativeStudioRepository;
+  shareCaptureRepository: ShareCaptureRepository;
+  sourceSignalRepository: SourceSignalRepository;
+  engagementRepository: EngagementRepository;
+  firstCommentRepository: FirstCommentRepository;
+  evergreenRepository: EvergreenRepository;
+  agentRuntimeRepository: AgentRuntimeRepository;
+  agentBoardRepository: AgentBoardRepository;
+  authRepository: AuthRepository;
+  organizationRepository: OrganizationRepository;
+  oauthRepository: OAuthRepository;
+  connectedAccountRepository: ConnectedAccountRepository;
+  providerLifecycleRepository: ProviderLifecycleRepository;
+  mediaRepository: MediaRepository;
+  mediaOrganizationRepository: MediaOrganizationRepository;
+  mediaObjectStore: MediaObjectStore;
+  monitorRepository: MonitorRepository;
+  notificationRepository: NotificationRepository;
+  operationalIncidentRepository: OperationalIncidentRepository;
+  outboxRepository: OutboxRepository;
+  providerPublishOperationRepository: ProviderPublishOperationRepository;
+  remoteCorrectionRepository: RemoteCorrectionRepository;
+  instagramCollaboratorRepository: InstagramCollaboratorRepository;
+  privateConversationRepository: PrivateConversationRepository | null;
+  connectors: ConnectorRegistry;
+  hermes: HermesAgentProvider | null;
+  boardRuntime: BoardRuntimePort | null;
+  researchQueue: Queue | null;
+  monitorQueue: Queue | null;
+  analyticsQueue: Queue | null;
+  engagementQueue: Queue | null;
+  firstCommentQueue: Queue | null;
+  privateConversationQueue: Queue | null;
+  storageMode: "postgres" | "memory";
+}

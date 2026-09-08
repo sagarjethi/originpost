@@ -1,0 +1,24 @@
+title = "OriginPost secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated and local-only build directories"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage/''',
+  '''(^|/)\.turbo/''',
+  '''(^|/)\.env$''',
+  '''(^|/)\.env\.(local|development|production|test)$''',
+]
+
+[[allowlists]]
+description = "Deterministic, non-secret idempotency fixtures"
+regexes = [
+  '''reply-uncertain-2''',
+  '''pg-reply-v1''',
+  '''pg-reply-second-v1''',
+]

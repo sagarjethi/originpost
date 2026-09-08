@@ -1,0 +1,13 @@
+{
+  "name": "originpost-board-approvals",
+  "label": "OriginPost Board approvals",
+  "description": "Profile-scoped pending memory and skill review for OriginPost Boards.",
+  "icon": "ShieldCheck",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/originpost-board-approvals",
+    "hidden": true
+  },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

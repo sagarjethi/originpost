@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1",
+  "id": "org.originpost.example-signal-monitor",
+  "name": "Example signal monitor",
+  "version": "0.1.0",
+  "description": "Shows the permission and network boundaries required by an OriginPost monitoring plugin.",
+  "entrypoint": "./index.js",
+  "compatibility": {
+    "originpost": ">=0.1.0-alpha.1"
+  },
+  "permissions": ["content:write", "network:outbound"],
+  "networkAllowlist": ["https://example.com"],
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "feedUrl": { "type": "string", "format": "uri" },
+      "intervalMinutes": { "type": "integer", "minimum": 10 }
+    },
+    "required": ["feedUrl"]
+  }
+}
