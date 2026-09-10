@@ -210,8 +210,9 @@ export function validateConfig(input: Record<string, unknown>) {
     if (!input.DATABASE_URL || !input.REDIS_URL) throw new Error("The Hermes Boards plugin requires DATABASE_URL and REDIS_URL for durable reconciliation.");
     if (Buffer.byteLength(String(input.HERMES_BOARD_SECRET ?? ""), "utf8") < 32) throw new Error("HERMES_BOARD_SECRET must contain at least 32 bytes.");
     if (String(input.HERMES_DASHBOARD_SESSION_TOKEN ?? "").length < 32) throw new Error("HERMES_DASHBOARD_SESSION_TOKEN must contain at least 32 characters.");
-    if (String(input.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.0") !== "0.21.0") throw new Error("This OriginPost build supports Hermes 0.21.0 only.");
+    if (String(input.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1") !== "0.21.1") throw new Error("This OriginPost build supports Hermes 0.21.1 only.");
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(String(input.HERMES_BOARD_PRIMARY_PROVIDER ?? "")) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(String(input.HERMES_BOARD_PRIMARY_MODEL ?? ""))) throw new Error("The Hermes Boards plugin requires an explicit primary provider and model.");
+    if (input.HERMES_BOARD_PRIMARY_PROVIDER !== "openai-codex") throw new Error("The Hermes Boards plugin requires HERMES_BOARD_PRIMARY_PROVIDER=openai-codex.");
     for (const key of ["HERMES_DASHBOARD_URL", "HERMES_API_URL"] as const) {
       let url: URL;
       try { url = new URL(String(input[key] ?? "")); } catch { throw new Error(`${key} must be an absolute URL.`); }

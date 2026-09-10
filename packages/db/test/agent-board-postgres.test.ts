@@ -1,4 +1,4 @@
-import { createAgentBoard, createOutboxMessage, observeAgentBoardDeactivated, queueAgentBoardReconcile, reviseAgentBoard, type Actor } from "@originpost/domain";
+import { createAgentBoard, createOutboxMessage, observeAgentBoardDeactivated, observeAgentBoardPluginDecision, queueAgentBoardPluginDecision, queueAgentBoardReconcile, reviseAgentBoard, type Actor } from "@originpost/domain";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAgentBoardRepository } from "../src/postgres-agent-board-repository.js";
@@ -38,6 +38,14 @@ suite("Postgres agent Boards", () => {
     await expect(boards.update(queued.board, 1, queued.event, queued.outbox)).resolves.toMatchObject({ configurationEpoch: 2, desiredSkills: ["news-research"] });
     expect(await sql<{ count: number }[]>`select count(*)::int as count from outbox_events where workspace_id=${workspaceId} and topic='board.plugin.reconcile'`).toEqual([{ count: 2 }]);
     expect(await sql<{ desired_enabled: boolean; observed_enabled: boolean }[]>`select desired_enabled,observed_enabled from board_hermes_skill_grants where workspace_id=${workspaceId}`).toEqual([{ desired_enabled: true, observed_enabled: false }]);
+
+    const pending = queueAgentBoardPluginDecision({ current: queued.board, actor: owner, subsystem: "memory", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), idempotencyKey: "postgres-decision", decisionKey: "b".repeat(64), idempotencyScopeKey: "c".repeat(64), now: "2026-09-07T10:01:30.000Z" });
+    await boards.update(pending.board, queued.board.version, pending.event, pending.outbox);
+    await sql`update outbox_events set status='processed',processed_at=now() where workspace_id=${workspaceId} and topic='board.plugin.decision'`;
+    await expect(outbox.recoverAgentBoardPlugins()).resolves.toBe(1);
+    expect(await sql<{ status: string }[]>`select status from outbox_events where workspace_id=${workspaceId} and topic='board.plugin.decision'`).toEqual([{ status: "pending" }]);
+    const completed = observeAgentBoardPluginDecision({ current: pending.board, decisionKey: "b".repeat(64), subsystem: "memory", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), now: "2026-09-07T10:01:45.000Z" });
+    await boards.update(completed.board, pending.board.version, completed.event, completed.outbox);
   });
 
   it("recovers archived runtime deactivation until the remote observation is recorded", async () => {

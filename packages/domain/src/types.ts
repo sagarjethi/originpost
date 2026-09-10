@@ -419,7 +419,7 @@ export interface WorkspaceNotification {
 }
 
 export type CredentialRefreshPlatform = "instagram" | "youtube";
-export type OutboxTopic = "publish.target.requested" | "remote-correction.requested" | "board.plugin.reconcile" | "board.plugin.deactivate" | "channel.credential-refresh" | "provider.grant-validation" | "provider.data-deletion";
+export type OutboxTopic = "publish.target.requested" | "remote-correction.requested" | "board.plugin.reconcile" | "board.plugin.deactivate" | "board.plugin.decision" | "channel.credential-refresh" | "provider.grant-validation" | "provider.data-deletion";
 export type OutboxStatus = "pending" | "processing" | "processed" | "failed";
 
 export interface OutboxMessageInput {

@@ -6,17 +6,18 @@ import type { BoardRuntimePort } from "@originpost/agents";
 import type { OriginPostInfrastructure } from "../src/infrastructure/infrastructure.types.js";
 
 const owner = { id: "owner", name: "Owner", role: "owner" as const };
-const observation = { healthy: true, configured: true, policyCompliant: true, modelReady: true, version: "0.21.0", model: "hermes-agent", memory: { isolation: "dedicated-profile" as const, enabled: true, writeApproval: true }, skills: [{ name: "news-research", description: "Verified source research", category: "news", enabled: false, provenance: "bundled" as const, approved: true, userManageable: true }, { name: "unsafe-skill", description: "", category: "other", enabled: false, provenance: "hub" as const, approved: false, userManageable: true }], safeToolsets: ["memory"], restartRequired: false };
+const observation = { healthy: true, configured: true, policyCompliant: true, modelReady: true, version: "0.21.1", model: "hermes-agent", memory: { isolation: "dedicated-profile" as const, enabled: true, writeApproval: true }, isolation: { mode: "profile-scoped" as const, verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false as const }, skills: [{ name: "news-research", description: "Verified source research", category: "news", enabled: false, provenance: "bundled" as const, approved: true, userManageable: true }, { name: "unsafe-skill", description: "", category: "other", enabled: false, provenance: "hub" as const, approved: false, userManageable: true }], safeToolsets: ["memory"], restartRequired: false };
 
 function setup(runtime: BoardRuntimePort | null = { inspect: vi.fn().mockResolvedValue(observation), reconcile: vi.fn(), deactivate: vi.fn(), listPendingWrites: vi.fn().mockResolvedValue([]), pendingWriteDetail: vi.fn(), decidePendingWrite: vi.fn(), run: vi.fn().mockResolvedValue({ model: "hermes-agent", text: "Mumbai summary" }) }) {
-  const boards = new InMemoryAgentBoardRepository();
+  const outbox: Array<{ topic: string; payload: Record<string, unknown> }> = [];
+  const boards = new InMemoryAgentBoardRepository((messages) => outbox.push(...messages));
   const infrastructure = {
     agentBoardRepository: boards,
     boardRuntime: runtime,
     organizationRepository: { getBrand: vi.fn().mockResolvedValue({ id: "brand", workspaceId: "workspace", status: "active" }) },
   } as unknown as OriginPostInfrastructure;
   const service = new BoardsService(infrastructure, new ConfigService({ HERMES_BOARD_SECRET: "x".repeat(32) }));
-  return { service, boards, runtime };
+  return { service, boards, runtime, outbox };
 }
 
 describe("BoardsService", () => {
@@ -32,6 +33,7 @@ describe("BoardsService", () => {
     const created = await service.create("workspace", { brandId: "brand", name: "Mumbai", purpose: "Mumbai desk." }, owner);
     const plugin = await service.plugin("workspace", "brand", created.board.id, owner);
     expect(plugin.skills).toEqual([expect.objectContaining({ name: "news-research", enabled: false })]);
+    expect(plugin.isolation).toEqual({ mode: "profile-scoped", verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false });
     expect(JSON.stringify(plugin)).not.toContain("unsafe-skill");
     const updated = await service.skill("workspace", "brand", created.board.id, 1, { brandId: "brand", name: "news-research", enabled: true }, owner);
     expect(updated).toMatchObject({ pending: true, desiredSkills: ["news-research"] });
@@ -44,12 +46,21 @@ describe("BoardsService", () => {
     const pending = { id: "a1b2c3d4", subsystem: "memory" as const, action: "add", summary: "Remember Mumbai", origin: "foreground" as const, createdAt: 1_788_000_000, sha256: "a".repeat(64) };
     (runtime?.listPendingWrites as ReturnType<typeof vi.fn>).mockResolvedValueOnce([pending]);
     (runtime?.pendingWriteDetail as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...pending, detail: '{"content":"Mumbai"}', detailTruncated: false });
-    (runtime?.decidePendingWrite as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: true, replayed: false });
     const created = await service.create("workspace", { brandId: "brand", name: "Mumbai", purpose: "Mumbai desk." }, owner);
     await expect(service.plugin("workspace", "brand", created.board.id, owner)).resolves.toMatchObject({ pendingManagementAvailable: true, pendingWrites: [pending] });
     await expect(service.pendingWrite("workspace", "brand", created.board.id, "memory", pending.id, owner)).resolves.toMatchObject({ pendingWrite: { detailTruncated: false } });
-    await expect(service.decidePendingWrite("workspace", "brand", created.board.id, "memory", pending.id, { brandId: "brand", decision: "approve", expectedSha256: pending.sha256 }, "test-test-test-test", owner)).resolves.toEqual({ ok: true, replayed: false });
-    expect(runtime?.decidePendingWrite).toHaveBeenCalledWith(expect.objectContaining({ profile: expect.stringMatching(/^opb_/) }), expect.objectContaining({ pendingId: pending.id, expectedSha256: pending.sha256, idempotencyKey: "test-test-test-test" }));
+    await expect(service.decidePendingWrite("workspace", "brand", created.board.id, "memory", pending.id, { brandId: "brand", decision: "approve", expectedSha256: pending.sha256 }, "test-test-test-test", owner)).resolves.toMatchObject({ ok: true, queued: true, pending: true, decisionKey: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+    expect(runtime?.decidePendingWrite).not.toHaveBeenCalled();
+  });
+
+  it("durably queues a skill-file decision before Hermes mutates anything", async () => {
+    const { service, boards, runtime, outbox } = setup();
+    const created = await service.create("workspace", { brandId: "brand", name: "Mumbai", purpose: "Mumbai desk." }, owner);
+    const result = await service.decidePendingWrite("workspace", "brand", created.board.id, "skills", "a1b2c3d4", { brandId: "brand", decision: "approve", expectedSha256: "a".repeat(64) }, "test-skill-reseal", owner);
+    expect(result).toMatchObject({ ok: true, queued: true, pending: true, decisionKey: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+    expect(runtime?.decidePendingWrite).not.toHaveBeenCalled();
+    expect(await boards.get("workspace", created.board.id)).toMatchObject({ version: 2, configurationEpoch: 1, capabilityEpoch: 1, status: "provisioning", pendingPluginDecision: { subsystem: "skills", pendingId: "a1b2c3d4", decision: "approve" } });
+    expect(outbox.at(-1)).toMatchObject({ topic: "board.plugin.decision", payload: { boardId: created.board.id, subsystem: "skills", pendingId: "a1b2c3d4" } });
   });
 
   it("allows an owner to remove a skill while Hermes is unavailable", async () => {

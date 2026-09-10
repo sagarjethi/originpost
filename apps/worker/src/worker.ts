@@ -69,7 +69,7 @@ import { startFirstCommentWorkers } from "./first-comment-worker.js";
 import { startPrivateConversationWorkers } from "./private-conversation-worker.js";
 import { createEvergreenRuntime } from "./evergreen-worker.js";
 import { processRemoteCorrectionJob, type RemoteCorrectionJob } from "./remote-correction-worker.js";
-import { processBoardPluginDeactivate, processBoardPluginReconcile, type BoardPluginDeactivateJob, type BoardPluginReconcileJob } from "./board-plugin-worker.js";
+import { processBoardPluginDeactivate, processBoardPluginDecision, processBoardPluginReconcile, type BoardPluginDeactivateJob, type BoardPluginDecisionJob, type BoardPluginReconcileJob } from "./board-plugin-worker.js";
 import { CredentialRefreshError, processCredentialRefreshJob } from "./credential-refresh-worker.js";
 import { processProviderDataDeletion } from "./provider-data-deletion-worker.js";
 import { processProviderGrantValidation, type ProviderGrantValidationJob } from "./provider-grant-validation-worker.js";
@@ -193,8 +193,9 @@ if (hermesBoardPluginEnabled) {
   if (!process.env.REDIS_URL) throw new Error("The Hermes Boards plugin requires REDIS_URL.");
   if ((process.env.HERMES_BOARD_SECRET ?? "").length < 32) throw new Error("HERMES_BOARD_SECRET must contain at least 32 characters.");
   if ((process.env.HERMES_DASHBOARD_SESSION_TOKEN ?? "").length < 32 || !process.env.HERMES_DASHBOARD_URL || !process.env.HERMES_API_URL) throw new Error("The Hermes Boards plugin requires dashboard/API URLs and a dashboard session token.");
-  if ((process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.0") !== "0.21.0") throw new Error("This OriginPost worker supports Hermes 0.21.0 only.");
+  if ((process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1") !== "0.21.1") throw new Error("This OriginPost worker supports Hermes 0.21.1 only.");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(process.env.HERMES_BOARD_PRIMARY_PROVIDER ?? "") || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(process.env.HERMES_BOARD_PRIMARY_MODEL ?? "")) throw new Error("The Hermes Boards plugin requires an explicit primary provider and model.");
+  if (process.env.HERMES_BOARD_PRIMARY_PROVIDER !== "openai-codex") throw new Error("The Hermes Boards plugin requires HERMES_BOARD_PRIMARY_PROVIDER=openai-codex.");
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -213,7 +214,7 @@ const boardRuntime = hermesBoardPluginEnabled ? new HermesBoardPlugin({
   approvedSkills: (process.env.HERMES_BOARD_APPROVED_SKILLS ?? "").split(",").map((value)=>value.trim()).filter(Boolean),
   primaryProvider: process.env.HERMES_BOARD_PRIMARY_PROVIDER!,
   primaryModel: process.env.HERMES_BOARD_PRIMARY_MODEL!,
-  supportedVersion: process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.0",
+  supportedVersion: process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1",
   allowPrivateEndpoints: process.env.HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS === "true",
 }) : null;
 const connectors = createSafeConnectorRegistry({ privateConversationMode: privateMessageConnectorMode, nodeEnv: process.env.NODE_ENV ?? "development" });
@@ -354,7 +355,7 @@ const publishQueue = new Queue<PublishJob>("originpost-publish", { connection: r
 const monitorQueue = new Queue<MonitorJob>("originpost-monitor", { connection: redisConnection(redisUrl) });
 const analyticsQueue = new Queue<AnalyticsJob>("originpost-analytics", { connection: redisConnection(redisUrl) });
 const remoteCorrectionQueue = new Queue<RemoteCorrectionJob>("originpost-remote-correction", { connection: redisConnection(redisUrl) });
-const boardPluginQueue = boardRuntime ? new Queue<BoardPluginReconcileJob | BoardPluginDeactivateJob>("originpost-board-plugins", { connection: redisConnection(redisUrl) }) : null;
+const boardPluginQueue = boardRuntime ? new Queue<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob>("originpost-board-plugins", { connection: redisConnection(redisUrl) }) : null;
 // Reconcile/deactivate both update Hermes' shared default-profile allowlist.
 // BullMQ's global limit serializes that read-modify-write across worker replicas.
 if (boardPluginQueue) await boardPluginQueue.setGlobalConcurrency(1);
@@ -451,6 +452,14 @@ async function dispatchOutbox(): Promise<void> {
           const { workspaceId, brandId, boardId, configurationEpoch, capabilityEpoch } = message.payload;
           if (typeof workspaceId !== "string" || typeof brandId !== "string" || typeof boardId !== "string" || typeof configurationEpoch !== "number" || !Number.isInteger(configurationEpoch) || configurationEpoch < 1 || typeof capabilityEpoch !== "number" || !Number.isInteger(capabilityEpoch) || capabilityEpoch < 1) throw new Error("Board plugin deactivation outbox payload is invalid.");
           await boardPluginQueue.add("deactivate-board-plugin", { workspaceId, brandId, boardId, configurationEpoch, capabilityEpoch }, { jobId:`board-plugin-${boardId}-deactivate-epoch-${configurationEpoch}`,attempts:6,backoff:{type:"exponential",delay:30_000},removeOnComplete:500,removeOnFail:1000 });
+          await outboxRepository.complete(message.workspaceId,message.id);
+          continue;
+        }
+        if (message.topic === "board.plugin.decision") {
+          if (!boardPluginQueue) throw new Error("The Hermes Boards worker is disabled.");
+          const { workspaceId, brandId, boardId, subsystem, pendingId, decision, expectedSha256, idempotencyKey, decisionKey, idempotencyScopeKey, requestedConfigurationEpoch, requestedCapabilityEpoch, requestedBy, requestedAt } = message.payload;
+          if (typeof workspaceId !== "string" || typeof brandId !== "string" || typeof boardId !== "string" || (subsystem !== "memory" && subsystem !== "skills") || typeof pendingId !== "string" || !/^[a-f0-9]{8}$/u.test(pendingId) || (decision !== "approve" && decision !== "reject") || typeof expectedSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(expectedSha256) || typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_-]{16,100}$/u.test(idempotencyKey) || typeof decisionKey !== "string" || !/^[a-f0-9]{64}$/u.test(decisionKey) || typeof idempotencyScopeKey !== "string" || !/^[a-f0-9]{64}$/u.test(idempotencyScopeKey) || typeof requestedConfigurationEpoch !== "number" || !Number.isInteger(requestedConfigurationEpoch) || requestedConfigurationEpoch < 1 || typeof requestedCapabilityEpoch !== "number" || !Number.isInteger(requestedCapabilityEpoch) || requestedCapabilityEpoch < 1 || typeof requestedBy !== "string" || requestedBy.length < 1 || requestedBy.length > 200 || typeof requestedAt !== "string" || !Number.isFinite(Date.parse(requestedAt))) throw new Error("Board plugin decision outbox payload is invalid.");
+          await boardPluginQueue.add("decide-board-plugin-write", { workspaceId, brandId, boardId, subsystem, pendingId, decision, expectedSha256, idempotencyKey, decisionKey, idempotencyScopeKey, requestedConfigurationEpoch, requestedCapabilityEpoch, requestedBy, requestedAt }, { attempts:10,backoff:{type:"exponential",delay:30_000},removeOnComplete:500,removeOnFail:1000 });
           await outboxRepository.complete(message.workspaceId,message.id);
           continue;
         }
@@ -572,7 +581,11 @@ await pollInstagramCollaborators();
 const collaboratorPollTimer=setInterval(()=>{void pollInstagramCollaborators().catch((error)=>console.error("Instagram collaborator polling error:",error instanceof Error?error.message:"Unknown error"));},30_000);
 
 const remoteCorrectionWorker = new Worker<RemoteCorrectionJob>("originpost-remote-correction",async(job)=>processRemoteCorrectionJob(job.data,{repository,corrections:remoteCorrectionRepository,connectors,notifications:notificationRepository}),{connection:redisConnection(redisUrl),concurrency:2,lockDuration:300_000});
-const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin" ? processBoardPluginDeactivate(job.data as BoardPluginDeactivateJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!}) : processBoardPluginReconcile(job.data,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:1,lockDuration:120_000}) : null;
+const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin"
+  ? processBoardPluginDeactivate(job.data as BoardPluginDeactivateJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!})
+  : job.name === "decide-board-plugin-write"
+    ? processBoardPluginDecision(job.data as BoardPluginDecisionJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository})
+    : processBoardPluginReconcile(job.data as BoardPluginReconcileJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:1,lockDuration:120_000}) : null;
 const providerGrantValidationWorker = providerGrantValidationQueue ? new Worker<ProviderGrantValidationJob>("originpost-provider-grant-validation", async(job) => {
   if (!credentialEncryptionKey || !providerGrantValidationKeyring) throw new Error("Provider grant validation credentials are unavailable.");
   return processProviderGrantValidation(job.data, {

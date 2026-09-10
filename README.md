@@ -44,7 +44,7 @@ OriginPost is an open-source, self-hosted social content operating system. It br
 - Workspace-scoped provider grants that group shared Meta/Google access over derived publishing accounts, with HMAC-only subject lookup, version-fenced automatic authorization validation, signed Meta deauthorization/data-deletion callbacks, and recoverable local erasure
 - Optional allow-listed Telegram command adapter
 - Workspace-controlled OpenAI-compatible text runtimes with encrypted BYOK credentials, health testing, brand assignment, multilingual Content Studio drafting, usage ledger, and no silent provider fallback
-- Top-level, brand-owned Boards with a first-party internal Hermes 0.21.0 plugin, one opaque dedicated profile per Board, isolated memory and skills, governed pending-write review, durable reconcile/deactivate jobs, rotating capabilities, and stale-result-safe hash-only run history
+- Top-level, brand-owned Boards with a first-party internal Hermes 0.21.1 plugin, one opaque dedicated profile per Board, attested profile-scoped memory and skills, governed pending-write review, durable reconcile/deactivate jobs, rotating capabilities, and stale-result-safe hash-only run history
 - Instagram Reel cover review with a custom Library image, measured video frame, or Instagram default; exact settings approval and cover proof
 - Approval-bound Instagram native AI disclosure with exact provider placement, read-back verification, and requested-versus-observed publish proof
 - Private S3-compatible media storage with short-lived upload/download URLs, workspace ownership, rights, byte-size/SHA-256 verification, fail-closed ClamAV streaming, and bounded server-measured image/video metadata

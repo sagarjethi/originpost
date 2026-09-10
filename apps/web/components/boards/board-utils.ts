@@ -38,7 +38,18 @@ export type BoardHermesView = {
   memoryEnabled: boolean;
   memoryWriteApproval: boolean;
   skillWriteApproval: boolean;
+  isolation: {
+    verified: boolean;
+    profileScoped: boolean;
+    memoryScoped: boolean;
+    skillsScoped: boolean;
+    stateScoped: boolean;
+    externalSkillsBlocked: boolean;
+    unsafeToolsBlocked: boolean;
+    filesystemSandbox: false;
+  };
   pending: boolean;
+  decisionPending: boolean;
   pendingManagementAvailable: boolean;
   pendingWrites: BoardPendingWriteView[];
   lastCheckedAt?: string;
@@ -106,6 +117,7 @@ export function parseBoardHermes(value: unknown): BoardHermesView {
   const source = record(root.hermes) ?? record(root.plugin) ?? root;
   const memory = record(source.memory) ?? {};
   const approvals = record(source.approvals) ?? {};
+  const isolation = record(source.isolation) ?? {};
   const rawSkills = Array.isArray(source.skills) ? source.skills : [];
   const lastCheckedAt = safeDate(source.lastCheckedAt);
   const pendingWrites = (Array.isArray(source.pendingWrites) ? source.pendingWrites : []).flatMap((value): BoardPendingWriteView[] => {
@@ -121,12 +133,23 @@ export function parseBoardHermes(value: unknown): BoardHermesView {
   });
   return {
     configured: source.configured === true,
-    healthy: source.healthy === true || source.status === "ready",
+    healthy: source.healthy === true,
     modelReady: source.modelReady === true,
     memoryEnabled: memory.enabled === true || source.memoryEnabled === true,
     memoryWriteApproval: memory.writeApproval === true || source.memoryWriteApproval === true || approvals.memory === true,
     skillWriteApproval: source.skillWriteApproval === true || approvals.skills === true,
+    isolation: {
+      verified: isolation.verified === true,
+      profileScoped: isolation.profileScoped === true,
+      memoryScoped: isolation.memoryScoped === true,
+      skillsScoped: isolation.skillsScoped === true,
+      stateScoped: isolation.stateScoped === true,
+      externalSkillsBlocked: isolation.externalSkillsBlocked === true,
+      unsafeToolsBlocked: isolation.unsafeToolsBlocked === true,
+      filesystemSandbox: false,
+    },
     pending: source.pending === true,
+    decisionPending: source.decisionPending === true,
     pendingManagementAvailable: source.pendingManagementAvailable === true,
     pendingWrites,
     ...(lastCheckedAt ? { lastCheckedAt } : {}),

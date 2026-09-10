@@ -9,7 +9,7 @@ import styles from "./boards-workspace.module.css";
 type BoardPanel = "work" | "overview" | "memory" | "skills";
 type BoardRunResult = { runId: string; model: string; text: string; usage?: { inputTokens?: number; outputTokens?: number } };
 
-const emptyPlugin: BoardHermesView = { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, pending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] };
+const emptyPlugin: BoardHermesView = { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, isolation: { verified: false, profileScoped: false, memoryScoped: false, skillsScoped: false, stateScoped: false, externalSkillsBlocked: false, unsafeToolsBlocked: false, filesystemSandbox: false }, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] };
 
 function membershipRole(auth: AuthView, workspaceId: string) {
   return auth.memberships.find((membership) => membership.workspaceId === workspaceId)?.role ?? auth.memberships[0]?.role;
@@ -52,7 +52,9 @@ function skillState(skill: BoardSkillView) {
 
 function PendingWrites({ subsystem, plugin, detail, busy, isOwner, onReview, onDecision }: { subsystem: "memory" | "skills"; plugin: BoardHermesView; detail: BoardPendingWriteDetailView | null; busy: string; isOwner: boolean; onReview: (write: BoardPendingWriteView) => void; onDecision: (decision: "approve" | "reject") => void }) {
   const writes = plugin.pendingWrites.filter((write) => write.subsystem === subsystem);
+  if (!isOwner) return <p className={styles.privacyNote}><LockKeyhole size={14} /> Pending proposals are visible only to a workspace owner. No proposal is auto-approved.</p>;
   if (!plugin.pendingManagementAvailable) return <p className={styles.privacyNote}><LockKeyhole size={14} /> Pending-write review needs the hidden Hermes 0.21 OriginPost approvals extension. No proposal is auto-approved.</p>;
+  if (plugin.decisionPending) return <p className={styles.privacyNote}><Loader2 className={styles.spin} size={14} /> A reviewed decision is queued. OriginPost is waiting for Hermes to apply its durable receipt.</p>;
   if (!writes.length) return <p className={styles.privacyNote}><CheckCircle2 size={14} /> No pending {subsystem === "memory" ? "memory" : "skill"} writes.</p>;
   return <div className={styles.pendingWrites} aria-label={`Pending ${subsystem} writes`}>
     <h4>Pending approval</h4>
@@ -91,13 +93,13 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
   const state = pluginState(board, plugin, pluginUnavailable);
   return <section className={styles.detail} aria-labelledby="board-detail-title">
     <header className={styles.detailHead}>
-      <div><p>BOARD</p><h2 id="board-detail-title">{board.name}</h2><span>{board.purpose || "A private working context for this brand."}</span></div>
+      <div><p>BOARD</p><h2 id="board-detail-title">{board.name}</h2><span>{board.purpose || "A dedicated working context for this brand."}</span></div>
       <div className={styles.detailActions}>{isOwner && board.status !== "archived" ? <button onClick={onEdit}>Edit board</button> : null}<em className={state.className}>{state.label}</em></div>
     </header>
 
     <div className={styles.boundary}>
       <span><LockKeyhole size={19} /></span>
-      <div><strong>Private board boundary</strong><p>Context, learning, and enabled skills stay isolated to this board. OriginPost never shows its internal profile, files, keys, or memory text here.</p></div>
+      <div><strong>{plugin.isolation.verified ? "Verified Board state boundary" : "Restricted Board runtime"}</strong><p>{plugin.isolation.verified ? "Memory, skills, and runtime state are attested to this Board’s dedicated profile. Filesystem tools stay disabled; a Hermes Profile is not an operating-system sandbox." : "OriginPost has not verified this Board’s profile-scoped state. Work remains unavailable until the internal check passes."}</p></div>
     </div>
 
     <article className={styles.plugin}>
@@ -114,11 +116,11 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
         {(["work", "overview", "memory", "skills"] as const).map((value) => <button key={value} className={panel === value ? styles.activeTab : ""} onClick={() => onPanelChange(value)} aria-current={panel === value ? "page" : undefined}>{value === "work" ? <Send size={14} /> : value === "overview" ? <Sparkles size={14} /> : value === "memory" ? <Brain size={14} /> : <ToggleRight size={14} />}{value[0]!.toUpperCase() + value.slice(1)}</button>)}
       </nav>
 
-      {panel === "work" ? <BoardWork board={board} runtimeReady={!pluginUnavailable && plugin.configured && plugin.healthy && plugin.modelReady} canRun={canRun} busy={busy} prompt={runPrompt} result={runResult} runs={runs} onPrompt={onRunPromptChange} onRun={onRun} onHandoff={onHandoff} /> : null}
+      {panel === "work" ? <BoardWork board={board} runtimeReady={!pluginUnavailable && plugin.configured && plugin.healthy && plugin.modelReady && plugin.isolation.verified} canRun={canRun} busy={busy} prompt={runPrompt} result={runResult} runs={runs} onPrompt={onRunPromptChange} onRun={onRun} onHandoff={onHandoff} /> : null}
 
       {panel === "overview" ? <div className={styles.overview}>
-        <div><span><Brain size={17} /></span><strong>Board-only memory</strong><p>Learning from this board is not shared with other boards.</p></div>
-        <div><span><ToggleRight size={17} /></span><strong>Board-only skills</strong><p>Choose which installed capabilities this board may use.</p></div>
+        <div><span><Brain size={17} /></span><strong>Profile-scoped memory</strong><p>{plugin.isolation.memoryScoped ? "The memory tree is contained in this Board’s dedicated profile." : "Memory path attestation is required before work can run."}</p></div>
+        <div><span><ToggleRight size={17} /></span><strong>Profile-scoped skills</strong><p>{plugin.isolation.skillsScoped && plugin.isolation.externalSkillsBlocked ? "Choose installed capabilities; external and project skill sources stay blocked." : "Skill path and external-source checks need attention."}</p></div>
         <div><span><Activity size={17} /></span><strong>Execution model</strong><p>{plugin.modelReady ? "The Board profile has a configured primary model." : "Configure a primary model in this Board’s Hermes profile."}</p></div>
         <div><span><ShieldCheck size={17} /></span><strong>Approval protected</strong><p>Memory writes require approval. Skill access is approved by an owner here.</p></div>
       </div> : null}
@@ -126,7 +128,7 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
       {panel === "memory" ? <div className={styles.memoryPanel}>
         <div className={styles.panelLead}><span><Brain size={20} /></span><div><strong>Memory controls</strong><p>Manage how this board can learn without exposing or mixing its private memory.</p></div></div>
         <dl>
-          <div><dt>Isolation</dt><dd><CheckCircle2 size={14} /> This board only</dd></div>
+          <div><dt>State boundary</dt><dd>{plugin.isolation.verified ? <><CheckCircle2 size={14} /> Profile scope verified</> : <><TriangleAlert size={14} /> Could not verify</>}</dd></div>
           <div><dt>Learning</dt><dd>{plugin.memoryEnabled ? <><CheckCircle2 size={14} /> Enabled</> : <><TriangleAlert size={14} /> Not enabled</>}</dd></div>
           <div><dt>Write protection</dt><dd>{plugin.memoryWriteApproval ? <><ShieldCheck size={14} /> Approval required</> : <><TriangleAlert size={14} /> Review configuration</>}</dd></div>
         </dl>
@@ -135,10 +137,10 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
       </div> : null}
 
       {panel === "skills" ? <div className={styles.skillsPanel}>
-        <div className={styles.panelLead}><span><ToggleRight size={20} /></span><div><strong>Allowed skills</strong><p>Only enabled skills can be used in this board. Skill instructions remain internal.</p></div></div>
+        <div className={styles.panelLead}><span><ToggleRight size={20} /></span><div><strong>Allowed skills</strong><p>Only enabled skills can be used in this board. Skill instructions remain internal except when an exact proposed change is opened for owner review.</p></div></div>
         {plugin.skills.length ? <div className={styles.skillList}>{plugin.skills.map((skill) => <div key={skill.id} className={styles.skillRow}><span>{skill.enabled ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}</span><div><strong>{skill.label}</strong><small>{skillState(skill)}</small></div>{isOwner && board.status !== "archived" ? <button onClick={() => onToggleSkill(skill)} disabled={Boolean(busy)} aria-label={`${skill.enabled ? "Approve removal of" : "Allow"} ${skill.label}`}>{busy === `skill:${skill.id}` ? <Loader2 className={styles.spin} size={13} /> : skill.enabled ? "Approve removal" : "Allow on this Board"}</button> : <em>{skillState(skill)}</em>}</div>)}</div> : <div className={styles.emptyInner}><ToggleLeft size={22} /><strong>No skills available</strong><p>Finish Hermes setup, then refresh this board.</p></div>}
         <PendingWrites subsystem="skills" plugin={plugin} detail={pendingDetail} busy={busy} isOwner={isOwner} onReview={onReviewPending} onDecision={onPendingDecision} />
-        <p className={styles.privacyNote}><ShieldCheck size={14} /> {plugin.skillWriteApproval ? "Skill writes inside Hermes require approval; Board access changes require an owner here." : "Skill approval protection needs attention."} Raw skill instructions are never displayed.</p>
+        <p className={styles.privacyNote}><ShieldCheck size={14} /> {plugin.skillWriteApproval ? "Skill writes inside Hermes require approval; Board access changes require an owner here." : "Skill approval protection needs attention."} Existing skill instructions stay private; only an exact pending change is shown during owner review.</p>
       </div> : null}
     </article>
 
@@ -242,7 +244,7 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
       const responseBody = await response.json().catch(() => ({}));
       const saved = parseBoard((responseBody as { board?: unknown }).board ?? responseBody);
       setFormMode(null);
-      setNotice(editing ? "Board details updated." : "Board created with its own private Hermes context.");
+      setNotice(editing ? "Board details updated." : "Board created with a dedicated Hermes profile. Work unlocks after its state boundary is verified.");
       await load();
       if (saved) setSelectedId(saved.id);
     } catch {
@@ -340,7 +342,7 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
     try {
       const response = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}/plugins/hermes/pending/${pendingDetail.subsystem}/${pendingDetail.id}/decision`, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID().replaceAll("-", "_") }, body: JSON.stringify({ workspaceId, brandId, decision, expectedSha256: pendingDetail.sha256 }) }, auth.csrfToken);
       if (!response.ok) throw new Error();
-      setNotice(`Pending ${pendingDetail.subsystem === "memory" ? "memory" : "skill"} write ${decision === "approve" ? "approved" : "rejected"}.`);
+      setNotice(pendingDetail.subsystem === "skills" && decision === "approve" ? "Skill decision queued. OriginPost will apply it and create a fresh capability seal before this Board can run again." : `Pending ${pendingDetail.subsystem === "memory" ? "memory" : "skill"} decision queued for Hermes.`);
       setPendingDetail(null);
       await loadDetail(selected.id);
     } catch { setError(safeRequestMessage("Could not safely apply this pending-write decision.")); }
@@ -348,12 +350,12 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
   }
 
   async function archiveBoard() {
-    if (!selected || !isOwner || !window.confirm(`Archive ${selected.name}? Its isolated context and setup will be retained.`)) return;
+    if (!selected || !isOwner || !window.confirm(`Archive ${selected.name}? Its dedicated profile state and setup will be retained.`)) return;
     setBusy("archive"); setError(""); setNotice("");
     try {
       const response = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}`, { method: "PATCH", headers: { "content-type": "application/json", "if-match": String(selected.version) }, body: JSON.stringify({ workspaceId, brandId, status: "archived" }) }, auth.csrfToken);
       if (!response.ok) throw new Error();
-      setNotice("Board archived. Its isolated memory was retained and Hermes runtime access was queued for deactivation.");
+      setNotice("Board archived. Its profile-scoped memory was retained and Hermes runtime access was queued for deactivation.");
       await load();
     } catch { setError(safeRequestMessage("Could not archive this board.")); }
     finally { setBusy(""); }
@@ -361,13 +363,13 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
 
   return <main className={styles.module} aria-labelledby="boards-title">
     <header className={styles.hero}>
-      <div><p>PRIVATE AGENT WORKSPACES</p><h1 id="boards-title">Boards</h1><span>Create focused workspaces with separate context, learning, and capabilities.</span></div>
+      <div><p>BOARD WORKSPACES</p><h1 id="boards-title">Boards</h1><span>Create focused workspaces with dedicated, policy-restricted Hermes profiles.</span></div>
       <div>{isOwner ? <button className={styles.primary} onClick={() => setFormMode("create")}><Plus size={15} />New board</button> : <em>Owner setup only</em>}<button onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? styles.spin : ""} size={15} />Refresh</button></div>
     </header>
     {error ? <div className={styles.error} role="alert"><TriangleAlert size={15} />{error}</div> : null}
     {notice ? <div className={styles.notice} role="status"><CheckCircle2 size={15} />{notice}</div> : null}
     {formMode && isOwner ? <form className={styles.form} onSubmit={submitBoard}>
-      <header><div><small>{formMode === "edit" ? "EDIT BOARD" : "NEW BOARD"}</small><strong>{formMode === "edit" ? "Update the board’s public details" : "Start with a clean, isolated context"}</strong></div><button type="button" onClick={() => setFormMode(null)} aria-label="Close board form"><X size={16} /></button></header>
+      <header><div><small>{formMode === "edit" ? "EDIT BOARD" : "NEW BOARD"}</small><strong>{formMode === "edit" ? "Update the board’s public details" : "Start with a dedicated, restricted context"}</strong></div><button type="button" onClick={() => setFormMode(null)} aria-label="Close board form"><X size={16} /></button></header>
       <label>Board name<input name="name" required minLength={2} maxLength={100} defaultValue={formMode === "edit" ? selected?.name : ""} placeholder="Mumbai events" /></label>
       <label>Board purpose<textarea name="purpose" rows={3} maxLength={600} defaultValue={formMode === "edit" ? selected?.purpose : ""} placeholder="Plan verified Mumbai event coverage." /><small>Hermes uses this focus for future work in this Board. Changing it does not erase existing Board memory.</small></label>
       <footer><p><ShieldCheck size={14} />A dedicated internal Hermes context is created for this board.</p><button className={styles.primary} disabled={Boolean(busy)}>{busy ? <Loader2 className={styles.spin} size={14} /> : <Check size={14} />}{formMode === "edit" ? "Save changes" : "Create board"}</button></footer>
@@ -379,7 +381,7 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
         {!loading && boards.length === 0 ? <div className={styles.emptyList}><Columns3 size={24} /><strong>No boards yet</strong><p>Create a board for a campaign, beat, or ongoing project.</p></div> : null}
         {loading ? <div className={styles.loading}><Loader2 className={styles.spin} size={18} />Loading boards…</div> : null}
       </aside>
-      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} pluginUnavailable={pluginUnavailable} panel={panel} isOwner={isOwner} canRun={canRun} busy={busy} pendingDetail={pendingDetail} runPrompt={runPrompt} runResult={runResult} runs={runs} onPanelChange={setPanel} onRunPromptChange={setRunPrompt} onRun={(event) => void runBoard(event)} onHandoff={() => void handoffRun()} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Bot size={28} /><strong>Select or create a board</strong><p>Every board gets its own internal Hermes context. Memory and skills are managed only after you open a board.</p></div>}</div>
+      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} pluginUnavailable={pluginUnavailable} panel={panel} isOwner={isOwner} canRun={canRun} busy={busy} pendingDetail={pendingDetail} runPrompt={runPrompt} runResult={runResult} runs={runs} onPanelChange={setPanel} onRunPromptChange={setRunPrompt} onRun={(event) => void runBoard(event)} onHandoff={() => void handoffRun()} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Bot size={28} /><strong>Select or create a board</strong><p>Every Board gets a dedicated internal Hermes profile. Memory and skills are managed only after you open a Board.</p></div>}</div>
     </div>
   </main>;
 }

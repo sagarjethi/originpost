@@ -1,5 +1,5 @@
 import { deriveBoardRuntimeSecrets, HermesBoardPluginError, type BoardRuntimePort } from "@originpost/agents";
-import { observeAgentBoardDeactivated, observeAgentBoardPlugin, type AgentBoardRepository, type AuditEvent, type OrganizationRepository } from "@originpost/domain";
+import { observeAgentBoardDeactivated, observeAgentBoardPlugin, observeAgentBoardPluginDecision, type AgentBoardRepository, type AuditEvent, type OrganizationRepository } from "@originpost/domain";
 import { randomUUID } from "node:crypto";
 
 export interface BoardPluginReconcileJob {
@@ -11,6 +11,56 @@ export interface BoardPluginReconcileJob {
 
 export interface BoardPluginDeactivateJob extends BoardPluginReconcileJob {
   capabilityEpoch: number;
+}
+
+export interface BoardPluginDecisionJob {
+  workspaceId: string;
+  brandId: string;
+  boardId: string;
+  subsystem: "memory" | "skills";
+  pendingId: string;
+  decision: "approve" | "reject";
+  expectedSha256: string;
+  idempotencyKey: string;
+  decisionKey: string;
+  idempotencyScopeKey: string;
+  requestedConfigurationEpoch: number;
+  requestedCapabilityEpoch: number;
+  requestedBy: string;
+  requestedAt: string;
+}
+
+export async function processBoardPluginDecision(job: BoardPluginDecisionJob, dependencies: { boards: AgentBoardRepository; runtime: BoardRuntimePort; secret: string | Buffer; organizations?: Pick<OrganizationRepository,"getBrand"> }) {
+  const current = await dependencies.boards.get(job.workspaceId, job.boardId);
+  if (!current || current.brandId !== job.brandId) return { skipped: true, reason: "board-not-found" } as const;
+  if (current.appliedPluginDecisionKeys?.includes(job.decisionKey)) return { skipped: true, reason: "already-applied" } as const;
+  const pending = current.pendingPluginDecision;
+  if (!pending || pending.decisionKey !== job.decisionKey || pending.idempotencyScopeKey !== job.idempotencyScopeKey || pending.subsystem !== job.subsystem || pending.pendingId !== job.pendingId || pending.decision !== job.decision || pending.expectedSha256 !== job.expectedSha256 || pending.idempotencyKey !== job.idempotencyKey || pending.requestedConfigurationEpoch !== job.requestedConfigurationEpoch || pending.requestedCapabilityEpoch !== job.requestedCapabilityEpoch || pending.requestedBy !== job.requestedBy || pending.requestedAt !== job.requestedAt) return { skipped: true, reason: "decision-saga-mismatch" } as const;
+  if (current.status === "archived") return { skipped: true, reason: "board-archived" } as const;
+  if (dependencies.organizations && (await dependencies.organizations.getBrand(job.workspaceId, job.brandId))?.status !== "active") return { skipped: true, reason: "brand-inactive" } as const;
+  if (current.configurationEpoch !== job.requestedConfigurationEpoch || current.capabilityEpoch !== job.requestedCapabilityEpoch) return { skipped: true, reason: "stale-capability-epoch" } as const;
+  const derived = deriveBoardRuntimeSecrets(dependencies.secret, { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, capabilityEpoch: current.capabilityEpoch });
+  const binding = { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, capabilityEpoch: current.capabilityEpoch, ...derived };
+  const result = await dependencies.runtime.decidePendingWrite(
+    binding,
+    { configurationEpoch: current.configurationEpoch, purpose: current.purpose, enabledSkills: current.desiredSkills },
+    { subsystem: job.subsystem, pendingId: job.pendingId, decision: job.decision, expectedSha256: job.expectedSha256, idempotencyKey: job.idempotencyKey },
+  );
+  const latest = await dependencies.boards.get(job.workspaceId, job.boardId);
+  if (!latest || latest.brandId !== job.brandId) throw new Error("The Board disappeared after Hermes applied its pending-write decision.");
+  if (latest.status === "archived") return { skipped: true, reason: "board-archived-after-apply", replayed: result.replayed } as const;
+  const observed = observeAgentBoardPluginDecision({
+    current: latest,
+    decisionKey: job.decisionKey,
+    subsystem: job.subsystem,
+    decision: job.decision,
+    pendingId: job.pendingId,
+    expectedSha256: job.expectedSha256,
+  });
+  if (observed.alreadyApplied) return { skipped: true, reason: "already-applied", replayed: result.replayed } as const;
+  const saved = await dependencies.boards.update(observed.board, latest.version, observed.event, observed.outbox);
+  if (!saved) throw new Error("The Board changed after Hermes applied its pending-write decision; retrying the durable receipt.");
+  return { skipped: false, replayed: result.replayed, reconcileQueued: Boolean(observed.outbox) } as const;
 }
 
 export async function processBoardPluginDeactivate(job: BoardPluginDeactivateJob, dependencies: { boards: AgentBoardRepository; runtime: BoardRuntimePort; secret: string | Buffer }) {
@@ -42,6 +92,7 @@ export async function processBoardPluginReconcile(job: BoardPluginReconcileJob, 
   const current = await dependencies.boards.get(job.workspaceId, job.boardId);
   if (!current || current.brandId !== job.brandId) return { skipped: true, reason: "board-not-found" } as const;
   if (current.status === "archived") return { skipped: true, reason: "board-archived" } as const;
+  if (current.pendingPluginDecision) return { skipped: true, reason: "plugin-decision-pending" } as const;
   if (dependencies.organizations && (await dependencies.organizations.getBrand(job.workspaceId, job.brandId))?.status !== "active") return { skipped: true, reason: "brand-inactive" } as const;
   if (current.configurationEpoch !== job.configurationEpoch) return { skipped: true, reason: "stale-configuration-epoch" } as const;
   const derived = deriveBoardRuntimeSecrets(dependencies.secret, { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, capabilityEpoch: current.capabilityEpoch });

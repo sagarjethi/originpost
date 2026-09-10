@@ -123,7 +123,7 @@ describe("internal Hermes Boards plugin configuration", () => {
   const boardsConfig = {
     NODE_ENV: "test", AUTH_MODE: "sessions", BOOTSTRAP_ADMIN_EMAIL: "owner@originpost.test", BOOTSTRAP_ADMIN_PASSWORD: "a-safe-password",
     DATABASE_URL: "postgres://example", REDIS_URL: "redis://example", HERMES_BOARD_PLUGIN_ENABLED: "true",
-    HERMES_BOARD_SUPPORTED_VERSION: "0.21.0", HERMES_BOARD_SECRET: "b".repeat(32), HERMES_DASHBOARD_URL: "http://127.0.0.1:9119",
+    HERMES_BOARD_SUPPORTED_VERSION: "0.21.1", HERMES_BOARD_SECRET: "b".repeat(32), HERMES_DASHBOARD_URL: "http://127.0.0.1:9119",
     HERMES_DASHBOARD_SESSION_TOKEN: "d".repeat(32), HERMES_API_URL: "http://127.0.0.1:8642", HERMES_BOARD_APPROVED_SKILLS: "news-research,content-planning",
     HERMES_BOARD_PRIMARY_PROVIDER: "openai-codex", HERMES_BOARD_PRIMARY_MODEL: "gpt-5.5",
   };
@@ -134,8 +134,9 @@ describe("internal Hermes Boards plugin configuration", () => {
     ["single-user auth", { AUTH_MODE: "single-user" }, "AUTH_MODE=sessions"],
     ["missing durable queue", { REDIS_URL: undefined }, "DATABASE_URL and REDIS_URL"],
     ["short derivation secret", { HERMES_BOARD_SECRET: "short" }, "at least 32 bytes"],
-    ["wrong Hermes version", { HERMES_BOARD_SUPPORTED_VERSION: "0.22.0" }, "supports Hermes 0.21.0 only"],
+    ["wrong Hermes version", { HERMES_BOARD_SUPPORTED_VERSION: "0.22.0" }, "supports Hermes 0.21.1 only"],
     ["missing primary model", { HERMES_BOARD_PRIMARY_MODEL: undefined }, "explicit primary provider and model"],
+    ["unsupported provider", { HERMES_BOARD_PRIMARY_PROVIDER: "openai" }, "HERMES_BOARD_PRIMARY_PROVIDER=openai-codex"],
     ["untrusted HTTP control plane", { HERMES_DASHBOARD_URL: "http://hermes.internal:9119" }, "must use HTTPS"],
     ["invalid approved skill", { HERMES_BOARD_APPROVED_SKILLS: "../escape" }, "invalid skill name"],
   ])("rejects %s", (_name, override, message) => {

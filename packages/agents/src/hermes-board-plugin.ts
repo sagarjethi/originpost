@@ -1,7 +1,7 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 
 export const HERMES_BOARD_PLUGIN_ID = "org.originpost.hermes-boards" as const;
-export const HERMES_BOARD_SUPPORTED_VERSION = "0.21.0" as const;
+export const HERMES_BOARD_SUPPORTED_VERSION = "0.21.1" as const;
 
 export interface BoardRuntimeBinding {
   workspaceId: string;
@@ -38,6 +38,19 @@ export interface BoardRuntimeObservation {
   model?: string;
   modelReady: boolean;
   memory: { isolation: "dedicated-profile"; enabled: boolean; writeApproval: boolean };
+  isolation: {
+    mode: "profile-scoped";
+    verified: boolean;
+    profileScoped: boolean;
+    memoryScoped: boolean;
+    skillsScoped: boolean;
+    stateScoped: boolean;
+    externalSkillsBlocked: boolean;
+    unsafeToolsBlocked: boolean;
+    filesystemSandbox: false;
+    skillManifestSha256?: string;
+    toolManifestSha256?: string;
+  };
   skills: BoardRuntimeSkill[];
   safeToolsets: string[];
   restartRequired: boolean;
@@ -74,12 +87,12 @@ export interface BoardRuntimePendingWriteDetail extends BoardRuntimePendingWrite
 }
 
 export interface BoardRuntimePort {
-  inspect(binding: BoardRuntimeBinding, policy?: BoardRuntimePolicy): Promise<BoardRuntimeObservation>;
+  inspect(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimeObservation>;
   reconcile(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimeObservation>;
   deactivate(binding: BoardRuntimeBinding): Promise<void>;
-  listPendingWrites(binding: BoardRuntimeBinding): Promise<BoardRuntimePendingWrite[]>;
-  pendingWriteDetail(binding: BoardRuntimeBinding, subsystem: "memory" | "skills", pendingId: string): Promise<BoardRuntimePendingWriteDetail>;
-  decidePendingWrite(binding: BoardRuntimeBinding, request: { subsystem: "memory" | "skills"; pendingId: string; decision: "approve" | "reject"; expectedSha256: string; idempotencyKey: string }): Promise<{ ok: true; replayed: boolean }>;
+  listPendingWrites(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimePendingWrite[]>;
+  pendingWriteDetail(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, subsystem: "memory" | "skills", pendingId: string): Promise<BoardRuntimePendingWriteDetail>;
+  decidePendingWrite(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, request: { subsystem: "memory" | "skills"; pendingId: string; decision: "approve" | "reject"; expectedSha256: string; idempotencyKey: string }): Promise<{ ok: true; replayed: boolean }>;
   run(binding: BoardRuntimeBinding, request: BoardRuntimeRunRequest): Promise<BoardRuntimeRunResult>;
 }
 
@@ -92,16 +105,33 @@ export class HermesBoardPluginError extends Error {
 
 type SkillPayload = { name?: unknown; description?: unknown; category?: unknown; enabled?: unknown; provenance?: unknown };
 type ToolsetPayload = { name?: unknown; enabled?: unknown; tools?: unknown };
+type IsolationPayload = { schemaVersion?: unknown; profileScoped?: unknown; memoryScoped?: unknown; skillsScoped?: unknown; stateScoped?: unknown };
 
 const profilePattern = /^[a-z0-9][a-z0-9_-]{1,63}$/u;
 const configuredToolsets = ["memory", "skills", "no_mcp"];
 const safeToolsets = ["memory", "skills"];
 const essentialSkills = new Set(["hermes-agent"]);
 const boardMaxOutputTokens = 4_000;
+const exactRuntimeToolManifestSha256 = "56a0ae4360b1ac2c139bd8e176ca7d2ee22e073357e8a96fed0201c9240d505c";
 const exactSafeTools = new Map<string, string[]>([
   ["memory", ["memory"]],
   ["skills", ["skill_manage", "skill_view", "skills_list"]],
 ]);
+const unverifiedIsolation: BoardRuntimeObservation["isolation"] = {
+  mode: "profile-scoped",
+  verified: false,
+  profileScoped: false,
+  memoryScoped: false,
+  skillsScoped: false,
+  stateScoped: false,
+  externalSkillsBlocked: false,
+  unsafeToolsBlocked: false,
+  filesystemSandbox: false,
+};
+
+function bytewiseCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
 
 function base(value: string): string {
   return value.replace(/\/+$/u, "");
@@ -109,6 +139,15 @@ function base(value: string): string {
 
 function jsonObject(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function canonicalJson(value: unknown): string {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (item !== null && typeof item === "object") return Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([a], [b]) => bytewiseCompare(a, b)).map(([key, nested]) => [key, normalize(nested)]));
+    return item;
+  };
+  return JSON.stringify(normalize(value));
 }
 
 function safeSkills(value: unknown, approved: ReadonlySet<string>): BoardRuntimeSkill[] {
@@ -133,7 +172,7 @@ function safeSkills(value: unknown, approved: ReadonlySet<string>): BoardRuntime
       approved: !userManageable || approved.has(name),
       userManageable,
     };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+  }).sort((a, b) => bytewiseCompare(a.name, b.name));
 }
 
 function safeControlToolsetNames(value: unknown): string[] {
@@ -142,7 +181,7 @@ function safeControlToolsetNames(value: unknown): string[] {
     const name = jsonObject(raw).name;
     if (typeof name !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u.test(name)) throw new HermesBoardPluginError("response_invalid", "Hermes returned a malformed toolset entry.");
     return name;
-  }))].sort((a, b) => a.localeCompare(b));
+  }))].sort(bytewiseCompare);
 }
 
 function safeEffectiveToolsets(value: unknown): Array<{ name: string; tools: string[] }> {
@@ -153,12 +192,28 @@ function safeEffectiveToolsets(value: unknown): Array<{ name: string; tools: str
     if (typeof item.name !== "string" || typeof item.enabled !== "boolean" || !Array.isArray(item.tools) || !item.tools.every((tool) => typeof tool === "string")) {
       throw new HermesBoardPluginError("response_invalid", "Hermes returned a malformed effective toolset entry.");
     }
-    return item.enabled ? [{ name: item.name, tools: [...new Set(item.tools)].sort((a, b) => a.localeCompare(b)) }] : [];
-  }).sort((a, b) => a.name.localeCompare(b.name));
+    return item.enabled ? [{ name: item.name, tools: [...new Set(item.tools)].sort(bytewiseCompare) }] : [];
+  }).sort((a, b) => bytewiseCompare(a.name, b.name));
 }
 
 function emptyFallback(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.length === 0);
+}
+
+function safeIsolationAttestation(value: unknown): Pick<BoardRuntimeObservation["isolation"], "profileScoped" | "memoryScoped" | "skillsScoped" | "stateScoped"> {
+  const payload = jsonObject(value) as IsolationPayload;
+  if (payload.schemaVersion !== 1 || typeof payload.profileScoped !== "boolean" || typeof payload.memoryScoped !== "boolean" || typeof payload.skillsScoped !== "boolean" || typeof payload.stateScoped !== "boolean") {
+    throw new HermesBoardPluginError("response_invalid", "Hermes returned an invalid Board isolation attestation.");
+  }
+  return { profileScoped: payload.profileScoped, memoryScoped: payload.memoryScoped, skillsScoped: payload.skillsScoped, stateScoped: payload.stateScoped };
+}
+
+function safeRuntimeAttestation(value: unknown, expectedProvider: string, expectedModel: string): { skillManifestSha256: string; toolManifestSha256: string } {
+  const payload = jsonObject(value);
+  if (payload.schemaVersion !== 2 || payload.ready !== true || payload.provider !== expectedProvider || payload.model !== expectedModel || typeof payload.toolManifestSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(payload.toolManifestSha256) || typeof payload.skillManifestSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(payload.skillManifestSha256)) {
+    throw new HermesBoardPluginError("response_invalid", "Hermes returned an invalid execution-plane attestation.");
+  }
+  return { skillManifestSha256: payload.skillManifestSha256, toolManifestSha256: payload.toolManifestSha256 };
 }
 
 function safePendingWrite(value: unknown, detailRequired = false): BoardRuntimePendingWrite | BoardRuntimePendingWriteDetail {
@@ -188,20 +243,55 @@ function normalizedPurpose(value: string): string {
   return purpose;
 }
 
-function policySha256(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): string {
-  const enabledSkills = [...new Set(policy.enabledSkills)].sort((a, b) => a.localeCompare(b));
+function policySha256(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, provider: string, model: string): string {
+  const enabledSkills = [...new Set(policy.enabledSkills)].sort(bytewiseCompare);
   return createHash("sha256").update(JSON.stringify({
+    owner: binding.ownershipMarker,
+    memoryScope: binding.memoryScope,
     capabilityEpoch: binding.capabilityEpoch,
     configurationEpoch: policy.configurationEpoch,
     purpose: normalizedPurpose(policy.purpose),
     enabledSkills,
+    provider,
+    model,
     toolsets: configuredToolsets,
     maxOutputTokens: boardMaxOutputTokens,
   })).digest("hex");
 }
 
-function managedProfileDescription(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): string {
-  return `OriginPost Board runtime; owner=${binding.ownershipMarker}; policy_sha256=${policySha256(binding, policy)}.`;
+function enabledSkillsSha256(policy: BoardRuntimePolicy): string {
+  return createHash("sha256").update([...new Set(policy.enabledSkills)].sort(bytewiseCompare).join("\n")).digest("hex");
+}
+
+function boardContract(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, provider: string, model: string) {
+  return {
+    owner: binding.ownershipMarker,
+    memoryScope: binding.memoryScope,
+    policySha256: policySha256(binding, policy, provider, model),
+    provider,
+    model,
+    enabledSkillsSha256: enabledSkillsSha256(policy),
+  };
+}
+
+function managedProfileDescription(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, provider: string, model: string, skillManifestSha256 = "pending"): string {
+  const contract = boardContract(binding, policy, provider, model);
+  return `OriginPost Board runtime; owner=${contract.owner}; memory=${contract.memoryScope}; policy=${contract.policySha256}; provider=${contract.provider}; model=${contract.model}; skills=${contract.enabledSkillsSha256}; skill_manifest=${skillManifestSha256}.`;
+}
+
+function profileOwnedByBoard(value: unknown, binding: BoardRuntimeBinding): boolean {
+  if (typeof value !== "string") return false;
+  if (value === `OriginPost Board runtime; owner=${binding.ownershipMarker}; state=archived.`) return true;
+  const match = /^OriginPost Board runtime; owner=(opb_owner_[a-f0-9]{40}); memory=(opb_mem_[a-f0-9]{40}); policy=[a-f0-9]{64}; provider=[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}; model=[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}; skills=[a-f0-9]{64}; skill_manifest=(?:[a-f0-9]{64}|pending)\.$/u.exec(value);
+  return match?.[1] === binding.ownershipMarker && match?.[2] === binding.memoryScope;
+}
+
+function sealedSkillManifest(value: unknown, binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, provider: string, model: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const prefix = managedProfileDescription(binding, policy, provider, model, "").replace("skill_manifest=.", "skill_manifest=");
+  const suffix = value.slice(prefix.length);
+  const match = value.startsWith(prefix) ? /^([a-f0-9]{64})\.$/u.exec(suffix) : null;
+  return match?.[1];
 }
 
 function boardInstructions(purpose: string): string {
@@ -239,8 +329,9 @@ export interface HermesBoardPluginConfig {
 
 export function validateHermesBoardPluginConfig(config: HermesBoardPluginConfig): void {
   if (Buffer.byteLength(config.dashboardSessionToken, "utf8") < 32) throw new HermesBoardPluginError("policy_rejected", "The Hermes dashboard session token must contain at least 32 bytes.");
-  if ((config.supportedVersion ?? HERMES_BOARD_SUPPORTED_VERSION) !== HERMES_BOARD_SUPPORTED_VERSION) throw new HermesBoardPluginError("version_unsupported", "This OriginPost build supports Hermes 0.21.0 only.");
+  if ((config.supportedVersion ?? HERMES_BOARD_SUPPORTED_VERSION) !== HERMES_BOARD_SUPPORTED_VERSION) throw new HermesBoardPluginError("version_unsupported", "This OriginPost build supports Hermes 0.21.1 only.");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(config.primaryProvider) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(config.primaryModel)) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board primary provider or model is invalid.");
+  if (config.primaryProvider !== "openai-codex") throw new HermesBoardPluginError("policy_rejected", "The internal Hermes Boards plugin requires the openai-codex provider.");
   if (config.approvedSkills.length > 100 || new Set(config.approvedSkills).size !== config.approvedSkills.length || config.approvedSkills.some((name) => !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/u.test(name))) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board approved-skill list is invalid.");
   if (config.timeoutMs !== undefined && (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 1_000 || config.timeoutMs > 300_000)) throw new HermesBoardPluginError("policy_rejected", "The Hermes Board timeout is invalid.");
   for (const [name, value] of [["dashboard", config.dashboardBaseUrl], ["execution", config.executionBaseUrl]] as const) {
@@ -267,6 +358,28 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     };
   }
 
+  private signedDashboardHeaders(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, method: "GET" | "POST", route: string, body: unknown): Record<string, string> {
+    const contract = boardContract(binding, policy, this.config.primaryProvider, this.config.primaryModel);
+    const timestamp = Math.floor(Date.now() / 1_000).toString();
+    const nonce = randomBytes(16).toString("hex");
+    const bodySha256 = createHash("sha256").update(canonicalJson(body)).digest("hex");
+    const canonical = [method, route, bodySha256, timestamp, nonce, contract.owner, contract.memoryScope, contract.policySha256].join("\n");
+    const signature = createHmac("sha256", binding.apiKey).update(canonical).digest("hex");
+    return {
+      ...this.dashboardHeaders(method === "POST"),
+      "x-originpost-timestamp": timestamp,
+      "x-originpost-nonce": nonce,
+      "x-originpost-signature": signature,
+      "x-originpost-board-owner": contract.owner,
+      "x-originpost-memory-scope": contract.memoryScope,
+      "x-originpost-policy-sha256": contract.policySha256,
+    };
+  }
+
+  private signedBody(value: unknown): string {
+    return canonicalJson(value);
+  }
+
   private executionHeaders(binding: BoardRuntimeBinding): Record<string, string> {
     return {
       authorization: `Bearer ${binding.apiKey}`,
@@ -275,9 +388,9 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     };
   }
 
-  private async request(url: string, init: RequestInit, code: HermesBoardPluginError["code"]): Promise<unknown> {
+  private async request(url: string, init: RequestInit, code: HermesBoardPluginError["code"], timeoutMs = this.config.timeoutMs ?? 20_000): Promise<unknown> {
     try {
-      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(this.config.timeoutMs ?? 20_000) });
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
       if (!response.ok) throw new HermesBoardPluginError(code, `Hermes request failed with status ${response.status}.`);
       return await response.json();
     } catch (error) {
@@ -330,15 +443,26 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     return jsonObject(await this.request(`${base(this.config.executionBaseUrl)}/p/${encodeURIComponent(binding.profile)}/health/detailed`, { headers: this.executionHeaders(binding) }, "profile_unavailable"));
   }
 
-  async inspect(binding: BoardRuntimeBinding, policy?: BoardRuntimePolicy): Promise<BoardRuntimeObservation> {
+  private async isolationAttestation(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<Pick<BoardRuntimeObservation["isolation"], "profileScoped" | "memoryScoped" | "skillsScoped" | "stateScoped">> {
+    const route = `/isolation/${binding.profile}`;
+    return safeIsolationAttestation(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, { headers: this.signedDashboardHeaders(binding, policy, "GET", route, {}) }, "control_unavailable"));
+  }
+
+  private async runtimeAttestation(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<{ skillManifestSha256: string; toolManifestSha256: string }> {
+    const route = `/runtime/${binding.profile}`;
+    return safeRuntimeAttestation(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, { headers: this.signedDashboardHeaders(binding, policy, "GET", route, {}) }, "control_unavailable", Math.max(this.config.timeoutMs ?? 20_000, 65_000)), this.config.primaryProvider, this.config.primaryModel);
+  }
+
+  async inspect(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimeObservation> {
     this.validateBinding(binding);
-    if (policy && (!Number.isSafeInteger(policy.configurationEpoch) || policy.configurationEpoch < 1)) {
+    if (!Number.isSafeInteger(policy.configurationEpoch) || policy.configurationEpoch < 1) {
       throw new HermesBoardPluginError("policy_rejected", "The Board policy uses an invalid configuration epoch.");
     }
-    const desiredDescription = policy ? managedProfileDescription(binding, policy) : undefined;
     const version = await this.version();
     const profile = (await this.profiles()).find((entry) => entry.name === binding.profile);
-    if (!profile) return { healthy: false, configured: false, policyCompliant: false, modelReady: false, version, memory: { isolation: "dedicated-profile", enabled: false, writeApproval: false }, skills: [], safeToolsets: [], restartRequired: false };
+    if (!profile) return { healthy: false, configured: false, policyCompliant: false, modelReady: false, version, memory: { isolation: "dedicated-profile", enabled: false, writeApproval: false }, isolation: unverifiedIsolation, skills: [], safeToolsets: [], restartRequired: false };
+    const sealedSkillManifestSha256 = sealedSkillManifest(profile.description, binding, policy, this.config.primaryProvider, this.config.primaryModel);
+    const desiredDescriptionMatches = sealedSkillManifestSha256 !== undefined;
     const config = await this.profileConfig(binding.profile);
     const memoryConfig = jsonObject(config.memory);
     const skillsConfig = jsonObject(config.skills);
@@ -346,32 +470,44 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     const modelConfig = jsonObject(config.model);
     const platformToolsets = jsonObject(config.platform_toolsets);
     const toolsetPayloadValid = Array.isArray(platformToolsets.api_server) && platformToolsets.api_server.every((value) => typeof value === "string");
-    const configuredObservedToolsets = toolsetPayloadValid ? [...new Set(platformToolsets.api_server as string[])].sort((a, b) => a.localeCompare(b)) : [];
+    const configuredObservedToolsets = toolsetPayloadValid ? [...new Set(platformToolsets.api_server as string[])].sort(bytewiseCompare) : [];
     const memoryEnabled = memoryConfig.memory_enabled === true && memoryConfig.user_profile_enabled === true;
     const writeApproval = memoryConfig.write_approval === true && skillsConfig.write_approval === true;
-    const configuredToolsetsSorted = [...configuredToolsets].sort((a, b) => a.localeCompare(b));
+    const externalSkillsBlocked = Array.isArray(skillsConfig.external_dirs)
+      && skillsConfig.external_dirs.length === 0
+      && skillsConfig.create_dir === ""
+      && skillsConfig.project_discovery === false
+      && Array.isArray(skillsConfig.trusted_project_dirs)
+      && skillsConfig.trusted_project_dirs.length === 0
+      && skillsConfig.inline_shell === false;
+    const configuredToolsetsSorted = [...configuredToolsets].sort(bytewiseCompare);
     const configBoundaryCompliant = toolsetPayloadValid
-      && (desiredDescription === undefined || profile.description === desiredDescription)
+      && desiredDescriptionMatches
       && configuredObservedToolsets.length === configuredToolsetsSorted.length
       && configuredObservedToolsets.every((toolset, index) => toolset === configuredToolsetsSorted[index])
-      && (memoryConfig.provider === "" || memoryConfig.provider === undefined)
+      && memoryConfig.provider === ""
+      && externalSkillsBlocked
       && contextConfig.engine === "compressor"
       && modelConfig.provider === this.config.primaryProvider
       && modelConfig.default === this.config.primaryModel
       && modelConfig.max_tokens === boardMaxOutputTokens
-      && (this.config.primaryProvider !== "openai-codex" || modelConfig.openai_runtime === "codex_app_server")
+      && modelConfig.openai_runtime === "auto"
       && emptyFallback(config.fallback_providers)
-      && emptyFallback(config.fallback_model);
+      && emptyFallback(config.fallback_model)
+      && Array.isArray(jsonObject(config.plugins).enabled)
+      && (jsonObject(config.plugins).enabled as unknown[]).length === 0
+      && Object.keys(jsonObject(jsonObject(config.plugins).entries)).length === 0;
     const skills = await this.listSkills(binding.profile);
-    const enabled = skills.filter((skill) => skill.enabled && skill.userManageable).map((skill) => skill.name).sort((a, b) => a.localeCompare(b));
-    const desired = policy ? [...new Set(policy.enabledSkills)].sort((a, b) => a.localeCompare(b)) : undefined;
+    const enabled = skills.filter((skill) => skill.enabled && skill.userManageable).map((skill) => skill.name).sort(bytewiseCompare);
+    const desired = [...new Set(policy.enabledSkills)].sort(bytewiseCompare);
     const essentialCompliant = [...essentialSkills].every((name) => skills.some((skill) => skill.name === name && skill.enabled && !skill.userManageable));
     const skillsCompliant = essentialCompliant
       && skills.every((skill) => !skill.enabled || skill.approved)
-      && (!desired || (desired.length === enabled.length && desired.every((skill, index) => skill === enabled[index] && this.approvedSkills.has(skill) && !essentialSkills.has(skill))));
+      && desired.length === enabled.length
+      && desired.every((skill, index) => skill === enabled[index] && this.approvedSkills.has(skill) && !essentialSkills.has(skill));
     const policyConfigCompliant = memoryEnabled && writeApproval && configBoundaryCompliant && skillsCompliant;
     try {
-      const [capabilities, effectiveToolsets, detailedReadiness] = await Promise.all([this.capabilities(binding), this.effectiveToolsets(binding), this.detailedReadiness(binding)]);
+      const [capabilities, effectiveToolsets, detailedReadiness, scopedState, runtimeAttestation] = await Promise.all([this.capabilities(binding), this.effectiveToolsets(binding), this.detailedReadiness(binding), this.isolationAttestation(binding, policy), this.runtimeAttestation(binding, policy)]);
       const features = jsonObject(capabilities.features);
       const readiness = jsonObject(detailedReadiness.readiness);
       const readinessChecks = jsonObject(readiness.checks);
@@ -391,19 +527,24 @@ export class HermesBoardPlugin implements BoardRuntimePort {
           const expected = exactSafeTools.get(toolset.name);
           return expected !== undefined && expected.length === toolset.tools.length && expected.every((tool, index) => tool === toolset.tools[index]);
         });
-      const policyCompliant = policyConfigCompliant && effectiveBoundaryCompliant;
-      return { healthy: runtimeHealthy && policyCompliant, configured: true, policyCompliant, modelReady, version, ...(typeof capabilities.model === "string" ? { model: capabilities.model } : {}), memory: { isolation: "dedicated-profile", enabled: memoryEnabled, writeApproval }, skills, safeToolsets: effectiveNames, restartRequired: !capabilityHealthy };
+      const executionPlaneCompliant = runtimeAttestation.toolManifestSha256 === exactRuntimeToolManifestSha256
+        && sealedSkillManifestSha256 !== undefined
+        && runtimeAttestation.skillManifestSha256 === sealedSkillManifestSha256;
+      const profileStateScoped = scopedState.profileScoped && scopedState.memoryScoped && scopedState.skillsScoped && scopedState.stateScoped;
+      const isolation = { mode: "profile-scoped" as const, verified: profileStateScoped && externalSkillsBlocked && effectiveBoundaryCompliant && executionPlaneCompliant, ...scopedState, externalSkillsBlocked, unsafeToolsBlocked: effectiveBoundaryCompliant && executionPlaneCompliant, filesystemSandbox: false as const, skillManifestSha256: runtimeAttestation.skillManifestSha256, toolManifestSha256: runtimeAttestation.toolManifestSha256 };
+      const policyCompliant = policyConfigCompliant && isolation.verified;
+      return { healthy: runtimeHealthy && policyCompliant, configured: true, policyCompliant, modelReady, version, ...(typeof capabilities.model === "string" ? { model: capabilities.model } : {}), memory: { isolation: "dedicated-profile", enabled: memoryEnabled, writeApproval }, isolation, skills, safeToolsets: effectiveNames, restartRequired: !capabilityHealthy };
     } catch (error) {
-      if (!(error instanceof HermesBoardPluginError) || error.code !== "profile_unavailable") throw error;
-      return { healthy: false, configured: true, policyCompliant: policyConfigCompliant, modelReady: false, version, memory: { isolation: "dedicated-profile", enabled: memoryEnabled, writeApproval }, skills, safeToolsets: [], restartRequired: true };
+      if (!(error instanceof HermesBoardPluginError) || !["profile_unavailable", "control_unavailable"].includes(error.code)) throw error;
+      return { healthy: false, configured: true, policyCompliant: false, modelReady: false, version, memory: { isolation: "dedicated-profile", enabled: memoryEnabled, writeApproval }, isolation: { ...unverifiedIsolation, externalSkillsBlocked }, skills, safeToolsets: [], restartRequired: error.code === "profile_unavailable" };
     }
   }
 
   async reconcile(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimeObservation> {
     this.validateBinding(binding);
     if (!Number.isSafeInteger(policy.configurationEpoch) || policy.configurationEpoch < 1) throw new HermesBoardPluginError("policy_rejected", "The Board policy uses an invalid configuration epoch.");
-    const description = managedProfileDescription(binding, policy);
-    const desired = [...new Set(policy.enabledSkills)].sort((a, b) => a.localeCompare(b));
+    const description = managedProfileDescription(binding, policy, this.config.primaryProvider, this.config.primaryModel);
+    const desired = [...new Set(policy.enabledSkills)].sort(bytewiseCompare);
     if (desired.some((skill) => essentialSkills.has(skill) || !this.approvedSkills.has(skill))) throw new HermesBoardPluginError("policy_rejected", "A requested Hermes skill is system-managed or not operator-approved.");
     await this.version();
     const existing = await this.profiles();
@@ -413,7 +554,7 @@ export class HermesBoardPlugin implements BoardRuntimePort {
         method: "POST", headers: this.dashboardHeaders(true), body: JSON.stringify({ name: binding.profile, description }),
       }, "control_unavailable");
     } else {
-      if (typeof existingProfile.description !== "string" || !existingProfile.description.includes(`owner=${binding.ownershipMarker};`)) {
+      if (!profileOwnedByBoard(existingProfile.description, binding)) {
         throw new HermesBoardPluginError("profile_ownership_mismatch", "The Hermes profile is not owned by this OriginPost Board.");
       }
       await this.request(`${base(this.config.dashboardBaseUrl)}/api/profiles/${encodeURIComponent(binding.profile)}/description`, {
@@ -427,12 +568,12 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     await this.request(`${base(this.config.dashboardBaseUrl)}/api/config`, {
       method: "PUT", headers: this.dashboardHeaders(true), body: JSON.stringify({ profile: binding.profile, config: {
         memory: { memory_enabled: true, user_profile_enabled: true, write_approval: true, provider: "" },
-        skills: { write_approval: true },
+        skills: { write_approval: true, external_dirs: [], create_dir: "", project_discovery: false, trusted_project_dirs: [], inline_shell: false },
         model: {
           provider: this.config.primaryProvider,
           default: this.config.primaryModel,
           max_tokens: boardMaxOutputTokens,
-          ...(this.config.primaryProvider === "openai-codex" ? { openai_runtime: "codex_app_server" } : {}),
+          openai_runtime: "auto",
         },
         context: { engine: "compressor" },
         fallback_providers: [],
@@ -440,6 +581,7 @@ export class HermesBoardPlugin implements BoardRuntimePort {
         platform_toolsets: { api_server: configuredToolsets },
         known_plugin_toolsets: { api_server: knownToolsets },
         known_builtin_toolsets: { api_server: knownToolsets },
+        plugins: { enabled: [], entries: {} },
       } }),
     }, "control_unavailable");
     const catalog = await this.listSkills(binding.profile);
@@ -450,6 +592,16 @@ export class HermesBoardPlugin implements BoardRuntimePort {
       await this.request(`${base(this.config.dashboardBaseUrl)}/api/skills/toggle`, {
         method: "PUT", headers: this.dashboardHeaders(true), body: JSON.stringify({ name: skill.name, enabled: shouldEnable, profile: binding.profile }),
       }, "control_unavailable");
+    }
+    const contract = boardContract(binding, policy, this.config.primaryProvider, this.config.primaryModel);
+    const sealRoute = `/seal/${binding.profile}`;
+    const sealed = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${sealRoute}`, {
+      method: "POST",
+      headers: this.signedDashboardHeaders(binding, policy, "POST", sealRoute, contract),
+      body: this.signedBody(contract),
+    }, "control_unavailable", Math.max(this.config.timeoutMs ?? 20_000, 65_000)));
+    if (sealed.schemaVersion !== 2 || sealed.sealed !== true || sealed.toolManifestSha256 !== exactRuntimeToolManifestSha256 || typeof sealed.skillManifestSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(sealed.skillManifestSha256)) {
+      throw new HermesBoardPluginError("response_invalid", "Hermes did not seal the exact Board runtime policy.");
     }
     const defaultConfig = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/config?profile=default`, { headers: this.dashboardHeaders() }, "control_unavailable"));
     const gateway = jsonObject(defaultConfig.gateway);
@@ -465,7 +617,7 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     await this.version();
     const existingProfile = (await this.profiles()).find((profile) => profile.name === binding.profile);
     if (!existingProfile) return;
-    if (typeof existingProfile.description !== "string" || !existingProfile.description.includes(`owner=${binding.ownershipMarker};`)) {
+    if (!profileOwnedByBoard(existingProfile.description, binding)) {
       throw new HermesBoardPluginError("profile_ownership_mismatch", "The Hermes profile is not owned by this OriginPost Board.");
     }
     await this.request(`${base(this.config.dashboardBaseUrl)}/api/env`, {
@@ -485,27 +637,31 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     }, "control_unavailable");
   }
 
-  async listPendingWrites(binding: BoardRuntimeBinding): Promise<BoardRuntimePendingWrite[]> {
+  async listPendingWrites(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy): Promise<BoardRuntimePendingWrite[]> {
     this.validateBinding(binding);
     const values = await Promise.all((["memory", "skills"] as const).map(async (subsystem) => {
-      const payload = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals/pending/${encodeURIComponent(binding.profile)}/${subsystem}`, { headers: this.dashboardHeaders() }, "control_unavailable"));
+      const route = `/pending/${binding.profile}/${subsystem}`;
+      const payload = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, { headers: this.signedDashboardHeaders(binding, policy, "GET", route, {}) }, "control_unavailable"));
       if (!Array.isArray(payload.pending)) throw new HermesBoardPluginError("response_invalid", "Hermes returned an invalid pending-write list.");
       return payload.pending.map((item) => safePendingWrite(item) as BoardRuntimePendingWrite);
     }));
-    return values.flat().sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    return values.flat().sort((a, b) => a.createdAt - b.createdAt || bytewiseCompare(a.id, b.id));
   }
 
-  async pendingWriteDetail(binding: BoardRuntimeBinding, subsystem: "memory" | "skills", pendingId: string): Promise<BoardRuntimePendingWriteDetail> {
+  async pendingWriteDetail(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, subsystem: "memory" | "skills", pendingId: string): Promise<BoardRuntimePendingWriteDetail> {
     this.validateBinding(binding);
     if (!/^[a-f0-9]{8}$/u.test(pendingId)) throw new HermesBoardPluginError("policy_rejected", "The pending-write ID is invalid.");
-    return safePendingWrite(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals/pending/${encodeURIComponent(binding.profile)}/${subsystem}/${pendingId}`, { headers: this.dashboardHeaders() }, "control_unavailable"), true) as BoardRuntimePendingWriteDetail;
+    const route = `/pending/${binding.profile}/${subsystem}/${pendingId}`;
+    return safePendingWrite(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, { headers: this.signedDashboardHeaders(binding, policy, "GET", route, {}) }, "control_unavailable"), true) as BoardRuntimePendingWriteDetail;
   }
 
-  async decidePendingWrite(binding: BoardRuntimeBinding, request: { subsystem: "memory" | "skills"; pendingId: string; decision: "approve" | "reject"; expectedSha256: string; idempotencyKey: string }): Promise<{ ok: true; replayed: boolean }> {
+  async decidePendingWrite(binding: BoardRuntimeBinding, policy: BoardRuntimePolicy, request: { subsystem: "memory" | "skills"; pendingId: string; decision: "approve" | "reject"; expectedSha256: string; idempotencyKey: string }): Promise<{ ok: true; replayed: boolean }> {
     this.validateBinding(binding);
     if (!/^[a-f0-9]{8}$/u.test(request.pendingId) || !/^[a-f0-9]{64}$/u.test(request.expectedSha256) || !/^[A-Za-z0-9_-]{16,100}$/u.test(request.idempotencyKey)) throw new HermesBoardPluginError("policy_rejected", "The pending-write decision is invalid.");
-    const result = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals/pending/${encodeURIComponent(binding.profile)}/${request.subsystem}/${request.pendingId}/decision`, {
-      method: "POST", headers: this.dashboardHeaders(true), body: JSON.stringify({ decision: request.decision, expectedSha256: request.expectedSha256, idempotencyKey: request.idempotencyKey }),
+    const route = `/pending/${binding.profile}/${request.subsystem}/${request.pendingId}/decision`;
+    const body = { decision: request.decision, expectedSha256: request.expectedSha256, idempotencyKey: request.idempotencyKey };
+    const result = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, {
+      method: "POST", headers: this.signedDashboardHeaders(binding, policy, "POST", route, body), body: this.signedBody(body),
     }, "control_unavailable"));
     if (result.ok !== true || typeof result.replayed !== "boolean") throw new HermesBoardPluginError("response_invalid", "Hermes returned an invalid pending-write decision result.");
     return { ok: true, replayed: result.replayed };
@@ -521,28 +677,28 @@ export class HermesBoardPlugin implements BoardRuntimePort {
     if (!observation.configured) throw new HermesBoardPluginError("profile_unavailable", "This Board's dedicated Hermes profile is unavailable.");
     if (!observation.policyCompliant) throw new HermesBoardPluginError("policy_rejected", "This Board's Hermes profile has drifted from its approved internal policy.");
     if (!observation.healthy) throw new HermesBoardPluginError("profile_unavailable", "This Board's Hermes runtime is not healthy.");
-    const raw = jsonObject(await this.request(`${base(this.config.executionBaseUrl)}/p/${encodeURIComponent(binding.profile)}/v1/responses`, {
+    const skillManifestSha256 = observation.isolation.skillManifestSha256;
+    if (!skillManifestSha256 || !/^[a-f0-9]{64}$/u.test(skillManifestSha256)) throw new HermesBoardPluginError("policy_rejected", "This Board's skill manifest is not sealed.");
+    const route = `/run/${binding.profile}`;
+    const body = {
+      prompt,
+      instructions: boardInstructions(request.purpose),
+      sessionKey: binding.memoryScope,
+      skillManifestSha256,
+    };
+    const raw = jsonObject(await this.request(`${base(this.config.dashboardBaseUrl)}/api/plugins/originpost-board-approvals${route}`, {
       method: "POST",
-      headers: this.executionHeaders(binding),
-      body: JSON.stringify({
-        input: prompt,
-        instructions: boardInstructions(request.purpose),
-        store: false,
-      }),
-    }, "runtime_unavailable"));
-    const output = Array.isArray(raw.output) ? raw.output : [];
-    const text = output.flatMap((item) => {
-      const row = jsonObject(item);
-      if (row.type !== "message" || !Array.isArray(row.content)) return [];
-      return row.content.flatMap((part) => { const value = jsonObject(part); return value.type === "output_text" && typeof value.text === "string" ? [value.text] : []; });
-    }).join("\n").trim();
-    if (!text) throw new HermesBoardPluginError("response_invalid", "Hermes returned no usable text.");
+      headers: this.signedDashboardHeaders(binding, { configurationEpoch: request.configurationEpoch, purpose: request.purpose, enabledSkills: request.enabledSkills }, "POST", route, body),
+      body: this.signedBody(body),
+    }, "runtime_unavailable", Math.max(this.config.timeoutMs ?? 20_000, 200_000)));
+    const text = typeof raw.text === "string" ? raw.text.trim() : "";
+    if (raw.schemaVersion !== 2 || typeof raw.id !== "string" || raw.id.length > 100 || raw.model !== this.config.primaryModel || raw.toolManifestSha256 !== exactRuntimeToolManifestSha256 || raw.skillManifestSha256 !== skillManifestSha256 || !text || text.length > 100_000) throw new HermesBoardPluginError("response_invalid", "Hermes returned no usable attested Board result.");
     const usage = jsonObject(raw.usage);
     return {
-      ...(typeof raw.id === "string" ? { responseId: raw.id } : {}),
+      responseId: raw.id,
       model: this.config.primaryModel,
       text,
-      ...((typeof usage.input_tokens === "number" || typeof usage.output_tokens === "number") ? { usage: { ...(typeof usage.input_tokens === "number" ? { inputTokens: usage.input_tokens } : {}), ...(typeof usage.output_tokens === "number" ? { outputTokens: usage.output_tokens } : {}) } } : {}),
+      ...((Number.isSafeInteger(usage.inputTokens) || Number.isSafeInteger(usage.outputTokens)) ? { usage: { ...(Number.isSafeInteger(usage.inputTokens) && (usage.inputTokens as number) >= 0 ? { inputTokens: usage.inputTokens as number } : {}), ...(Number.isSafeInteger(usage.outputTokens) && (usage.outputTokens as number) >= 0 ? { outputTokens: usage.outputTokens as number } : {}) } } : {}),
     };
   }
 }

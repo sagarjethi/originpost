@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAgentBoard, InMemoryAgentBoardRepository, observeAgentBoardDeactivated, observeAgentBoardPlugin, queueAgentBoardReconcile, reviseAgentBoard } from "../src/agent-board.js";
+import { createAgentBoard, InMemoryAgentBoardRepository, observeAgentBoardDeactivated, observeAgentBoardPlugin, observeAgentBoardPluginDecision, queueAgentBoardPluginDecision, queueAgentBoardReconcile, reviseAgentBoard } from "../src/agent-board.js";
 
 const owner = { id: "owner", name: "Owner", role: "owner" as const };
 
@@ -22,6 +22,31 @@ describe("agent boards", () => {
     expect(queued.outbox).toMatchObject({ topic: "board.plugin.reconcile", payload: { boardId: created.board.id, configurationEpoch: 2 } });
     const observed = observeAgentBoardPlugin({ current: queued.board, configurationEpoch: 2, healthy: true, observedSkills: ["news-research"], now: "2026-09-07T10:02:00.000Z" });
     expect(observed).toMatchObject({ status: "ready", observedConfigurationEpoch: 2, observedSkills: ["news-research"] });
+  });
+
+  it("can force capability rotation when approved skill content changes", () => {
+    const created = createAgentBoard({ workspaceId: "workspace", brandId: "brand", name: "Mumbai", purpose: "Mumbai desk.", pluginConfigured: true, actor: owner, now: "2026-09-07T10:00:00.000Z" });
+    const queued = queueAgentBoardReconcile({ current: created.board, actor: owner, expectedVersion: 1, desiredSkills: [], rotateCapabilities: true, now: "2026-09-07T10:01:00.000Z" });
+    expect(queued.board).toMatchObject({ status: "provisioning", configurationEpoch: 2, capabilityEpoch: 2, desiredSkills: [] });
+    expect(queued.outbox).toMatchObject({ topic: "board.plugin.reconcile", payload: { configurationEpoch: 2 } });
+  });
+
+  it("persists a pending plugin decision before applying it and completes it exactly once", () => {
+    const created = createAgentBoard({ workspaceId: "workspace", brandId: "brand", name: "Mumbai", purpose: "Mumbai desk.", pluginConfigured: true, actor: owner, now: "2026-09-07T10:00:00.000Z" });
+    const decisionKey = "b".repeat(64);
+    const idempotencyScopeKey = "c".repeat(64);
+    const queued = queueAgentBoardPluginDecision({ current: created.board, actor: owner, subsystem: "skills", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), idempotencyKey: "test-skill-reseal", decisionKey, idempotencyScopeKey, now: "2026-09-07T10:01:00.000Z" });
+    expect(queued.board).toMatchObject({ version: 2, status: "provisioning", configurationEpoch: 1, capabilityEpoch: 1, pendingPluginDecision: { decisionKey } });
+    expect(queued.outbox).toMatchObject({ topic: "board.plugin.decision", payload: { decisionKey } });
+    expect(() => queueAgentBoardPluginDecision({ current: queued.board, actor: owner, subsystem: "skills", pendingId: "a1b2c3d4", decision: "reject", expectedSha256: "a".repeat(64), idempotencyKey: "test-skill-reseal", decisionKey: "d".repeat(64), idempotencyScopeKey })).toThrow(/still being applied/iu);
+    expect(() => reviseAgentBoard({ current: queued.board, actor: owner, expectedVersion: 2, name: "Changed" })).toThrow(/still being applied/iu);
+    const applied = observeAgentBoardPluginDecision({ current: queued.board, decisionKey, subsystem: "skills", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), now: "2026-09-07T10:02:00.000Z" });
+    expect(applied).toMatchObject({ alreadyApplied: false, board: { version: 3, configurationEpoch: 2, capabilityEpoch: 2, status: "provisioning", appliedPluginDecisionKeys: [decisionKey] }, outbox: { topic: "board.plugin.reconcile" } });
+    expect(applied.board).not.toHaveProperty("pendingPluginDecision");
+    expect(observeAgentBoardPluginDecision({ current: applied.board, decisionKey, subsystem: "skills", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64) }).alreadyApplied).toBe(true);
+    expect(queueAgentBoardPluginDecision({ current: applied.board, actor: owner, subsystem: "skills", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), idempotencyKey: "test-skill-reseal", decisionKey, idempotencyScopeKey })).toMatchObject({ alreadyApplied: true, alreadyQueued: false, board: { version: 3 } });
+    expect(() => queueAgentBoardPluginDecision({ current: applied.board, actor: owner, subsystem: "skills", pendingId: "a1b2c3d4", decision: "reject", expectedSha256: "a".repeat(64), idempotencyKey: "test-skill-reseal", decisionKey: "d".repeat(64), idempotencyScopeKey })).toThrow(/different Board plugin decision/iu);
+    expect(() => queueAgentBoardPluginDecision({ current: applied.board, actor: owner, subsystem: "memory", pendingId: "d4c3b2a1", decision: "approve", expectedSha256: "e".repeat(64), idempotencyKey: "test-skill-reseal", decisionKey: "f".repeat(64), idempotencyScopeKey })).toThrow(/different Board plugin decision/iu);
   });
 
   it("reconciles a changed purpose and fences runs created under the old mission", () => {

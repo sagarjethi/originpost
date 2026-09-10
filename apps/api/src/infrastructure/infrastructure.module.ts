@@ -132,7 +132,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           approvedSkills: String(config.get<string>("HERMES_BOARD_APPROVED_SKILLS") ?? "").split(",").map((value)=>value.trim()).filter(Boolean),
           primaryProvider: config.get<string>("HERMES_BOARD_PRIMARY_PROVIDER")!,
           primaryModel: config.get<string>("HERMES_BOARD_PRIMARY_MODEL")!,
-          supportedVersion: config.get<string>("HERMES_BOARD_SUPPORTED_VERSION") ?? "0.21.0",
+          supportedVersion: config.get<string>("HERMES_BOARD_SUPPORTED_VERSION") ?? "0.21.1",
           allowPrivateEndpoints: config.get<boolean>("HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS") === true,
         }) : null;
         const queue = (name: string) => redisUrl ? new Queue(name, { connection: redisConnection(redisUrl) }) : null;

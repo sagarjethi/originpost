@@ -73,15 +73,11 @@ export class PostgresAgentBoardRepository implements AgentBoardRepository {
       const boards = await sql<BoardRow[]>`select payload from agent_boards where workspace_id=${run.workspaceId} and brand_id=${run.brandId} and id=${run.boardId} for update`;
       const board = boards[0]?.payload;
       if (!board) throw new DomainError("Agent board not found.", "agent_board_not_found", 404);
-      if (expected && (board.status !== "ready" || board.configurationEpoch !== expected.configurationEpoch || board.observedConfigurationEpoch !== expected.configurationEpoch || board.capabilityEpoch !== expected.capabilityEpoch)) return false;
+      if (expected && (board.status !== "ready" || board.pendingPluginDecision !== undefined || board.configurationEpoch !== expected.configurationEpoch || board.observedConfigurationEpoch !== expected.configurationEpoch || board.capabilityEpoch !== expected.capabilityEpoch)) return false;
       await sql`insert into board_agent_run_ledger(id,workspace_id,brand_id,board_id,configuration_epoch,model,status,request_sha256,response_sha256,input_tokens,output_tokens,latency_ms,error_code,created_by,created_at,payload) values(${run.id},${run.workspaceId},${run.brandId},${run.boardId},${run.configurationEpoch},${run.model},${run.status},${run.requestSha256},${run.responseSha256??null},${run.inputTokens??null},${run.outputTokens??null},${run.latencyMs},${run.errorCode??null},${run.createdBy},${run.createdAt},${sql.json(run as never)})`;
       await audit(sql, event);
       return true;
     });
-  }
-
-  async recordPluginDecision(event: AuditEvent) {
-    await audit(this.sql, event);
   }
 
   async listRuns(workspaceId: string, boardId: string, limit = 50) {

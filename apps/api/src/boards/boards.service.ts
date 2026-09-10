@@ -1,7 +1,7 @@
 import { ForbiddenException, Inject, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { deriveBoardRuntimeSecrets, HermesBoardPluginError, type BoardRuntimeBinding, type BoardRuntimeObservation } from "@originpost/agents";
-import { agentRunHash, can, createAgentBoard, createOutboxMessage, DomainError, observeAgentBoardPlugin, queueAgentBoardReconcile, reviseAgentBoard, type Actor, type AgentBoard, type AgentBoardRunLedgerEntry, type AuditEvent } from "@originpost/domain";
+import { agentRunHash, can, createAgentBoard, createOutboxMessage, DomainError, observeAgentBoardPlugin, queueAgentBoardPluginDecision, queueAgentBoardReconcile, reviseAgentBoard, type Actor, type AgentBoard, type AgentBoardRunLedgerEntry, type AuditEvent } from "@originpost/domain";
 import { randomUUID } from "node:crypto";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
@@ -66,16 +66,29 @@ export class BoardsService {
     const board = await this.board(workspaceId, brandId, id);
     const observation = await this.observation(board);
     const mayManagePending = (actor.actorType === undefined || actor.actorType === "human") && can(actor.role, "workspace:manage") && board.status !== "archived";
-    const pendingWrites = mayManagePending && this.infrastructure.boardRuntime && observation?.configured ? await this.infrastructure.boardRuntime.listPendingWrites(this.binding(board)).catch(()=>null) : null;
+    const policy = { configurationEpoch: board.configurationEpoch, purpose: board.purpose, enabledSkills: board.desiredSkills };
+    const pendingWrites = mayManagePending && this.infrastructure.boardRuntime && observation?.configured ? await this.infrastructure.boardRuntime.listPendingWrites(this.binding(board), policy).catch(()=>null) : null;
     const observedCatalog = observation?.skills.filter((skill)=>skill.approved && skill.userManageable) ?? [];
     const catalog = [...new Set([...observedCatalog.map((skill)=>skill.name), ...board.desiredSkills, ...board.observedSkills])].sort((a,b)=>a.localeCompare(b)).map((name)=>observedCatalog.find((skill)=>skill.name===name) ?? { name, description: "", category: "Other", provenance: "unknown" as const });
     return {
       pluginId: "org.originpost.hermes-boards", configured: Boolean(observation?.configured), healthy: Boolean(observation?.healthy && board.status === "ready"), status: board.status,
       modelReady: observation?.modelReady ?? false,
       memory: { isolation: "dedicated-profile", enabled: observation?.memory.enabled ?? false, writeApproval: observation?.memory.writeApproval ?? false, contentExposed: false },
+      isolation: {
+        mode: "profile-scoped",
+        verified: observation?.isolation.verified ?? false,
+        profileScoped: observation?.isolation.profileScoped ?? false,
+        memoryScoped: observation?.isolation.memoryScoped ?? false,
+        skillsScoped: observation?.isolation.skillsScoped ?? false,
+        stateScoped: observation?.isolation.stateScoped ?? false,
+        externalSkillsBlocked: observation?.isolation.externalSkillsBlocked ?? false,
+        unsafeToolsBlocked: observation?.isolation.unsafeToolsBlocked ?? false,
+        filesystemSandbox: false,
+      },
       skillWriteApproval: observation?.memory.writeApproval ?? false,
       skills: catalog.map((skill)=>({ name: skill.name, description: skill.description, category: skill.category, provenance: skill.provenance, enabled: board.desiredSkills.includes(skill.name), applied: board.observedSkills.includes(skill.name) && board.observedConfigurationEpoch === board.configurationEpoch })),
       pending: board.observedConfigurationEpoch !== board.configurationEpoch,
+      decisionPending: Boolean(board.pendingPluginDecision),
       pendingManagementAvailable: pendingWrites !== null,
       pendingWrites: pendingWrites ?? [],
       ...(observation?.model ? { model: observation.model } : {}),
@@ -91,26 +104,27 @@ export class BoardsService {
     if (board.status === "archived") throw new DomainError("Archived Boards cannot manage pending writes.", "agent_board_archived", 409);
     const subsystem = subsystemValue === "memory" || subsystemValue === "skills" ? subsystemValue : null;
     if (!subsystem || !/^[a-f0-9]{8}$/u.test(pendingId)) throw new DomainError("Pending Board write not found.", "agent_board_pending_not_found", 404);
-    try { return { pendingWrite: await this.infrastructure.boardRuntime.pendingWriteDetail(this.binding(board), subsystem, pendingId) }; }
+    try { return { pendingWrite: await this.infrastructure.boardRuntime.pendingWriteDetail(this.binding(board), { configurationEpoch: board.configurationEpoch, purpose: board.purpose, enabledSkills: board.desiredSkills }, subsystem, pendingId) }; }
     catch { throw new ServiceUnavailableException("The pending Board write could not be loaded safely."); }
   }
 
   async decidePendingWrite(workspaceId: string, brandId: string, id: string, subsystemValue: string, pendingId: string, dto: DecideBoardPendingWriteDto, idempotencyKey: string | undefined, actor: Actor) {
     this.owner(actor);
     if (!this.infrastructure.boardRuntime) throw new ServiceUnavailableException("The internal Hermes Boards plugin is not configured.");
+    await this.requireActiveBrand(workspaceId, brandId);
     const board = await this.board(workspaceId, brandId, id);
     if (board.status === "archived") throw new DomainError("Archived Boards cannot manage pending writes.", "agent_board_archived", 409);
     const subsystem = subsystemValue === "memory" || subsystemValue === "skills" ? subsystemValue : null;
     if (!subsystem || !/^[a-f0-9]{8}$/u.test(pendingId)) throw new DomainError("Pending Board write not found.", "agent_board_pending_not_found", 404);
     if (!idempotencyKey || !/^[A-Za-z0-9_-]{16,100}$/u.test(idempotencyKey)) throw new DomainError("Use a valid Idempotency-Key for this decision.", "idempotency_key_required", 428);
-    try {
-      const result = await this.infrastructure.boardRuntime.decidePendingWrite(this.binding(board), { subsystem, pendingId, decision: dto.decision, expectedSha256: dto.expectedSha256, idempotencyKey });
-      await this.infrastructure.agentBoardRepository.recordPluginDecision(this.audit(workspaceId, actor, `agent-board.${subsystem}-write-${dto.decision}d`, { boardId: board.id, subsystem, pendingId, pendingSha256: dto.expectedSha256, replayed: result.replayed, configurationEpoch: board.configurationEpoch }));
-      return result;
-    } catch (error) {
-      if (error instanceof DomainError) throw error;
-      throw new ServiceUnavailableException("The pending Board write decision could not be applied safely.");
+    const decisionKey = agentRunHash({ boardId: board.id, subsystem, pendingId, decision: dto.decision, expectedSha256: dto.expectedSha256, idempotencyKey });
+    const idempotencyScopeKey = agentRunHash({ boardId: board.id, idempotencyKey });
+    const queued = queueAgentBoardPluginDecision({ current: board, actor, subsystem, pendingId, decision: dto.decision, expectedSha256: dto.expectedSha256, idempotencyKey, decisionKey, idempotencyScopeKey });
+    if (!queued.alreadyQueued && !queued.alreadyApplied) {
+      const saved = await this.infrastructure.agentBoardRepository.update(queued.board, board.version, queued.event, queued.outbox);
+      if (!saved) throw new DomainError("This Board changed. Review the pending write again.", "version_conflict", 409);
     }
+    return { ok: true, queued: !queued.alreadyApplied, pending: !queued.alreadyApplied, decisionKey, replayed: queued.alreadyQueued || queued.alreadyApplied };
   }
 
   async skill(workspaceId: string, brandId: string, id: string, expectedVersion: number | undefined, dto: UpdateBoardSkillDto, actor: Actor) {
@@ -156,6 +170,7 @@ export class BoardsService {
     await this.requireActiveBrand(workspaceId, brandId);
     const current = await this.board(workspaceId, brandId, id);
     if (current.status === "archived") throw new DomainError("Archived Boards cannot run.", "agent_board_archived", 409);
+    if (current.pendingPluginDecision) throw new DomainError("A Board plugin decision is still being applied.", "agent_board_plugin_decision_pending", 409);
     try {
       const observed = await this.infrastructure.boardRuntime.inspect(this.binding(current), { configurationEpoch: current.configurationEpoch, purpose: current.purpose, enabledSkills: current.desiredSkills });
       const applied = observed.skills.filter((skill)=>skill.approved && skill.userManageable && skill.enabled).map((skill)=>skill.name);
@@ -177,7 +192,7 @@ export class BoardsService {
     if (!this.infrastructure.boardRuntime) throw new ServiceUnavailableException("The internal Hermes Boards plugin is not configured.");
     await this.requireActiveBrand(workspaceId, brandId);
     const board = await this.board(workspaceId, brandId, id);
-    if (board.status !== "ready" || board.observedConfigurationEpoch !== board.configurationEpoch) throw new DomainError("This Board is not ready. Finish or retry its Hermes setup first.", "agent_board_not_ready", 409);
+    if (board.status !== "ready" || board.pendingPluginDecision || board.observedConfigurationEpoch !== board.configurationEpoch) throw new DomainError("This Board is not ready. Finish or retry its Hermes setup first.", "agent_board_not_ready", 409);
     const started = Date.now(); const at = new Date().toISOString(); const requestSha256 = agentRunHash({ prompt, purpose: board.purpose, configurationEpoch: board.configurationEpoch });
     try {
       const result = await this.infrastructure.boardRuntime.run(this.binding(board), { prompt, purpose: board.purpose, configurationEpoch: board.configurationEpoch, capabilityEpoch: board.capabilityEpoch, enabledSkills: board.desiredSkills });

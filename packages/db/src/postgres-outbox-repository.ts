@@ -123,6 +123,21 @@ export class PostgresOutboxRepository implements OutboxRepository {
   }
 
   async recoverAgentBoardPlugins(): Promise<number> {
+    const decisionRows = await this.sql<{ id: string }[]>`
+      insert into outbox_events (id,workspace_id,topic,dedupe_key,payload,available_at,created_at)
+      select 'outbox_board_decision_' || md5(board.workspace_id || ':' || board.id || ':' || (board.payload->'pendingPluginDecision'->>'decisionKey')),
+        board.workspace_id,
+        'board.plugin.decision',
+        'board-plugin-decision:' || (board.payload->'pendingPluginDecision'->>'decisionKey'),
+        jsonb_build_object('workspaceId',board.workspace_id,'brandId',board.brand_id,'boardId',board.id) || (board.payload->'pendingPluginDecision'),
+        now(),now()
+      from agent_boards board
+      where board.status<>'archived'
+        and jsonb_typeof(board.payload->'pendingPluginDecision')='object'
+        and (board.payload->'pendingPluginDecision'->>'decisionKey') ~ '^[a-f0-9]{64}$'
+      on conflict(workspace_id,dedupe_key) do update set status='pending',available_at=now(),attempts=0,lease_owner=null,lease_expires_at=null,last_error=null,processed_at=null,updated_at=now()
+      where outbox_events.status in ('processed','failed')
+      returning id`;
     const reconcileRows = await this.sql<{ id: string }[]>`
       insert into outbox_events (id,workspace_id,topic,dedupe_key,payload,available_at,created_at)
       select 'outbox_board_' || md5(plugin.workspace_id || ':' || plugin.board_id || ':' || plugin.desired_configuration_epoch::text),
@@ -151,7 +166,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
       on conflict(workspace_id,dedupe_key) do update set status='pending',available_at=now(),attempts=0,lease_owner=null,lease_expires_at=null,last_error=null,processed_at=null,updated_at=now()
       where outbox_events.status in ('processed','failed')
       returning id`;
-    return reconcileRows.length + deactivateRows.length;
+    return decisionRows.length + reconcileRows.length + deactivateRows.length;
   }
 
   async recoverCredentialRefreshes(platforms: CredentialRefreshPlatform[]): Promise<number> {

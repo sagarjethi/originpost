@@ -1,0 +1,33 @@
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  write_approval: true
+  provider: ""
+skills:
+  write_approval: true
+  external_dirs: []
+  create_dir: ""
+  project_discovery: false
+  trusted_project_dirs: []
+  inline_shell: false
+model:
+  provider: openai-codex
+  default: gpt-5.5
+  max_tokens: 4000
+  openai_runtime: auto
+context:
+  engine: compressor
+fallback_providers: []
+fallback_model: []
+platform_toolsets:
+  api_server:
+    - memory
+    - skills
+    - no_mcp
+known_plugin_toolsets:
+  api_server: []
+known_builtin_toolsets:
+  api_server: []
+plugins:
+  enabled: []
+  entries: {}
