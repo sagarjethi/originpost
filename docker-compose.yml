@@ -150,10 +150,19 @@ services:
       context: .
       target: worker
     restart: unless-stopped
+    init: true
+    shm_size: 512mb
+    security_opt:
+      - seccomp=./deploy/browser-seccomp.json
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://originpost:originpost@postgres:5432/originpost
       REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: originpost-media
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-originpost}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
       AUTH_MODE: ${AUTH_MODE:-single-user}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
       MEDIA_DELIVERY_SECRET: ${MEDIA_DELIVERY_SECRET:?Set MEDIA_DELIVERY_SECRET to a different 32-byte secret in .env}

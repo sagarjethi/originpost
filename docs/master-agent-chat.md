@@ -508,3 +508,7 @@ The crawler, new viral-news card discovery, arbitrary social connectors, and exp
 The project-template Agent workspace now supports an explicit interactive Codex path: research → writing → `awaiting-image` → scoped upload → exact template composition → unapproved draft. The downloadable brief carries the frozen template, copy and evidence. Upload continuation uses the expected run version and brief hash, and records editor-attested synthetic provenance. The server image provider is not required for this mode, but the research queue and tested text runtime are still required. See [the implemented contract and remaining live acceptance](research/2026-09-15-codex-image-workflow.md#implemented-upload-continuation-15-september-2026).
 
 This checkpoint does not implement automatic `@Codex` command routing, automatic source/visual verification, browser screenshot scheduling or live social publishing. Those requirements remain in the overall plan.
+
+### Browser source collection checkpoint — 15 September 2026
+
+Publisher pages now use isolated desktop Chrome/Chromium capture, private screenshot storage and scoped source-desk viewing. Local Chrome and a sandboxed Docker worker were both verified against NASA's public news listing. Feed and website collections share section/freshness filters and URL-based deduplication. Browser evidence remains unverified, and exact publication timestamps are never inferred from capture time. Automatic mention routing, independent automated text/image verification and live publishing acceptance remain outstanding.

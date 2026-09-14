@@ -25,6 +25,8 @@ export interface SourcingResult {
     confidence: number;
     feedUrl?: string | undefined;
     stableId?: string | undefined;
+    pageUrl?: string | undefined;
+    snapshot?: { resourceFailures?: number; sha256: string; capturedAt: string; pageUrl: string; width: number; height: number } | undefined;
   }>;
   claims: Array<{
     text: string;

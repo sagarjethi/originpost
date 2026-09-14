@@ -15,7 +15,7 @@ OriginPost source monitors turn a saved topic into sourced inbox suggestions. A 
 - Each suggestion, its completed research record, source links, claim links, and deduplication fingerprints are committed together. A crash cannot save the suggestion while forgetting its deduplication record.
 - A monitor may create several content items in one run. The run keeps the first `contentItemId` for compatibility and all IDs in `contentItemIds`.
 - Monitor suggestions are tagged `multi-source` or `single-source`. The inbox shows a plain cross-check summary based on independent publishers and supported claims.
-- A monitor whose enabled tracked sources are exclusively `luma_city` uses the built-in read-only Mumbai adapter instead of the configured general research provider. Feed-only monitors use the public RSS/Atom collector; mixed Luma/feed monitors invoke each applicable collector explicitly. Partial failure is reported as degraded health.
+- A monitor whose enabled tracked sources are exclusively `luma_city` uses the built-in read-only Mumbai adapter instead of the configured general research provider. Feed-only monitors use the public RSS/Atom collector; publisher pages use the browser screenshot collector, and mixed monitors invoke each applicable collector explicitly. Partial failure is reported as degraded health.
 
 ## Operator view
 
@@ -46,3 +46,5 @@ Creating, changing, or manually running a monitor requires `automation:manage`. 
 After restarting the worker, its startup log reports how many monitor schedulers were recovered from PostgreSQL. A healthy recovery preserves the same monitor ID as the BullMQ scheduler key, so repeated restarts upsert rather than duplicate the schedule.
 
 Monitoring uses source links and source text returned by the configured sourcing provider. OriginPost does not bypass Instagram login, copy private posts, or treat a competitor screenshot as proof by itself.
+
+Publisher-page setup, private screenshot storage, capture limits and local/container acceptance are documented in [the Source Desk guide](source-signal-desk.md#desktop-publisher-capture--2026-09-15).

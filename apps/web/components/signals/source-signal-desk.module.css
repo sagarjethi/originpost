@@ -20,3 +20,8 @@
 .toolbar { flex-wrap: wrap; align-items: end; }
 .verification { font-size: 12px !important; color: #806644 !important; }
 @media (max-width: 760px) { .toolbar label { flex: 1; min-width: 140px; } .toolbar select, .feedSetup input, .feedSetup textarea, .feedSetup select { min-height: 44px; font-size: 16px; max-width: 100%; } }
+
+.sources > div { display: grid; gap: 6px; }
+.sources button { justify-self: start; border: 1px solid #d8dfd3; border-radius: 6px; padding: 6px 9px; color: #526747; background: #f8faf3; font: inherit; font-size: 11px; cursor: pointer; }
+
+.capture { scroll-margin-top: 90px; }

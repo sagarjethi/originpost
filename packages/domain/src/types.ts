@@ -123,7 +123,10 @@ export interface MonitorFingerprint {
   firstSeenAt: string;
 }
 
+export interface SourceSnapshot { resourceFailures?: number; sha256: string; capturedAt: string; pageUrl: string; width: number; height: number }
+
 export interface SourceEvidence {
+  snapshot?: SourceSnapshot | undefined;
   id: string;
   kind: "url" | "note" | "image" | "video" | "document" | "voice" | "screenshot";
   title: string;

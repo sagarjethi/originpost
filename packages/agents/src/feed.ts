@@ -21,13 +21,13 @@ function publicUrl(value: string): URL {
   return url;
 }
 /** Pin DNS validation to the actual socket lookup; never fetch internal addresses or forward credentials. */
-export async function fetchPublicFeed(value: string, redirects = 0): Promise<string> {
+export async function fetchPublicResource(value: string, options: { maxBytes?: number; signal?: AbortSignal; followRedirects?: boolean } = {}, redirects = 0): Promise<{ url: string; status: number; contentType: string; body: Buffer; location?: string }> {
   const url = publicUrl(value);
   if (redirects > 3) throw new Error("Feed redirected too many times.");
   return new Promise((resolve, reject) => {
     const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
-      agent: false, signal: AbortSignal.timeout(15_000),
-      headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml", "user-agent": "OriginPost/0.1 (+public-feed-reader)", "accept-encoding": "identity" },
+      agent: false, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
+      headers: { accept: "*/*", "user-agent": "OriginPost/0.1 (+public-source-reader)", "accept-encoding": "identity" },
       lookup: (hostname, _options, callback) => lookup(hostname, { all: true }, (error, addresses) => {
         if (error) return callback(error, "", 4);
         if (!addresses.length || addresses.some(({address}) => !isPublicFeedAddress(address))) return callback(new Error("Feed DNS resolved to a non-public address."), "", 4);
@@ -36,18 +36,23 @@ export async function fetchPublicFeed(value: string, redirects = 0): Promise<str
       }),
     }, (response) => {
       const status = response.statusCode ?? 0;
-      if ([301,302,303,307,308].includes(status) && response.headers.location) {
-        response.resume(); void fetchPublicFeed(new URL(response.headers.location, url).href, redirects + 1).then(resolve, reject); return;
+      if (response.headers["content-encoding"] && response.headers["content-encoding"] !== "identity") { response.resume(); reject(new Error("Compressed source response is not supported by the bounded transport.")); return; }
+      if ([301,302,303,307,308].includes(status) && response.headers.location && options.followRedirects !== false) {
+        response.resume(); void fetchPublicResource(new URL(response.headers.location, url).href, options, redirects + 1).then(resolve, reject); return;
       }
-      if (status !== 200) { response.resume(); reject(new Error(`Feed returned HTTP ${status}.`)); return; }
-      if (Number(response.headers["content-length"] ?? 0) > maxBytes) { response.destroy(); reject(new Error("Feed exceeds 2 MB.")); return; }
+      if (Number(response.headers["content-length"] ?? 0) > (options.maxBytes ?? maxBytes)) { response.destroy(); reject(new Error("Source response exceeds the configured byte limit.")); return; }
       const chunks: Buffer[] = []; let length = 0;
-      response.on("data", (chunk: Buffer) => { length += chunk.length; if (length > maxBytes) { response.destroy(new Error("Feed exceeds 2 MB.")); return; } chunks.push(chunk); });
+      response.on("data", (chunk: Buffer) => { length += chunk.length; if (length > (options.maxBytes ?? maxBytes)) { response.destroy(new Error("Source response exceeds the configured byte limit.")); return; } chunks.push(chunk); });
       response.on("error", reject);
-      response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      response.on("end", () => resolve({ url: url.href, status, contentType: response.headers["content-type"] ?? "application/octet-stream", body: Buffer.concat(chunks), ...(response.headers.location ? { location: new URL(response.headers.location, url).href } : {}) }));
     });
     req.on("error", reject); req.end();
   });
+}
+export async function fetchPublicFeed(value: string, redirects = 0): Promise<string> {
+  const response = await fetchPublicResource(value, {}, redirects);
+  if (response.status !== 200) throw new Error(`Feed returned HTTP ${response.status}.`);
+  return response.body.toString("utf8");
 }
 export type FeedSource = { url: string; label: string; publisher?: string | undefined };
 type Entry = { title: string; url: string; excerpt: string; publishedAt?: string; stableId?: string; feedUrl: string; publisher: string };

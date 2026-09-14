@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
-import { can, DomainError, signalToContentItem, type Actor, type SourceSignal } from "@originpost/domain";
+import { can, DomainError, sourceSnapshotKey, signalToContentItem, type Actor, type SourceSignal } from "@originpost/domain";
 import crypto from "node:crypto";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
@@ -30,6 +30,14 @@ export class SourceSignalsService {
   async get(workspaceId: string, id: string, actor: Actor) {
     if (!can(actor.role, "content:read")) throw new ForbiddenException("You cannot view this source signal.");
     return this.require(workspaceId, id);
+  }
+
+  async screenshot(workspaceId: string, id: string, sourceId: string, actor: Actor) {
+    const signal = await this.get(workspaceId, id, actor);
+    const source = signal.sources.find(source => source.id === sourceId);
+    if (!source?.snapshot) throw new DomainError("Source screenshot not found.", "source_snapshot_not_found", 404);
+    return { ...await this.infrastructure.mediaObjectStore.createDownload(sourceSnapshotKey(workspaceId, signal.brandId, source.snapshot.sha256), "publisher-desktop.png"),
+      snapshot: source.snapshot, rights: "reference-only" };
   }
 
   async save(workspaceId: string, id: string, expectedVersion: number | undefined, actor: Actor) {

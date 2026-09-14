@@ -16,14 +16,16 @@ OriginPost is a shared workspace for publishers, creators, and social-media team
 
 ## Your daily news desk
 
-Create sections such as **Gujarat, India, World, Business, or Science**, then add publisher-provided RSS/Atom feeds. Choose checks every 10 minutes, 30 minutes, 2 hours, or daily.
+Create sections such as **Gujarat, India, World, Business, or Science**, then add publisher-provided RSS/Atom feeds or public newsroom pages. Choose checks every 10 minutes, 30 minutes, 2 hours, or daily.
 
 - **Newest published:** sort by the publication time reported by the source.
 - **Newly found:** see what OriginPost discovered most recently.
 - **Recent news:** filter to the last 2 hours, 24 hours, or 7 days.
 - **Your sections:** filter by a saved source collection and search headlines or publishers.
 
-Unknown dates stay visibly unknown. Repeated checks do not make an old story look newly published. The collector reads your configured feeds; it cannot promise every story from every website. Source failures and monitor history are available in Automations.
+Unknown dates stay visibly unknown. Repeated checks do not make an old story look newly published. Website sources include a private desktop screenshot: open **View desktop capture** to compare the page with the extracted news. Login-protected, blocked, or script-only pages need a manual check.
+
+The collector reads your configured sources; it cannot promise every story from every website. Source failures and monitor history are available in Automations.
 
 **Sourcing matters twice:** verify the report before writing, then compare the final text and image against that evidence before release. A second publisher repeating the same wire report is not independent corroboration. A publicly visible image is not automatically available to reuse.
 

@@ -74,6 +74,7 @@ import { processBoardTaskExecution, type BoardTaskExecutionJob } from "./board-t
 import { CredentialRefreshError, processCredentialRefreshJob } from "./credential-refresh-worker.js";
 import { processProviderDataDeletion } from "./provider-data-deletion-worker.js";
 import { processProviderGrantValidation, type ProviderGrantValidationJob } from "./provider-grant-validation-worker.js";
+import { configuredWebsiteProvider } from "./website-sourcing.js";
 import { selectMonitorSourcingProvider } from "./monitor-sourcing.js";
 
 interface PublishJob { workspaceId: string; contentItemId: string; targetId: string }
@@ -1285,7 +1286,7 @@ const monitorWorker = new Worker<MonitorJob>(
     }
 
     try {
-      const monitorSourcing = selectMonitorSourcingProvider(monitor, sourcing, lumaMumbaiSourcing);
+      const monitorSourcing = selectMonitorSourcingProvider(monitor, sourcing, lumaMumbaiSourcing, configuredWebsiteProvider(monitor.sourceIntelligence?.sources.filter(s => s.enabled && s.kind === "publisher_site") ?? [], monitor.workspaceId, monitor.brandId));
       const result = await monitorSourcing.research({
         sessionKey: `originpost-monitor:${monitor.workspaceId}:${monitor.id}`,
         query: monitor.query,

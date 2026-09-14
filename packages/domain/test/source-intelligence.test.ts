@@ -60,8 +60,9 @@ describe("source intelligence", () => {
     expect(afterThirdRun.signals[0]).toMatchObject({ state: "saved", occurrenceCount: 3, contentItemId: created.item.id });
   });
 
-  it("keeps broad pages off and permits the exact public Luma Mumbai source without guest data", () => {
-    expect(() => prepareSourceIntelligenceConfig({ sources: [{ label: "Website", url: "https://example.com", kind: "publisher_site", enabled: true }] })).toThrow(/official adapter/i);
+  it("permits browser-backed publisher pages while keeping social profiles off", () => {
+    expect(prepareSourceIntelligenceConfig({ sources: [{ label: "Website", url: "https://example.com", kind: "publisher_site", enabled: true }] }).sources[0]?.enabled).toBe(true);
+    expect(() => prepareSourceIntelligenceConfig({ sources: [{ label: "Profile", url: "https://example.com", kind: "public_profile", enabled: true }] })).toThrow(/official adapter/i);
     const config = prepareSourceIntelligenceConfig({ sources: [{ label: "Luma Mumbai", url: "https://luma.com/mumbai", kind: "luma_city", priority: "primary", enabled: true }] });
     expect(config.sources[0]).toMatchObject({ kind: "luma_city", priority: "primary" });
     expect(sourceIntelligenceResearchContext(config)).toContain("Never collect attendee or guest-list identities");

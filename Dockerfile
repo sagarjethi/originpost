@@ -24,7 +24,13 @@ RUN apk add --no-cache ffmpeg font-noto font-noto-gujarati font-noto-devanagari
 EXPOSE 4000
 CMD ["node", "apps/api/dist/main.js"]
 
-FROM build AS worker
+FROM node:24-bookworm-slim AS worker
+RUN corepack enable
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx --yes playwright@1.63.0 install --with-deps chromium && chmod -R a+rX /ms-playwright
+WORKDIR /app
+COPY --from=build /app /app
+USER node
 CMD ["node", "apps/worker/dist/worker.js"]
 
 FROM build AS web

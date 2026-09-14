@@ -9,7 +9,7 @@ type SignalState = "new" | "saving" | "saved" | "dismissed";
 type Signal = {
   id: string; version: number; state: SignalState; urgency: "low" | "normal" | "high"; score: number; rankReasons: string[];
   title: string; summary: string; occurrenceCount: number; firstSeenAt: string; lastSeenAt: string; publishedAt?: string; contentItemId?: string;
-  sources: Array<{ id: string; title: string; url?: string; publisher?: string; publishedAt?: string; rights?: string }>;
+  sources: Array<{ id: string; title: string; url?: string; publisher?: string; publishedAt?: string; rights?: string; snapshot?: { capturedAt: string; pageUrl: string } }>;
 };
 type Summary = { new: number; saving: number; saved: number; dismissed: number; highUrgency: number };
 type MonitorStatus = { health?: string; lastRun?: {reason?: string; error?: string}; monitor: { id: string; name: string; enabled: boolean; sourceIntelligence?: { sources?: Array<{ kind?: string; url?: string }> } } };
@@ -39,6 +39,10 @@ export function SourceSignalDesk({ auth, workspaceId, brandId, onOpenContent }: 
   const [monitors, setMonitors] = useState<MonitorStatus[]>([]);
   const [feedName, setFeedName] = useState("");
   const [feedUrls, setFeedUrls] = useState("");
+  const [sourceKind, setSourceKind] = useState("rss_atom");
+  const screenshotRef = useRef<HTMLElement>(null);
+  const [sourceScreenshot, setSourceScreenshot] = useState<{ workspaceId: string; brandId: string; url: string; pageUrl: string; capturedAt: string; resourceFailures?: number } | null>(null);
+  useEffect(() => { if (sourceScreenshot) screenshotRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [sourceScreenshot]);
   const [intervalMinutes, setIntervalMinutes] = useState("120");
   const [feedBusy, setFeedBusy] = useState(false);
   const loadSequence = useRef(0);
@@ -135,8 +139,8 @@ export function SourceSignalDesk({ auth, workspaceId, brandId, onOpenContent }: 
     event.preventDefault(); setFeedBusy(true); setError(""); setNotice("");
     try {
       const urls = [...new Set(feedUrls.split(/\n/).map(value => value.trim()).filter(Boolean))];
-      if (!urls.length || urls.length > 20) throw new Error("Add 1–20 RSS or Atom feed URLs, one per line.");
-      const sources = urls.map((url) => ({ label: new URL(url).hostname, url, kind: "rss_atom", priority: "trusted", enabled: true }));
+      if (!urls.length || urls.length > 20) throw new Error("Add 1–20 public source URLs, one per line.");
+      const sources = urls.map((url) => ({ label: new URL(url).hostname, url, kind: sourceKind, priority: "trusted", enabled: true }));
       const response = await apiFetch("/v1/monitors", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ workspaceId, brandId, name: feedName, query: `Latest updates from ${feedName}`, intervalMinutes: Number(intervalMinutes), depth: "standard", languages: ["English"], sourceLimit: 20, freshnessHours: 24, enabled: true, sourceIntelligence: {mode:"tracked_sources", sources, includeTerms:[], excludeTerms:[], minimumScore: 35} }) }, auth.csrfToken);
       const body = await response.json();
       if (!response.ok) throw new Error(messageFrom(body,"Could not save the source collection."));
@@ -149,20 +153,38 @@ export function SourceSignalDesk({ auth, workspaceId, brandId, onOpenContent }: 
     finally { setFeedBusy(false); }
   }
 
+  async function openScreenshot(signalId: string, sourceId: string) {
+    setError("");
+    try {
+      const response = await apiFetch(`/v1/signals/${signalId}/sources/${sourceId}/screenshot?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }, auth.csrfToken);
+      const body = await response.json();
+      if (!response.ok) throw new Error(messageFrom(body, "Could not open the source screenshot."));
+      setSourceScreenshot({ url: body.url, ...body.snapshot, workspaceId, brandId });
+    } catch (error) { setError(error instanceof Error ? error.message : "Source screenshot unavailable."); }
+  }
+
   return <section className={styles.page}>
     <header className={styles.hero}>
-      <div><p>NEWS & SOURCE DESK</p><h1>Your daily news, with the sources attached.</h1><span>Collect updates from your chosen feeds. Check facts and image rights before making a post.</span></div>
+      <div><p>NEWS & SOURCE DESK</p><h1>Your daily news, with the sources attached.</h1><span>Collect updates from your chosen feeds and public publisher pages. Check facts and image rights before making a post.</span></div>
       <button onClick={() => void load()} disabled={loading}><RefreshCw size={16} className={loading ? styles.spin : ""} /> Refresh</button>
     </header>
 
+    {sourceScreenshot && sourceScreenshot.workspaceId === workspaceId && sourceScreenshot.brandId === brandId && <section ref={screenshotRef} className={`${styles.feedSetup} ${styles.capture}`} aria-label="Publisher desktop screenshot">
+      <button onClick={() => setSourceScreenshot(null)}>Close capture</button>
+      <p>Source page captured {shortTime(sourceScreenshot.capturedAt)} · Research evidence only. This does not grant image reuse rights.</p>
+      {Boolean(sourceScreenshot.resourceFailures) && <p>Some page images or styling could not load. Compare this capture with the original page.</p>}
+      <a href={sourceScreenshot.pageUrl} target="_blank" rel="noreferrer">Open the captured page</a>
+      <img src={sourceScreenshot.url} alt="Desktop capture of the publisher page" style={{ maxWidth: "100%", height: "auto" }} onError={() => setError("The capture link expired or is unavailable. Close it and open the capture again.")} />
+    </section>}
     <details className={styles.feedSetup}>
       <summary>Add news sources</summary>
-      <p>Create a section such as Gujarat, India, Business, or Science. Use publisher-provided RSS/Atom URLs you have permission to aggregate.</p>
+      <p>Create a section such as Gujarat, India, Business, or Science. Use publisher feeds or public newsroom pages you have permission to collect.</p>
       <form onSubmit={event => void addFeedCollection(event)}>
         <label>Section name<input required minLength={2} maxLength={120} value={feedName} onChange={event => setFeedName(event.target.value)} placeholder="Gujarat news" /></label>
-        <label>Feed URLs · one per line<textarea required rows={4} value={feedUrls} onChange={event => setFeedUrls(event.target.value)} placeholder="https://publisher.example/feed.xml" /></label>
+        <label>Source type<select value={sourceKind} onChange={event => setSourceKind(event.target.value)}><option value="rss_atom">RSS / Atom feeds</option><option value="publisher_site">Publisher websites · desktop screenshots</option></select></label>
+        <label>{sourceKind === "rss_atom" ? "Feed URLs" : "Publisher page URLs"} · one per line<textarea required rows={4} value={feedUrls} onChange={event => setFeedUrls(event.target.value)} placeholder={sourceKind === "rss_atom" ? "https://publisher.example/feed.xml" : "https://publisher.example/news"} /></label>
         <label>Check for updates<select value={intervalMinutes} onChange={event => setIntervalMinutes(event.target.value)}><option value="10">Every 10 minutes</option><option value="30">Every 30 minutes</option><option value="120">Every 2 hours</option><option value="1440">Daily</option></select></label>
-        <p>Reads feed entries from the last 24 hours, plus entries with unknown dates. Website pages are not feed URLs. View failures and pause sources in <a href="/automations">Automations</a>.</p>
+        <p>Collects the last 24 hours plus leads with unknown dates. Website mode captures public, server-rendered text and a desktop screenshot. Login, blocked and script-only pages need a manual check. View failures and pause sources in <a href="/automations">Automations</a>.</p>
         <button disabled={feedBusy}>{feedBusy ? "Adding sources…" : "Save sources & check now"}</button>
       </form>
     </details>
@@ -198,9 +220,9 @@ export function SourceSignalDesk({ auth, workspaceId, brandId, onOpenContent }: 
         <div className={styles.score}><strong>{signal.score}</strong><small>/100</small></div>
         <div className={styles.copy}>
           <div className={styles.signalHead}><span>{signal.urgency} priority</span><time>{signal.publishedAt ? `Published ${shortTime(signal.publishedAt)}` : "Publication time unknown"}</time></div>
-          <h2>{signal.title}</h2><p>{signal.summary}</p><p className={styles.verification}>Verify before posting · Check important claims against an independent source. Feed images are not cleared for reuse.</p>
+          <h2>{signal.title}</h2><p>{signal.summary}</p><p className={styles.verification}>Verify before posting · Check important claims against an independent source. Source images and screenshots are not cleared for reuse.</p>
           <div className={styles.reasons}>{signal.rankReasons.map((reason) => <em key={reason}>{reason}</em>)}</div>
-          <div className={styles.sources}>{signal.sources.map((source) => source.url ? <a key={source.id} href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={12} /><span><strong>{source.publisher ?? source.title}</strong><small>{source.publishedAt ? shortTime(source.publishedAt) : "Publication time unavailable"} · Reference only</small></span></a> : null)}</div>
+          <div className={styles.sources}>{signal.sources.map((source) => source.url ? <div key={source.id}><a href={source.url} target="_blank" rel="noreferrer"><ExternalLink size={12} /><span><strong>{source.publisher ?? source.title}</strong><small>{source.publishedAt ? shortTime(source.publishedAt) : "Publication time unavailable"} · Reference only</small></span></a>{source.snapshot && <button onClick={() => void openScreenshot(signal.id, source.id)}>View desktop capture · {shortTime(source.snapshot.capturedAt)}</button>}</div> : null)}</div>
           <small className={styles.seen}>Seen {signal.occurrenceCount} time{signal.occurrenceCount === 1 ? "" : "s"} · first seen {shortTime(signal.firstSeenAt)}</small>
         </div>
         <div className={styles.actions}>

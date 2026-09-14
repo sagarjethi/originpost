@@ -47,6 +47,18 @@ describe("Source Signal Desk", () => {
     }, "2026-09-01T08:00:00.000Z")[0]!;
   }
 
+  it("opens only screenshots attached to an accessible source signal", async () => {
+    const signal = eventSignal("capture-run", "snapshot-example", "A public event with a page capture");
+    signal.brandId = "brand_snapshot";
+    signal.sources[0]!.snapshot = { sha256: "a".repeat(64), capturedAt: "2026-09-15T00:00:00.000Z", pageUrl: "https://luma.com/mumbai", width: 1440, height: 1000 };
+    await infrastructure.sourceSignalRepository.ingest([signal]);
+    const path = `/v1/signals/${signal.id}/sources/${signal.sources[0]!.id}/screenshot`;
+    const result = await request(app.getHttpServer()).get(path).expect(200);
+    expect(result.body).toMatchObject({ rights: "reference-only", snapshot: { width: 1440, height: 1000, sha256: "a".repeat(64) } });
+    expect(result.body.url).toContain("source-snapshots");
+    await request(app.getHttpServer()).get(`/v1/signals/${signal.id}/sources/missing/screenshot`).expect(404);
+    await request(app.getHttpServer()).get(`/v1/signals/missing/sources/${signal.sources[0]!.id}/screenshot`).expect(404);
+  });
   it("keeps the pinned Luma city preset free of attendee data", async () => {
     expect(monitor.sourceIntelligence?.sources[0]).toMatchObject({ kind: "luma_city", url: "https://luma.com/mumbai", priority: "primary" });
     expect(JSON.stringify(monitor.sourceIntelligence)).not.toMatch(/attendee|guest.list/i);
