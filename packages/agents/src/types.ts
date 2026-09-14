@@ -3,7 +3,13 @@ export interface AgentMessage {
   content: string;
 }
 
+export interface AgentImageInput {
+  dataUrl: string;
+  detail: "high";
+}
 export interface AgentRunRequest {
+  /** Only image-capable adapters may consume these bytes. Never silently discard them. */
+  imageInputs?: AgentImageInput[];
   messages: AgentMessage[];
   sessionKey: string;
   temperature?: number;

@@ -58,7 +58,7 @@ export class PostgresAgentPostRepository implements AgentPostRepository {
   async pending() {
     const rows = await this.sql<
       { payload: AgentPostRun }[]
-    >`select payload from agent_post_runs where status in ('queued','researching','writing','reviewing-copy','generating','composing','drafting') order by updated_at asc limit 100`;
+    >`select payload from agent_post_runs where status in ('queued','researching','writing','reviewing-copy','generating','composing','reviewing-image','drafting') order by updated_at asc limit 100`;
     return rows.map((r) => r.payload);
   }
   async replace(r: AgentPostRun, v: number) {

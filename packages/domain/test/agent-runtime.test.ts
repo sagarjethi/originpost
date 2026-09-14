@@ -27,4 +27,16 @@ describe("workspace AI runtimes",()=>{
     const enabled=reviseAgentRuntimeProfile(disabled.profile,{disabled:false,actor:owner,now:"2026-09-01T10:02:00.000Z"});expect(enabled.profile.status).toBe("unverified");
     const healthy=await repo.updateHealth("workspace","runtime",1,{status:"healthy",checkedAt:"2026-09-01T10:03:00.000Z"},created.event);await repo.assign({workspaceId:"workspace",brandId:"brand",profileId:"runtime",assignedBy:"owner",assignedAt:"2026-09-01T10:04:00.000Z"},created.event);expect(await repo.unassign("workspace","brand",created.event)).toBe(true);expect(await repo.getAssignment("workspace","brand")).toBeNull();expect(healthy?.status).toBe("healthy");
   });
+  it("requires a fresh test after vision changes and preserves an explicit disable", () => {
+    const created = createAgentRuntimeProfile({ workspaceId: "workspace", name: "Vision", preset: "custom", baseUrl: "https://models.example/v1", textModel: "text", visionModel: "vision", credentialConfigured: false, actor: owner });
+    const healthy = { ...created.profile, status: "healthy" as const };
+    const changed = reviseAgentRuntimeProfile(healthy, { visionModel: "next-vision", actor: owner }).profile;
+    expect(changed).toMatchObject({ visionModel: "next-vision", status: "unverified" });
+    const cleared = reviseAgentRuntimeProfile(healthy, { visionModel: "", actor: owner }).profile;
+    expect(cleared.visionModel).toBeUndefined();
+    expect(cleared.status).toBe("unverified");
+    const disabled = reviseAgentRuntimeProfile({ ...healthy, status: "disabled" }, { visionModel: "next-vision", actor: owner }).profile;
+    expect(disabled.status).toBe("disabled");
+  });
+
 });

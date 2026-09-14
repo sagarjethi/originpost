@@ -119,6 +119,49 @@ export type AgentPostCopyReview = z.infer<typeof agentPostCopyReviewSchema> & {
   model: string;
   provider: string;
 };
+export const agentPostImageReviewSchema = z
+  .object({
+    observedHeadline: z.string().max(1000),
+    observedFooter: z.string().max(500),
+    observedDisclosure: z.string().max(200),
+    checks: z
+      .array(
+        z
+          .object({
+            category: z.enum([
+              "legibility",
+              "branding",
+              "visual-integrity",
+              "disclosure",
+            ]),
+            verdict: z.enum(["pass", "needs-changes"]),
+            explanation: z.string().trim().min(1).max(1000),
+          })
+          .strict(),
+      )
+      .length(4),
+  })
+  .strict()
+  .refine(
+    (value) => new Set(value.checks.map((check) => check.category)).size === 4,
+    "Every image review category must appear exactly once.",
+  );
+export type AgentPostImageReview = z.infer<
+  typeof agentPostImageReviewSchema
+> & {
+  status: "passed" | "needs-changes";
+  image: AgentPostAsset;
+  logo: AgentPostAsset;
+  inputHash: string;
+  evidenceHash: string;
+  copyHash: string;
+  reviewedAt: string;
+  model: string;
+  provider: string;
+  textMatches: { headline: boolean; footer: boolean; disclosure: boolean };
+};
+export const normalizeImageReviewText = (text: string) =>
+  text.normalize("NFC").replace(/\s+/gu, " ").trim();
 export const agentPostStages = [
   "queued",
   "researching",
@@ -127,6 +170,7 @@ export const agentPostStages = [
   "generating",
   "awaiting-image",
   "composing",
+  "reviewing-image",
   "drafting",
   "ready",
   "blocked",
@@ -164,6 +208,7 @@ export type AgentPostRun = {
   draftId?: string;
   copy?: AgentPostCopy;
   copyReview?: AgentPostCopyReview;
+  imageReview?: AgentPostImageReview;
   evidenceHash?: string;
   error?: string;
   inFlightUntil?: string;

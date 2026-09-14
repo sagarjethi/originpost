@@ -63,6 +63,13 @@ type Run = {
     reviewedAt: string;
     checks: { category: string; verdict: string; explanation: string }[];
   };
+  imageReview?: {
+    status: "passed" | "needs-changes";
+    observedHeadline: string;
+    observedFooter: string;
+    textMatches: { headline: boolean; footer: boolean; disclosure: boolean };
+    checks: { category: string; verdict: string; explanation: string }[];
+  };
   error?: string;
 };
 type Asset = {
@@ -80,6 +87,7 @@ type Capability = {
   reason: string | null;
   research: boolean;
   text: boolean;
+  imageReview?: boolean;
   storage: string;
   image: { generation: boolean; model: string };
 };
@@ -89,6 +97,7 @@ const stages = [
   { id: "reviewing-copy", label: "Check the copy again" },
   { id: "generating", label: "Create the image" },
   { id: "composing", label: "Apply your template" },
+  { id: "reviewing-image", label: "Check the finished image" },
   { id: "drafting", label: "Prepare for review" },
 ];
 const finished = (r: Run) =>
@@ -745,7 +754,7 @@ export function NewsPostWorkspace({
                 <strong>Finish connecting your studio</strong>
                 <p>
                   {(activeImageMode === "codex-upload" && !capability?.text
-                    ? "Assign a tested text runtime for research and copy."
+                    ? "Assign tested text and vision models for writing and image checks."
                     : capability?.reason) ??
                     "The workflow API is not available on this server yet."}
                 </p>
@@ -970,6 +979,62 @@ export function NewsPostWorkspace({
                   </p>
                 </section>
               )}
+              {selectedRun.imageReview && (
+                <section
+                  className={styles.copy}
+                  aria-label="Finished image review"
+                >
+                  <h3>
+                    {selectedRun.imageReview.status === "passed"
+                      ? "Image check passed"
+                      : "Image needs changes"}
+                  </h3>
+                  <p>
+                    Text read from the pixels: headline{" "}
+                    {selectedRun.imageReview.textMatches.headline
+                      ? "matches"
+                      : "does not match"}
+                    ; footer{" "}
+                    {selectedRun.imageReview.textMatches.footer
+                      ? "matches"
+                      : "does not match"}
+                    ; illustration label{" "}
+                    {selectedRun.imageReview.textMatches.disclosure
+                      ? "matches"
+                      : "does not match"}
+                    .
+                  </p>
+                  <details>
+                    <summary>Text the reviewer could read</summary>
+                    <p>
+                      Headline:{" "}
+                      {selectedRun.imageReview.observedHeadline || "Unreadable"}
+                    </p>
+                    <p>
+                      Footer:{" "}
+                      {selectedRun.imageReview.observedFooter || "None read"}
+                    </p>
+                  </details>
+                  <ul>
+                    {selectedRun.imageReview.checks.map((check) => (
+                      <li key={check.category}>
+                        <strong>
+                          {check.category.replaceAll("-", " ")}:{" "}
+                          {check.verdict === "pass"
+                            ? "Passed"
+                            : "Needs changes"}
+                          .
+                        </strong>{" "}
+                        {check.explanation}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    AI can misread text and images. An editor must still inspect
+                    the final post and approve publication.
+                  </p>
+                </section>
+              )}
               {selectedRun.copy && (
                 <section className={styles.package}>
                   <div className={styles.image}>
@@ -1185,8 +1250,8 @@ export function NewsPostWorkspace({
                 ? "Creates a separate version from the original story. "
                 : ""}
               {activeImageMode === "codex-upload"
-                ? "Research, writing and a second copy check prepare your brief using your configured services. Generate the image in Codex, upload it here, then review the finished draft."
-                : "Each request uses research, two text passes and one paid image if the copy checks pass. Review the draft before publishing."}
+                ? "Research, writing and a second copy check prepare your brief using your configured services. Generate the image in Codex, upload it here, then an AI vision check runs before you review the finished draft."
+                : "Each request uses research, two text passes, one paid image if the copy checks pass, and a final vision check. Review the draft before publishing."}
             </p>
           </form>
         )}

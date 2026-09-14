@@ -17,6 +17,7 @@ const url = process.env.TEST_DATABASE_URL;
       "066_agent_post_runs.sql",
       "067_agent_post_external_images.sql",
       "068_agent_post_copy_review.sql",
+      "069_agent_post_image_review.sql",
     ])
       await sql.unsafe(
         await readFile(
@@ -99,6 +100,15 @@ const url = process.env.TEST_DATABASE_URL;
     };
     expect(await repo.replace(reviewing, 2)).toBe(true);
     expect((await repo.pending())[0]?.status).toBe("reviewing-copy");
+    const visual = {
+      ...reviewing,
+      status: "reviewing-image" as const,
+      version: 4,
+    };
+    expect(await repo.replace(visual, 3)).toBe(true);
+    expect((await repo.pending())[0]?.status).toBe("reviewing-image");
+    await sql`insert into agent_run_ledger (feature) values ('image_review')`;
+    await sql`delete from agent_run_ledger`;
     await sql`insert into agent_run_ledger (feature) values ('copy_review')`;
     expect((await sql`select feature from agent_run_ledger`)[0]?.feature).toBe(
       "copy_review",

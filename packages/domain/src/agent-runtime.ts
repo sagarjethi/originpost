@@ -14,6 +14,7 @@ export interface AgentRuntimeProfile {
   preset: AgentRuntimePreset;
   baseUrl: string;
   textModel: string;
+  visionModel?: string;
   credentialConfigured: boolean;
   status: AgentRuntimeStatus;
   lastCheckedAt?: string;
@@ -45,7 +46,7 @@ export interface AgentRunLedgerEntry {
   brandId: string;
   profileId: string;
   contentItemId?: string;
-  feature: "draft_assist" | "copy_review";
+  feature: "draft_assist" | "copy_review" | "image_review";
   model: string;
   status: "succeeded" | "failed";
   requestSha256: string;
@@ -95,7 +96,7 @@ export function normalizeAgentRuntimeBaseUrl(preset: AgentRuntimePreset, raw?: s
   return url.toString().replace(/\/$/u, "");
 }
 
-export function createAgentRuntimeProfile(input: { id?: string; workspaceId: string; name: string; preset: AgentRuntimePreset; baseUrl?: string; textModel: string; credentialConfigured: boolean; actor: Actor; now?: string }): { profile: AgentRuntimeProfile; event: AuditEvent } {
+export function createAgentRuntimeProfile(input: { id?: string; workspaceId: string; name: string; preset: AgentRuntimePreset; baseUrl?: string; textModel: string; visionModel?: string; credentialConfigured: boolean; actor: Actor; now?: string }): { profile: AgentRuntimeProfile; event: AuditEvent } {
   if (input.actor.actorType && input.actor.actorType !== "human" || !can(input.actor.role, "workspace:manage")) throw new DomainError("Only a workspace owner can add an AI runtime.", "permission_denied", 403);
   if ((input.preset === "openai" || input.preset === "openrouter") && !input.credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
   const now = input.now ?? new Date().toISOString();
@@ -107,6 +108,7 @@ export function createAgentRuntimeProfile(input: { id?: string; workspaceId: str
     preset: input.preset,
     baseUrl: normalizeAgentRuntimeBaseUrl(input.preset, input.baseUrl),
     textModel: clean(input.textModel, 160, "Text model"),
+    ...(input.visionModel?.trim() ? { visionModel: clean(input.visionModel, 160, "Vision model") } : {}),
     credentialConfigured: input.credentialConfigured,
     status: "unverified",
     createdBy: input.actor.id,
@@ -116,13 +118,17 @@ export function createAgentRuntimeProfile(input: { id?: string; workspaceId: str
   return { profile, event: { id: `evt_${randomUUID()}`, workspaceId: profile.workspaceId, actorId: input.actor.id, actorType: "human", action: "agent-runtime.created", detail: { profileId: profile.id, preset: profile.preset, baseUrl: profile.baseUrl, textModel: profile.textModel, credentialConfigured: profile.credentialConfigured }, createdAt: now } };
 }
 
-export function reviseAgentRuntimeProfile(current: AgentRuntimeProfile, input: { name?: string; baseUrl?: string; textModel?: string; credentialConfigured?: boolean; disabled?: boolean; actor: Actor; now?: string }): { profile: AgentRuntimeProfile; event: AuditEvent } {
+export function reviseAgentRuntimeProfile(current: AgentRuntimeProfile, input: { name?: string; baseUrl?: string; textModel?: string; visionModel?: string; credentialConfigured?: boolean; disabled?: boolean; actor: Actor; now?: string }): { profile: AgentRuntimeProfile; event: AuditEvent } {
   if (input.actor.actorType && input.actor.actorType !== "human" || !can(input.actor.role, "workspace:manage")) throw new DomainError("Only a workspace owner can change an AI runtime.", "permission_denied", 403);
   const now = input.now ?? new Date().toISOString();
   const credentialConfigured = input.credentialConfigured ?? current.credentialConfigured;
   if ((current.preset === "openai" || current.preset === "openrouter") && !credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
-  const changedConnection = input.baseUrl !== undefined || input.textModel !== undefined || input.credentialConfigured !== undefined;
-  const profile: AgentRuntimeProfile = { ...current, version: current.version + 1, name: input.name === undefined ? current.name : clean(input.name, 100, "Runtime name"), baseUrl: input.baseUrl === undefined ? current.baseUrl : normalizeAgentRuntimeBaseUrl(current.preset, input.baseUrl), textModel: input.textModel === undefined ? current.textModel : clean(input.textModel, 160, "Text model"), credentialConfigured, status: input.disabled === true ? "disabled" : input.disabled === false || changedConnection ? "unverified" : current.status, updatedAt: now };
+  const changedConnection = input.baseUrl !== undefined || input.textModel !== undefined || input.visionModel !== undefined || input.credentialConfigured !== undefined;
+  const profile: AgentRuntimeProfile = { ...current, version: current.version + 1, name: input.name === undefined ? current.name : clean(input.name, 100, "Runtime name"), baseUrl: input.baseUrl === undefined ? current.baseUrl : normalizeAgentRuntimeBaseUrl(current.preset, input.baseUrl), textModel: input.textModel === undefined ? current.textModel : clean(input.textModel, 160, "Text model"), credentialConfigured, status: input.disabled === true ? "disabled" : input.disabled === false ? "unverified" : current.status === "disabled" ? "disabled" : changedConnection ? "unverified" : current.status, updatedAt: now };
+  if (input.visionModel !== undefined) {
+    if (input.visionModel.trim()) profile.visionModel = clean(input.visionModel, 160, "Vision model");
+    else delete profile.visionModel;
+  }
   if (profile.status !== "error") delete profile.lastError;
   return { profile, event: { id: `evt_${randomUUID()}`, workspaceId: profile.workspaceId, actorId: input.actor.id, actorType: "human", action: "agent-runtime.updated", detail: { profileId: profile.id, version: profile.version, status: profile.status, credentialChanged: input.credentialConfigured !== undefined }, createdAt: now } };
 }

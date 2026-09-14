@@ -234,6 +234,19 @@ export class AgentPostPublishingService {
         "media_scope_mismatch",
         409,
       );
+    if (
+      run.imageReview &&
+      (run.imageReview.status !== "passed" ||
+        run.imageReview.image.mediaId !== asset.id ||
+        run.imageReview.image.sha256 !== asset.sha256 ||
+        run.imageReview.copyHash !== hash(run.copy) ||
+        run.imageReview.evidenceHash !== run.evidenceHash)
+    )
+      throw new DomainError(
+        "The image review no longer matches this post. Create and review a corrected version.",
+        "image_review_changed",
+        409,
+      );
     const settings = candidate?.settings;
     const media = await this.content.validatePlatformDraft(
       w,

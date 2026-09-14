@@ -520,3 +520,7 @@ New post runs perform a second text-only review in a fresh runtime session befor
 ### Chat publishing checkpoint
 
 Finished agent posts expose a bounded `@Publisher` action. An editor can approve the exact draft and native Instagram AI label within chat, prepare a version-bound account/time preview, and submit it through the existing content scheduler and outbox. Duplicate retries return the same target. This does not implement general participant mentions, independent image-pixel verification or a verified live social publication. No approval is inferred from prose or from the text reviewer.
+
+### Pixel review checkpoint
+
+New runs now inspect the finished image through a configured, sample-tested vision model before drafting. The reviewer receives actual card/logo bytes and frozen source evidence; exact expected headline/footer strings are withheld from its transcription prompt. Stored text comparisons and four visual checks gate progress. Runtime profiles, usage records and the `reviewing-image` stage persist this contract. Human publication approval remains separate. A live model acceptance run, general agent mentions and platform adaptations remain outstanding.

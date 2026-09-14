@@ -70,3 +70,13 @@ The publishing service reads the original run's exact draft, rendered asset, cur
 The target ID is stable per run/draft/account. Retrying an identical request returns the existing target; choosing a different time for that same request requires the existing content/scheduling workflow. Concurrent requests cannot create two targets or outbox deliveries. Status polling reads Content's targets. Queued means requested, not published; the full content receipt retains the provider outcome and proof.
 
 The generated package currently supplies an Instagram image or Story draft. The general content editor remains the route for Facebook adaptations, video creation and YouTube-specific review. Arbitrary natural-language tags, automated pixel-level review and a live-provider end-to-end acceptance run remain incomplete.
+
+## Finished-image review
+
+New post creation requires a healthy assigned runtime with a `visionModel`. Its connection test sends a small generated color sample and verifies the response; a model-list response alone does not enable image review. The sample is a transport/capability check, not a measure of editorial accuracy. Configuring or changing the vision model requires a new test. This can use a different model from the text writer on the same provider endpoint.
+
+After composition, `reviewing-image` reads the exact stored card bytes and the approved original logo, checking scope, rights, inspection and hashes before sending PNG/JPEG data URLs to the configured model. The logo reference uses the selected board crop. The expected headline and footer are withheld from the transcription prompt. Reported text is compared with the saved strings after NFC/whitespace normalization; numbers and punctuation are retained. Legibility, branding, visual integrity and disclosure must all pass, along with the exact-text comparison. A mismatch or incomplete response blocks drafting, preserves the rendered card and displays findings. An uncertain paid call is not automatically repeated.
+
+Receipts retain the card/logo identifiers and hashes, input/evidence/copy hashes, transcribed text, checks, model/provider and time. Image bytes do not enter the runtime usage ledger. Chat publishing checks that a stored image-review receipt still matches the current asset and copy. Existing runs already past composition are not retroactively marked reviewed.
+
+This automated check can be wrong, especially for small or non-Latin text. It cannot establish event authenticity or image-use rights and never creates a human approval. Local live acceptance still requires configured providers. See [the image-review integration notes](research/2026-09-15-image-review.md).

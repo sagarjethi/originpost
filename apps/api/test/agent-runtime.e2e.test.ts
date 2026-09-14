@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ConfigService } from "@nestjs/config";
 import request from "supertest";
+import sharp from "sharp";
 import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
@@ -39,4 +40,40 @@ describe("workspace AI runtime",()=>{
     await request(app.getHttpServer()).delete(`/v1/agent-runtimes/${before.body.profiles[0].id}?workspaceId=default`).set("If-Match",String(before.body.profiles[0].version)).expect(409).expect(({body})=>expect(body.message).toContain("usage history"));
     expect(after.body.assignment).toBeNull();expect(after.body.serverHermes).toMatchObject({fallbackOnlyWhenUnassigned:true});
   });
+  it("tests image pixels before enabling vision and records image-review usage separately", async () => {
+    let wrongAnswer = false;
+    let sampleImage = "";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "text-fixture" }, { id: "vision-fixture" }] }), { status: 200 });
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe("vision-fixture");
+      const image = body.messages.at(-1).content.find((part: { type: string }) => part.type === "image_url");
+      sampleImage = image.image_url.url;
+      const { data, info } = await sharp(Buffer.from(sampleImage.split(",")[1]!, "base64")).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      const names: Record<string,string> = { "255,0,0": "red", "0,0,255": "blue", "0,128,0": "green", "255,255,0": "yellow", "0,0,0": "black", "255,255,255": "white" };
+      const colors = [80,240,400].map(x => { const offset = (80 * info.width + x) * info.channels; return names[[data[offset],data[offset+1],data[offset+2]].join(",")]; });
+      return new Response(JSON.stringify({ model: "vision-fixture", choices: [{ message: { content: JSON.stringify({ colors: wrongAnswer ? ["red","red","red"] : colors }) } }], usage: { prompt_tokens: 50, completion_tokens: 10 } }), { status: 200 });
+    }));
+    const created = await request(app.getHttpServer()).post("/v1/agent-runtimes").send({ workspaceId: "default", name: "Visual reviewer", preset: "openrouter", textModel: "text-fixture", visionModel: "vision-fixture", apiKey: "vision-test-key" }).expect(201);
+    expect(created.body).toMatchObject({ status: "unverified", visionModel: "vision-fixture" });
+    const tested = await request(app.getHttpServer()).post(`/v1/agent-runtimes/${created.body.id}/test`).expect(201);
+    expect(tested.body).toMatchObject({ ok: true, profile: { status: "healthy" } });
+    await request(app.getHttpServer()).post(`/v1/agent-runtimes/${created.body.id}/assign`).send({ workspaceId: "default", brandId: "brand_default" }).expect(201);
+    const service = app.get(AgentRuntimeService);
+    expect(await service.imageReviewCapability("default", "brand_default")).toBe(true);
+    const item = await request(app.getHttpServer()).post("/v1/content-items").send({ workspaceId: "default", brandId: "brand_default", title: "Vision review test" }).expect(201);
+    await service.runImageReview({ workspaceId: "default", brandId: "brand_default", contentItemId: item.body.id, actor: { id: "runtime-owner", name: "Runtime Owner", role: "owner" }, messages: [{ role: "user", content: "Read the sample" }], imageInputs: [{ dataUrl: sampleImage, detail: "high" }] });
+    const ledger = await request(app.getHttpServer()).get("/v1/agent-runtimes?workspaceId=default&brandId=brand_default").expect(200);
+    expect(ledger.body.runs[0]).toMatchObject({ feature: "image_review", model: "vision-fixture", status: "succeeded" });
+    expect(JSON.stringify(ledger.body.runs)).not.toContain("data:image/");
+    wrongAnswer = true;
+    const failed = await request(app.getHttpServer()).post(`/v1/agent-runtimes/${created.body.id}/test`).expect(201);
+    expect(failed.body).toMatchObject({ ok: false, profile: { status: "error" } });
+    expect(await service.imageReviewCapability("default", "brand_default")).toBe(false);
+    await request(app.getHttpServer()).patch(`/v1/agent-runtimes/${created.body.id}?workspaceId=default`).set("If-Match", String(failed.body.profile.version)).send({ visionModel: null }).expect(400);
+    const removedVision = await request(app.getHttpServer()).patch(`/v1/agent-runtimes/${created.body.id}?workspaceId=default`).set("If-Match", String(failed.body.profile.version)).send({ visionModel: "" }).expect(200);
+    expect(removedVision.body.visionModel).toBeUndefined();
+    expect(removedVision.body.status).toBe("unverified");
+  });
+
 });

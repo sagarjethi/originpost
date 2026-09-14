@@ -41,4 +41,58 @@ describe("separate reviewer session", () => {
     );
     expect(requests[1]![0].messages).toEqual(input.messages);
   });
+  it("does not send image review to a text-only Hermes fallback", async () => {
+    const run = vi.fn();
+    const infrastructure = {
+      agentRuntimeRepository: { getAssignment: async () => null },
+      hermes: { run },
+    } as unknown as OriginPostInfrastructure;
+    const service = new AgentRuntimeService(
+      infrastructure,
+      new ConfigService(),
+    );
+    await expect(
+      service.runImageReview({
+        workspaceId: "w",
+        brandId: "b",
+        contentItemId: "c",
+        actor: { id: "owner", name: "Owner", role: "owner" },
+        messages: [{ role: "user", content: "Inspect" }],
+        imageInputs: [
+          { dataUrl: "data:image/png;base64,aW1hZ2U=", detail: "high" },
+        ],
+      }),
+    ).rejects.toThrow(/tested vision model/);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it("refuses a runtime changed between assignment lookup and execution", async () => {
+    const infrastructure = {
+      agentRuntimeRepository: {
+        getAssignment: async () => ({ profileId: "profile" }),
+        getExecutionContext: async () => ({
+          profile: { id: "profile", version: 2, visionModel: "vision" },
+        }),
+        getProfileExecutionContext: async () => ({
+          profile: { id: "profile", version: 3 },
+          credential: null,
+        }),
+      },
+    } as unknown as OriginPostInfrastructure;
+    const service = new AgentRuntimeService(
+      infrastructure,
+      new ConfigService(),
+    );
+    await expect(
+      service.runImageReview({
+        workspaceId: "w",
+        brandId: "b",
+        contentItemId: "c",
+        actor: { id: "owner", name: "Owner", role: "owner" },
+        messages: [{ role: "user", content: "Inspect" }],
+        imageInputs: [
+          { dataUrl: "data:image/png;base64,aW1hZ2U=", detail: "high" },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "version_conflict" });
+  });
 });

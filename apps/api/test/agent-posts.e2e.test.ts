@@ -15,6 +15,7 @@ import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { INFRASTRUCTURE } from "../src/common/tokens.js";
 import type { OriginPostInfrastructure } from "../src/infrastructure/infrastructure.types.js";
+import { AgentPostImageReviewService } from "../src/agent-posts/agent-post-image-review.service.js";
 import { AgentPostPublishingService } from "../src/agent-posts/agent-post-publishing.service.js";
 import { AgentPostsService } from "../src/agent-posts/agent-posts.service.js";
 import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
@@ -59,6 +60,22 @@ describe("news post workflow with external providers substituted", () => {
       ),
     }),
   }));
+  const vision = vi.fn(async () => ({
+    provider: "test-vision",
+    model: "test-vision-model",
+    text: JSON.stringify({
+      observedHeadline: "New public library opens",
+      observedFooter: "City news",
+      observedDisclosure: "AI illustration",
+      checks: ["legibility", "branding", "visual-integrity", "disclosure"].map(
+        (category) => ({
+          category,
+          verdict: "pass",
+          explanation: "Fixture visual check passed.",
+        }),
+      ),
+    }),
+  }));
   beforeAll(async () => {
     Object.assign(process.env, {
       NODE_ENV: "test",
@@ -82,7 +99,12 @@ describe("news post workflow with external providers substituted", () => {
         generate,
       })
       .overrideProvider(AgentRuntimeService)
-      .useValue({ runDraft: text, runCopyReview: review })
+      .useValue({
+        runDraft: text,
+        runCopyReview: review,
+        runImageReview: vision,
+        imageReviewCapability: async () => true,
+      })
       .compile();
     app = fixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter({ logger: false }),
@@ -215,6 +237,10 @@ describe("news post workflow with external providers substituted", () => {
       run = await advance(run.id);
     expect(run, JSON.stringify(run)).toMatchObject({
       status: "ready",
+      imageReview: {
+        status: "passed",
+        textMatches: { headline: true, footer: true, disclosure: true },
+      },
       outputMediaId: expect.any(String),
       draftId: expect.any(String),
       copyReview: {
@@ -850,5 +876,110 @@ describe("news post workflow with external providers substituted", () => {
     expect(context.writingSkills[0]).toContain("everyday language");
     expect(context.styleExampleOnly).toContain("specific opening");
     expect(context.exampleRule).toContain("Never copy its facts");
+  });
+  it("sends the actual card and logo pixels without the expected headline or footer in its OCR prompt", async () => {
+    const call = vision.mock.calls[0] as unknown as [
+      { imageInputs: { dataUrl: string }[]; messages: { content: string }[] },
+    ];
+    expect(call[0].imageInputs).toHaveLength(2);
+    const pixelBytes = Buffer.from(
+      call[0].imageInputs[0]!.dataUrl.split(",")[1]!,
+      "base64",
+    );
+    const run = (await infrastructure.agentPostRepository.get(
+      "default",
+      publishRunId,
+    ))!;
+    expect(createHash("sha256").update(pixelBytes).digest("hex")).toBe(
+      run.imageReview!.image.sha256,
+    );
+    expect(
+      call[0].messages.map((message) => message.content).join(" "),
+    ).not.toContain(run.copy!.headline);
+    expect(
+      call[0].messages.map((message) => message.content).join(" "),
+    ).not.toContain(run.template.footer);
+    expect(run.imageReview!.logo).toEqual(run.template.logo);
+  });
+  it("keeps the rendered image and blocks a mismatched OCR result before making a draft", async () => {
+    const started = await start("image-text-mismatch");
+    await research(started.body.id);
+    let run = await advance(started.body.id);
+    for (let i = 0; i < 10 && run.status !== "reviewing-image"; i++)
+      run = await advance(run.id);
+    expect(run.status).toBe("reviewing-image");
+    vision.mockResolvedValueOnce({
+      provider: "test-vision",
+      model: "test-vision-model",
+      text: JSON.stringify({
+        observedHeadline: "100 libraries opened",
+        observedFooter: "City news",
+        observedDisclosure: "AI illustration",
+        checks: [
+          "legibility",
+          "branding",
+          "visual-integrity",
+          "disclosure",
+        ].map((category) => ({
+          category,
+          verdict: "pass",
+          explanation: "Even apparent passes cannot override incorrect text.",
+        })),
+      }),
+    });
+    run = await advance(run.id);
+    expect(run.status).toBe("blocked");
+    expect(run.outputMediaId).toBeTruthy();
+    expect(run.imageReview).toMatchObject({
+      status: "needs-changes",
+      textMatches: { headline: false },
+    });
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    expect(item.drafts).toHaveLength(0);
+    expect(item.approvals).toHaveLength(0);
+    expect((await advance(run.id)).version).toBe(run.version);
+  });
+  it("rejects changed stored image bytes before invoking the vision provider", async () => {
+    const run = (await infrastructure.agentPostRepository.get(
+      "default",
+      publishRunId,
+    ))!;
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    const asset = (await infrastructure.mediaRepository.get(
+      "default",
+      run.outputMediaId!,
+    ))!;
+    const read = infrastructure.mediaObjectStore.read.bind(
+      infrastructure.mediaObjectStore,
+    );
+    const before = vision.mock.calls.length;
+    const spy = vi
+      .spyOn(infrastructure.mediaObjectStore, "read")
+      .mockImplementation(async (key) => {
+        const result = await read(key);
+        return key === asset.objectKey
+          ? { ...result, body: Buffer.from("changed bytes") }
+          : result;
+      });
+    try {
+      await expect(
+        app
+          .get(AgentPostImageReviewService)
+          .review(run, item, {
+            id: "post-owner",
+            name: "Owner",
+            role: "owner",
+          }),
+      ).rejects.toMatchObject({ code: "image_changed" });
+      expect(vision.mock.calls.length).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

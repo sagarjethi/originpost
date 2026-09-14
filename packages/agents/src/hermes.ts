@@ -38,6 +38,7 @@ export class HermesAgentProvider implements AgentProvider {
   }
 
   async run(request: AgentRunRequest): Promise<AgentRunResult> {
+    if (request.imageInputs) throw new Error("This Hermes transport has not established image-input support.");
     const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
       method: "POST",
       headers: this.headers(request.sessionKey),

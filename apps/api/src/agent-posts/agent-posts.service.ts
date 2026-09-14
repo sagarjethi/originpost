@@ -27,6 +27,7 @@ import { boundedObjectBytes } from "../creative-studio/creative-renderer.js";
 import { ContentService } from "../content/content.service.js";
 import { ImageGenerationService } from "../image-generation/image-generation.service.js";
 import { CreativeStudioService } from "../creative-studio/creative-studio.service.js";
+import { AgentPostImageReviewService } from "./agent-post-image-review.service.js";
 import { AgentRuntimeService } from "../agent-runtimes/agent-runtime.service.js";
 import type {
   AgentPostTemplateDto,
@@ -55,6 +56,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     private readonly creative: CreativeStudioService,
     private readonly runtimes: AgentRuntimeService,
     private readonly config: ConfigService,
+    private readonly imageReviewer: AgentPostImageReviewService,
   ) {}
   onModuleInit() {
     this.timer = setInterval(() => void this.tick(), 3000);
@@ -173,12 +175,16 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
           ),
         )
       : Boolean(this.infrastructure.hermes);
+    const imageReview = await this.runtimes.imageReviewCapability(w, b);
     return {
-      codexUpload: Boolean(this.infrastructure.researchQueue) && textReady,
+      imageReview,
+      codexUpload:
+        Boolean(this.infrastructure.researchQueue) && textReady && imageReview,
       available:
         Boolean(this.infrastructure.researchQueue) &&
         image.generation &&
-        textReady,
+        textReady &&
+        imageReview,
       research: Boolean(this.infrastructure.researchQueue),
       image,
       text: textReady,
@@ -189,7 +195,9 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
           ? image.reason
           : !textReady
             ? "Assign a tested text runtime to this brand."
-            : null,
+            : !imageReview
+              ? "Configure and test a vision model for image review."
+              : null,
     };
   }
   async list(w: string, b: string, actor: Actor) {
@@ -267,7 +275,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     )
       throw new DomainError(
         dto.imageMode === "codex-upload"
-          ? "Connect the research queue and a tested text runtime."
+          ? "Connect the research queue and tested text and vision models."
           : (capability.reason ?? "Post creation is not configured."),
         "agent_setup_required",
         503,
@@ -913,6 +921,17 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       }
       if (project.project.status !== "ready" || !project.outputAsset) return;
       run.outputMediaId = project.outputAsset.id;
+      run.status = "reviewing-image";
+      return;
+    }
+    if (run.status === "reviewing-image") {
+      run.imageReview = await this.imageReviewer.review(run, item, actor);
+      if (run.imageReview.status !== "passed")
+        throw new DomainError(
+          "The image check found issues. Review its findings and request a corrected version before publication.",
+          "image_review_required",
+          409,
+        );
       run.status = "drafting";
       return;
     }
