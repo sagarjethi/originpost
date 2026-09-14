@@ -1,0 +1,94 @@
+import postgres from "postgres";
+import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PostgresAgentPostRepository } from "../src/postgres-agent-post-repository.js";
+import type { AgentPostRun } from "@originpost/domain";
+const url = process.env.TEST_DATABASE_URL;
+(url ? describe : describe.skip)("durable external image handoff", () => {
+  const sql = postgres(url!, { max: 1 });
+  const schema = `post_test_${randomUUID().replaceAll("-", "")}`;
+  const repo = new PostgresAgentPostRepository(sql);
+  beforeAll(async () => {
+    await sql.unsafe(`create schema ${schema}`);
+    await sql.unsafe(`set search_path to ${schema}`);
+    for (const name of [
+      "066_agent_post_runs.sql",
+      "067_agent_post_external_images.sql",
+    ])
+      await sql.unsafe(
+        await readFile(
+          new URL(`../migrations/${name}`, import.meta.url),
+          "utf8",
+        ),
+      );
+  });
+  afterAll(async () => {
+    await sql.unsafe(`drop schema if exists ${schema} cascade`);
+    await sql.end();
+  });
+  it("persists waiting state, excludes it from polling and allows exactly one versioned continuation", async () => {
+    const now = new Date().toISOString();
+    const run: AgentPostRun = {
+      id: "post",
+      workspaceId: "w",
+      brandId: "b",
+      version: 1,
+      status: "awaiting-image",
+      imageMode: "codex-upload",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "editor",
+      fingerprint: "request",
+      input: "Verified library story",
+      contentItemId: "content",
+      template: {
+        id: "template",
+        workspaceId: "w",
+        brandId: "b",
+        createdAt: now,
+        createdBy: "editor",
+        name: "News",
+        language: "English",
+        format: "portrait",
+        layout: "headline",
+        palette: ["#000000", "#000000", "#FFFFFF", "#FFFFFF", "#FFFF00"],
+        logoMediaId: "logo",
+        logo: { mediaId: "logo", sha256: "a".repeat(64) },
+        logoPosition: "top-left",
+        logoWidth: 18,
+        logoMargin: 4,
+        logoBackground: "#FFFFFF",
+        logoCrop: "full",
+        references: [],
+        referenceMediaIds: [],
+        styleInstructions: "Editorial",
+        footer: "Publisher",
+      },
+    };
+    await repo.create(run);
+    expect((await repo.get("w", "post"))?.status).toBe("awaiting-image");
+    expect(await repo.pending()).toEqual([]);
+    const next: AgentPostRun = {
+      ...run,
+      status: "generating",
+      version: 2,
+      externalImage: {
+        mediaId: "image",
+        sha256: "b".repeat(64),
+        briefHash: "c".repeat(64),
+        importedAt: now,
+        importedBy: "editor",
+      },
+    };
+    const results = await Promise.all([
+      repo.replace(next, 1),
+      repo.replace(next, 1),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect((await repo.pending()).map((r) => r.id)).toEqual(["post"]);
+    expect(await repo.referencesAsset("w", "image")).toBe(true);
+    expect(await repo.referencesAsset("other", "image")).toBe(false);
+    expect(await repo.get("other", "post")).toBeNull();
+  });
+});

@@ -47,7 +47,9 @@ Desktop capture of the local owner account. The displayed queue contains local t
 
 **Yes, Codex supports interactive image creation and image references.** OriginPost also has a server image-generation connection. They are separate execution paths.
 
-You can use a Codex-created file through the existing Library and Creative Studio workflow, keeping its provenance and AI disclosure. A direct Codex-to-OriginPost chat handoff that automatically continues a template run is still being developed; tagging Codex alone does not currently publish a post. The final post still needs a connected account and review.
+In Agent, choose **Generate in Codex & upload**. After research and writing, download the brief and open its style references. Give these to Codex, then upload the generated PNG or JPEG to the same project chat. OriginPost applies your original logo and exact headline, adds an AI label, and prepares the draft for review.
+
+The uploaded image is recorded as editor-attested AI imagery, not a verified provider receipt. Tagging Codex alone does not yet publish a post. The final post still needs a connected account and review.
 
 [Verified Codex capabilities and integration plan](docs/research/2026-09-15-codex-image-workflow.md)
 

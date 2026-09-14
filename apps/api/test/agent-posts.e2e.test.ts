@@ -17,6 +17,7 @@ import { INFRASTRUCTURE } from "../src/common/tokens.js";
 import type { OriginPostInfrastructure } from "../src/infrastructure/infrastructure.types.js";
 import { AgentPostsService } from "../src/agent-posts/agent-posts.service.js";
 import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
+import { ImageGenerationService } from "../src/image-generation/image-generation.service.js";
 import { IMAGE_GENERATION_PROVIDER } from "../src/image-generation/image-generation.provider.js";
 import { startE2eApp } from "./test-app.js";
 
@@ -222,6 +223,190 @@ describe("news post workflow with external providers substituted", () => {
     });
     expect(run.template.logoPosition).toBe("top-right");
   }, 30000);
+  it("pauses for Codex, binds the upload to its brief and resumes without an image provider call", async () => {
+    const before = generate.mock.calls.length;
+    const started = await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "codex-upload")
+      .send({
+        workspaceId: "default",
+        brandId: "brand_default",
+        templateId,
+        input: "The city council opened a public library today.",
+        imageMode: "codex-upload",
+      })
+      .expect(201);
+    await research(started.body.id);
+    let run = await advance(started.body.id);
+    run = await advance(run.id);
+    expect(run.status).toBe("awaiting-image");
+    expect(
+      (await infrastructure.agentPostRepository.pending()).map((r) => r.id),
+    ).not.toContain(run.id);
+    expect((await advance(run.id)).version).toBe(run.version);
+    const route = `/v1/agent-posts/${run.id}`;
+    const brief = await request(app.getHttpServer())
+      .get(`${route}/image-brief?brandId=brand_default`)
+      .expect(200);
+    expect(brief.body).toMatchObject({
+      evidenceHash: run.evidenceHash,
+      template: { logo: run.template.logo },
+      evidence: { claims: expect.any(Array) },
+    });
+    expect(brief.body.prompt).toContain("Do not render words");
+    await request(app.getHttpServer())
+      .get(`${route}/image-brief?brandId=missing-brand`)
+      .expect(404);
+    const upload = await request(app.getHttpServer())
+      .post("/v1/media-assets/uploads")
+      .send({
+        workspaceId: "default",
+        brandId: "brand_default",
+        kind: "image",
+        purpose: "creative",
+        fileName: "codex-image.png",
+        contentType: "image/png",
+        sizeBytes: 1,
+        sha256: createHash("sha256")
+          .update(memoryFixtureFor("image/png"))
+          .digest("hex"),
+        rights: "owned",
+        altText: "Codex illustration",
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/v1/media-assets/${upload.body.asset.id}/complete`)
+      .send({ workspaceId: "default" })
+      .expect(200);
+    const payload = {
+      workspaceId: "default",
+      brandId: "brand_default",
+      expectedVersion: run.version,
+      mediaId: upload.body.asset.id,
+      briefHash: brief.body.briefHash,
+    };
+    await request(app.getHttpServer())
+      .post(`${route}/image`)
+      .send({ ...payload, expectedVersion: run.version - 1 })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post(`${route}/image`)
+      .send({ ...payload, briefHash: "0".repeat(64) })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post(`${route}/image`)
+      .send({ ...payload, mediaId: run.template.logo.mediaId })
+      .expect(409);
+    const accepted = await request(app.getHttpServer())
+      .post(`${route}/image`)
+      .send(payload)
+      .expect(201);
+    const replay = await request(app.getHttpServer())
+      .post(`${route}/image`)
+      .send(payload)
+      .expect(201);
+    expect(replay.body.version).toBe(accepted.body.version);
+    expect(
+      await infrastructure.agentPostRepository.referencesAsset(
+        "default",
+        upload.body.asset.id,
+      ),
+    ).toBe(true);
+    expect(
+      await infrastructure.agentPostRepository.referencesAsset(
+        "other",
+        upload.body.asset.id,
+      ),
+    ).toBe(false);
+    for (let i = 0; i < 8 && run.status !== "ready"; i++)
+      run = await advance(run.id);
+    expect(run, JSON.stringify(run)).toMatchObject({
+      status: "ready",
+      outputMediaId: expect.any(String),
+    });
+    expect(generate.mock.calls.length).toBe(before);
+    const output = await infrastructure.mediaRepository.get(
+      "default",
+      run.outputMediaId!,
+    );
+    expect(output?.syntheticLineage).toMatchObject({
+      provenance: "editor-attested-codex-upload",
+      disclosureRequired: true,
+    });
+    expect(output?.syntheticLineage?.generatedAt).toBeUndefined();
+    expect(
+      (
+        await infrastructure.mediaRepository.get(
+          "default",
+          upload.body.asset.id,
+        )
+      )?.syntheticLineage,
+    ).toBeUndefined();
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    expect(item.drafts.at(-1)?.containsSyntheticMedia).toBe(true);
+    expect(item.approvals).toHaveLength(0);
+  }, 30000);
+  it("offers Codex uploads when the server image provider is disabled", async () => {
+    const images = app.get(ImageGenerationService);
+    const original = images.capability("default", {
+      id: "post-owner",
+      name: "Post Owner",
+      role: "owner",
+    });
+    const spy = vi
+      .spyOn(images, "capability")
+      .mockReturnValue({ ...original, generation: false });
+    try {
+      const capability = await request(app.getHttpServer())
+        .get("/v1/agent-posts/capability?brandId=brand_default")
+        .expect(200);
+      expect(capability.body).toMatchObject({
+        available: false,
+        codexUpload: true,
+      });
+      await request(app.getHttpServer())
+        .post("/v1/agent-posts")
+        .set("Idempotency-Key", "codex-provider-disabled")
+        .send({
+          workspaceId: "default",
+          brandId: "brand_default",
+          templateId,
+          input: "The city council opened a public library today.",
+          imageMode: "codex-upload",
+        })
+        .expect(201);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it("rejects a Codex brief after source evidence changes", async () => {
+    const started = await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "codex-evidence-change")
+      .send({
+        workspaceId: "default",
+        brandId: "brand_default",
+        templateId,
+        input: "The city council opened a public library today.",
+        imageMode: "codex-upload",
+      })
+      .expect(201);
+    await research(started.body.id);
+    await advance(started.body.id);
+    const run = await advance(started.body.id);
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    item.claims[0]!.text = "A different claim";
+    vi.spyOn(infrastructure.repository, "get").mockResolvedValueOnce(item);
+    await request(app.getHttpServer())
+      .get(`/v1/agent-posts/${run.id}/image-brief?brandId=brand_default`)
+      .expect(409);
+  });
   it("blocks disputed research before any additional image call", async () => {
     const started = await start("disputed");
     await research(started.body.id, true);

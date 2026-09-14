@@ -67,3 +67,11 @@ Exact composition remains necessary: OpenAI documents limitations in precise tex
 - Recovery tests for expired asset links, changed references/evidence, upload failure, provider timeout and duplicate publish intent.
 
 This research does not verify any live account credentials, local generation entitlement, deployed worker, or social-platform publication. Those remain runtime acceptance checks rather than documentation facts.
+
+## Implemented upload continuation (15 September 2026)
+
+Agent now accepts `imageMode: codex-upload`. It runs research and writing, then persists `awaiting-image` without polling or calling the Images API. An authorized editor downloads `GET /v1/agent-posts/:id/image-brief`, generates the image interactively in Codex, uploads through normal inspected media storage, and submits `POST /v1/agent-posts/:id/image` with `mediaId`, `briefHash`, `expectedVersion`, and brand/workspace scope. The UI exposes both actions.
+
+The brief freezes the template, copy and evidence hash, with source records included for review. Import checks the scope, evidence, brief hash, ready/cleared image and exact run version. Duplicate attachment of the same image/brief returns the existing run. The worker copies the uploaded bytes to a separately inspected AI-labelled asset; it does not relabel the original Library upload. Lineage says `editor-attested-codex-upload` and records import time without inventing a generation timestamp or provider receipt. The original logo and exact headline are composed by the existing renderer; the result is an unapproved draft.
+
+Migration `067_agent_post_external_images.sql` adds the waiting stage. Server generation remains the default. Waiting runs are not subject to the one-hour execution timeout; upload resumes a bounded execution window. This is an interactive file handoff, not a headless Codex image API or automatic @mention publishing. Real-provider generation, double editorial/visual review and connected-platform publishing still require live acceptance.

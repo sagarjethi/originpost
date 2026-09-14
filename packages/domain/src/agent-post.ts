@@ -91,6 +91,7 @@ export const agentPostStages = [
   "researching",
   "writing",
   "generating",
+  "awaiting-image",
   "composing",
   "drafting",
   "ready",
@@ -117,6 +118,13 @@ export type AgentPostRun = {
   contentItemId: string;
   researchRunId?: string;
   generationId?: string;
+  imageMode?: "server" | "codex-upload";
+  externalImage?: AgentPostAsset & {
+    importedAt: string;
+    importedBy: string;
+    briefHash: string;
+  };
+  resumedAt?: string;
   projectId?: string;
   outputMediaId?: string;
   draftId?: string;
@@ -142,10 +150,15 @@ export class InMemoryAgentPostRepository implements AgentPostRepository {
   private readonly savedTemplates = new Map<string, AgentPostTemplate>();
   private readonly runs = new Map<string, AgentPostRun>();
   async referencesAsset(w: string, id: string) {
-    return [...this.savedTemplates.values()].some(
-      (t) =>
-        t.workspaceId === w &&
-        [t.logo, ...t.references].some((a) => a.mediaId === id),
+    return (
+      [...this.runs.values()].some(
+        (r) => r.workspaceId === w && r.externalImage?.mediaId === id,
+      ) ||
+      [...this.savedTemplates.values()].some(
+        (t) =>
+          t.workspaceId === w &&
+          [t.logo, ...t.references].some((a) => a.mediaId === id),
+      )
     );
   }
   async saveTemplate(t: AgentPostTemplate) {
@@ -192,7 +205,9 @@ export class InMemoryAgentPostRepository implements AgentPostRepository {
   async pending() {
     return structuredClone(
       [...this.runs.values()]
-        .filter((r) => !postRunTerminal(r.status))
+        .filter(
+          (r) => !postRunTerminal(r.status) && r.status !== "awaiting-image",
+        )
         .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
         .slice(0, 100),
     );

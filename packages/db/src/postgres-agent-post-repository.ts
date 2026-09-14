@@ -10,7 +10,10 @@ export class PostgresAgentPostRepository implements AgentPostRepository {
   async referencesAsset(w: string, id: string) {
     const rows = await this
       .sql`select id from agent_post_templates where workspace_id=${w} and (payload->'logo'->>'mediaId'=${id} or payload->'referenceMediaIds' ? ${id}) limit 1`;
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    const runs = await this
+      .sql`select id from agent_post_runs where workspace_id=${w} and payload->'externalImage'->>'mediaId'=${id} limit 1`;
+    return runs.length > 0;
   }
   async saveTemplate(t: AgentPostTemplate) {
     await this

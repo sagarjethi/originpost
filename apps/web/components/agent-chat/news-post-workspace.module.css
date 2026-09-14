@@ -1348,20 +1348,78 @@
 
 /* Keep useful starting actions visible in a laptop-height conversation. */
 @media (min-width: 761px) and (max-height: 950px) {
-  .welcome { padding: 18px 0 12px; }
-  .agentMark, .welcome .eyebrow { display: none; }
-  .welcome h1 { font-size: 34px; }
-  .welcome > p:last-of-type { margin: 10px 0 14px; }
-  .starters button { padding: 12px; gap: 5px; }
-  .composer > textarea { min-height: 52px; }
+  .starting {
+    overflow-y: auto;
+  }
+  .starting .body {
+    flex: none;
+    overflow: visible;
+  }
+  .starting .composerDock,
+  .starting .header,
+  .starting .contextBar {
+    flex-shrink: 0;
+  }
+  .welcome {
+    padding: 18px 0 12px;
+  }
+  .agentMark,
+  .welcome .eyebrow {
+    display: none;
+  }
+  .welcome h1 {
+    font-size: 34px;
+  }
+  .welcome > p:last-of-type {
+    margin: 10px 0 14px;
+  }
+  .starters button {
+    padding: 12px;
+    gap: 5px;
+  }
+  .composer > textarea {
+    min-height: 52px;
+  }
 }
 
 @media (max-width: 760px) {
-  .starting { overflow-y: auto; }
-  .starting .body { flex: none; overflow: visible; }
-  .starting .composerDock { flex-shrink: 0; }
-  .starting .header { flex-shrink: 0; }
-  .starting .welcome { padding-top: 16px; }
-  .starting .welcome h1 { font-size: 28px; }
-  .starting .welcome > p:last-of-type { margin: 10px 0 14px; }
+  .starting {
+    overflow-y: auto;
+  }
+  .starting .body {
+    flex: none;
+    overflow: visible;
+  }
+  .starting .composerDock {
+    flex-shrink: 0;
+  }
+  .starting .header {
+    flex-shrink: 0;
+  }
+  .starting .welcome {
+    padding-top: 16px;
+  }
+  .starting .welcome h1 {
+    font-size: 28px;
+  }
+  .starting .welcome > p:last-of-type {
+    margin: 10px 0 14px;
+  }
+}
+
+.contextBar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #667085);
+}
+.contextBar select {
+  max-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
 }

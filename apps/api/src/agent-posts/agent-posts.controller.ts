@@ -15,6 +15,7 @@ import {
   AgentPostQueryDto,
   AgentPostTemplateDto,
   CreateAgentPostDto,
+  ImportAgentPostImageDto,
 } from "./agent-posts.dto.js";
 @Controller({ path: "agent-posts", version: "1" })
 export class AgentPostsController {
@@ -65,6 +66,30 @@ export class AgentPostsController {
       workspaceFrom(r, q.workspaceId),
       q.brandId,
       id,
+      actorFrom(r),
+    );
+  }
+  @Get(":id/image-brief") brief(
+    @Req() r: FastifyRequest,
+    @Query() q: AgentPostQueryDto,
+    @Param("id") id: string,
+  ) {
+    return this.posts.exportImageBrief(
+      workspaceFrom(r, q.workspaceId),
+      q.brandId,
+      id,
+      actorFrom(r),
+    );
+  }
+  @Post(":id/image") image(
+    @Req() r: FastifyRequest,
+    @Body() d: ImportAgentPostImageDto,
+    @Param("id") id: string,
+  ) {
+    return this.posts.importImage(
+      workspaceFrom(r, d.workspaceId),
+      id,
+      d,
       actorFrom(r),
     );
   }

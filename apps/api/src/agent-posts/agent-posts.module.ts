@@ -1,3 +1,4 @@
+import { MediaModule } from "../media/media.module.js";
 import { Module } from "@nestjs/common";
 import { InfrastructureModule } from "../infrastructure/infrastructure.module.js";
 import { ContentModule } from "../content/content.module.js";
@@ -9,6 +10,7 @@ import { AgentPostsController } from "./agent-posts.controller.js";
 @Module({
   imports: [
     InfrastructureModule,
+    MediaModule,
     ContentModule,
     ImageGenerationModule,
     CreativeStudioModule,

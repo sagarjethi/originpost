@@ -54,6 +54,7 @@ type Run = {
   outputMediaId?: string;
   draftId?: string;
   generationId?: string;
+  imageMode?: "server" | "codex-upload";
   projectId?: string;
   copy?: { headline: string; caption: string };
   error?: string;
@@ -69,6 +70,7 @@ type Asset = {
 };
 type Capability = {
   available: boolean;
+  codexUpload?: boolean;
   reason: string | null;
   research: boolean;
   text: boolean;
@@ -134,6 +136,9 @@ export function NewsPostWorkspace({
     [form, setForm] = useState(initial),
     [imageUrl, setImageUrl] = useState(""),
     [logoUrl, setLogoUrl] = useState("");
+  const [imageMode, setImageMode] = useState<"server" | "codex-upload">(
+    "server",
+  );
   const [mobileHistory, setMobileHistory] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [boards, setBoards] = useState<Board[]>([]);
@@ -148,6 +153,11 @@ export function NewsPostWorkspace({
   const selectedRun = runs.find((r) => r.id === selected),
     activeTemplate =
       templates.find((t) => t.id === templateId) ?? selectedRun?.template;
+  const activeImageMode = selectedRun?.imageMode ?? imageMode;
+  const creationAvailable =
+    activeImageMode === "codex-upload"
+      ? capability?.codexUpload
+      : capability?.available;
   const role = auth.memberships.find(
     (m) => m.workspaceId === workspaceId,
   )?.role;
@@ -226,14 +236,22 @@ export function NewsPostWorkspace({
         setRuns(newRuns);
         setTemplates(newTemplates);
         setCapability(newCapability);
-        const openedRun = first ? newRuns.find((run) => run.id === new URLSearchParams(window.location.search).get("conversation")) : undefined;
-        setTemplateId((old) =>
-          openedRun?.template.id ?? (newTemplates.some(
-            (t) => t.id === old && (!projectId || t.boardId === projectId),
-          )
-            ? old
-            : (newTemplates.find((t) => !projectId || t.boardId === projectId)
-                ?.id ?? "")),
+        const openedRun = first
+          ? newRuns.find(
+              (run) =>
+                run.id ===
+                new URLSearchParams(window.location.search).get("conversation"),
+            )
+          : undefined;
+        setTemplateId(
+          (old) =>
+            openedRun?.template.id ??
+            (newTemplates.some(
+              (t) => t.id === old && (!projectId || t.boardId === projectId),
+            )
+              ? old
+              : (newTemplates.find((t) => !projectId || t.boardId === projectId)
+                  ?.id ?? "")),
         );
         if (first)
           setSelected(
@@ -355,6 +373,7 @@ export function NewsPostWorkspace({
       workspaceId,
       brandId,
       templateId: activeTemplate.id,
+      imageMode: activeImageMode,
       input: selectedRun ? selectedRun.input : input.trim(),
       direction: selectedRun ? input.trim() : direction,
       ...(selectedRun ? { parentRunId: selectedRun.id } : {}),
@@ -396,11 +415,18 @@ export function NewsPostWorkspace({
   }
   async function uploadTemplateImage(
     file: File | undefined,
-    purpose: "logo" | "reference",
+    purpose: "logo" | "reference" | "codex",
   ) {
     if (!file || busy) return;
     if (purpose === "reference" && form.referenceMediaIds.length >= 3) {
       setError("A template supports up to three style references.");
+      return;
+    }
+    if (
+      purpose === "codex" &&
+      !["image/png", "image/jpeg"].includes(file.type)
+    ) {
+      setError("Upload the PNG or JPEG generated in Codex.");
       return;
     }
     if (
@@ -459,6 +485,27 @@ export function NewsPostWorkspace({
           "The image is awaiting inspection. Open Library to check its status.",
         );
       setAssets((old) => [asset, ...old.filter((a) => a.id !== asset.id)]);
+      if (purpose === "codex" && selectedRun) {
+        const brief = await request<{ briefHash: string }>(
+          `/v1/agent-posts/${selectedRun.id}/image-brief?${query}`,
+        );
+        const next = await request<Run>(
+          `/v1/agent-posts/${selectedRun.id}/image`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              workspaceId,
+              brandId,
+              expectedVersion: selectedRun.version,
+              mediaId: asset.id,
+              briefHash: brief.briefHash,
+            }),
+          },
+        );
+        setRuns((old) => old.map((r) => (r.id === next.id ? next : r)));
+        return;
+      }
       setForm((old) =>
         purpose === "logo"
           ? {
@@ -594,11 +641,13 @@ export function NewsPostWorkspace({
                 <small>
                   {r.status === "ready"
                     ? "Ready for review"
-                    : r.status === "uncertain"
-                      ? "Check previous attempt"
-                      : r.status === "failed" || r.status === "blocked"
-                        ? "Needs attention"
-                        : "Creating your post"}
+                    : r.status === "awaiting-image"
+                      ? "Waiting for Codex image"
+                      : r.status === "uncertain"
+                        ? "Check previous attempt"
+                        : r.status === "failed" || r.status === "blocked"
+                          ? "Needs attention"
+                          : "Creating your post"}
                 </small>
               </span>
             </button>
@@ -636,7 +685,7 @@ export function NewsPostWorkspace({
           <span className={styles.badge}>
             {loading
               ? "Connecting"
-              : capability?.available
+              : creationAvailable
                 ? "Ready to create"
                 : "Setup needed"}
           </span>
@@ -650,6 +699,21 @@ export function NewsPostWorkspace({
           </button>
         </header>
         <div className={styles.contextBar}>
+          {!selectedRun && (
+            <label>
+              Image creation{" "}
+              <select
+                aria-label="Image creation"
+                value={imageMode}
+                onChange={(e) =>
+                  setImageMode(e.target.value as "server" | "codex-upload")
+                }
+              >
+                <option value="server">Automatic image API</option>
+                <option value="codex-upload">Generate in Codex & upload</option>
+              </select>
+            </label>
+          )}
           <button onClick={openSettings}>
             <FolderOpen size={14} />
             {activeTemplate?.name ?? "Choose a template"}
@@ -667,13 +731,15 @@ export function NewsPostWorkspace({
           </button>
         </div>
         <div className={styles.body}>
-          {!loading && !capability?.available && (
+          {!loading && !creationAvailable && (
             <div className={styles.setup}>
               <Settings2 size={18} />
               <div>
                 <strong>Finish connecting your studio</strong>
                 <p>
-                  {capability?.reason ??
+                  {(activeImageMode === "codex-upload" && !capability?.text
+                    ? "Assign a tested text runtime for research and copy."
+                    : capability?.reason) ??
                     "The workflow API is not available on this server yet."}
                 </p>
                 <button onClick={() => setContextOpen(true)}>
@@ -715,9 +781,11 @@ export function NewsPostWorkspace({
               <h1>
                 {selectedRun.status === "ready"
                   ? "Your post is ready to review."
-                  : finished(selectedRun)
-                    ? "This post needs attention."
-                    : "Bringing your story together."}
+                  : selectedRun.status === "awaiting-image"
+                    ? "Your image brief is ready for Codex."
+                    : finished(selectedRun)
+                      ? "This post needs attention."
+                      : "Bringing your story together."}
               </h1>
               <details
                 className={styles.activity}
@@ -731,7 +799,11 @@ export function NewsPostWorkspace({
                 <ol className={styles.stages}>
                   {stages.map((s, i) => {
                     const index = stages.findIndex(
-                        (stage) => stage.id === selectedRun.status,
+                        (stage) =>
+                          stage.id ===
+                          (selectedRun.status === "awaiting-image"
+                            ? "generating"
+                            : selectedRun.status),
                       ),
                       done = selectedRun.status === "ready" || index > i,
                       active = selectedRun.status === s.id;
@@ -745,7 +817,12 @@ export function NewsPostWorkspace({
                           <span className={styles.stepNumber}>{i + 1}</span>
                         )}
                         <span>{s.label}</span>
-                        {active && <small>In progress</small>}
+                        {selectedRun.status === "awaiting-image" &&
+                        s.id === "generating" ? (
+                          <small>Waiting for upload</small>
+                        ) : (
+                          active && <small>In progress</small>
+                        )}
                       </li>
                     );
                   })}
@@ -755,6 +832,103 @@ export function NewsPostWorkspace({
                 <p className={styles.error} role="status">
                   {selectedRun.error}
                 </p>
+              )}
+              {selectedRun.status === "awaiting-image" && (
+                <section
+                  className={styles.setup}
+                  aria-label="Codex image handoff"
+                >
+                  <ImageIcon size={22} />
+                  <div>
+                    <strong>Ready for your Codex image</strong>
+                    <p>
+                      Download the brief and attach it in Codex with your style
+                      references. Ask for the illustration layer. OriginPost
+                      adds your exact headline, original logo and AI label after
+                      upload.
+                    </p>
+                    <button
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        setError("");
+                        try {
+                          const brief = await request<unknown>(
+                            `/v1/agent-posts/${selectedRun.id}/image-brief?${query}`,
+                          );
+                          const url = URL.createObjectURL(
+                            new Blob([JSON.stringify(brief, null, 2)], {
+                              type: "application/json",
+                            }),
+                          );
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${selectedRun.id}-codex-brief.json`;
+                          a.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        } catch (e) {
+                          setError(
+                            e instanceof Error
+                              ? e.message
+                              : "Brief download failed.",
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Download Codex brief
+                    </button>
+                    {selectedRun.template.referenceMediaIds.map((id, i) => (
+                      <button
+                        key={id}
+                        disabled={busy}
+                        onClick={async () => {
+                          try {
+                            const result = await request<{ url: string }>(
+                              `/v1/media-assets/${id}/download-url?${query}`,
+                            );
+                            window.open(
+                              result.url,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          } catch (e) {
+                            setError(
+                              e instanceof Error
+                                ? e.message
+                                : "Reference unavailable.",
+                            );
+                          }
+                        }}
+                      >
+                        Open style reference {i + 1}
+                      </button>
+                    ))}
+                    {editable && (
+                      <label>
+                        Upload your Codex-generated PNG or JPEG (you own or have
+                        cleared its rights)
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          disabled={busy}
+                          onChange={(e) => {
+                            void uploadTemplateImage(
+                              e.target.files?.[0],
+                              "codex",
+                            );
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p>
+                      The upload is recorded as editor-attested AI imagery. It
+                      still needs visual and editorial review.
+                    </p>
+                  </div>
+                </section>
               )}
               {selectedRun.copy && (
                 <section className={styles.package}>
@@ -944,7 +1118,7 @@ export function NewsPostWorkspace({
                     !editable ||
                     !input.trim() ||
                     !activeTemplate ||
-                    !capability?.available
+                    !creationAvailable
                   }
                   type="submit"
                 >
@@ -961,8 +1135,9 @@ export function NewsPostWorkspace({
               {selectedRun
                 ? "Creates a separate version from the original story. "
                 : ""}
-              Each request researches sources and generates one paid image.
-              Review the draft before publishing.
+              {activeImageMode === "codex-upload"
+                ? "Research and writing prepare your brief. Generate the image in Codex, upload it here, then review the finished draft."
+                : "Each request researches sources and generates one paid image. Review the draft before publishing."}
             </p>
           </form>
         )}
@@ -1396,7 +1571,11 @@ export function NewsPostWorkspace({
               type="submit"
               disabled={busy || !editable || !form.logoMediaId}
             >
-              {busy ? "Saving…" : settingsMode === "edit" ? "Save new version" : "Save template"}
+              {busy
+                ? "Saving…"
+                : settingsMode === "edit"
+                  ? "Save new version"
+                  : "Save template"}
             </button>
           </footer>
         </form>

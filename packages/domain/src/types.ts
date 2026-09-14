@@ -501,7 +501,9 @@ export interface MediaAsset {
     provider: "openai";
     model: string;
     promptSha256: string;
-    generatedAt: string;
+    generatedAt?: string;
+    importedAt?: string;
+    provenance?: "editor-attested-codex-upload";
     sourceEvidenceIds: string[];
     disclosureRequired: true;
   } | undefined;
