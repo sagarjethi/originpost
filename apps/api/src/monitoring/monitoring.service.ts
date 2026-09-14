@@ -19,7 +19,7 @@ export class MonitoringService {
     const monitors = await this.infrastructure.monitorRepository.list(workspaceId, brandId);
     return Promise.all(monitors.map(async (monitor) => {
       const runs = await this.infrastructure.monitorRepository.listRuns(workspaceId, monitor.id, 8);
-      const lastRun = runs[0];
+      const lastRun = runs.find(run => run.status !== "skipped") ?? runs[0];
       const now = Date.now();
       const lateAfterMs = monitor.intervalMinutes * 2 * 60_000 + 5 * 60_000;
       const anchor = lastRun?.startedAt ?? monitor.createdAt;
