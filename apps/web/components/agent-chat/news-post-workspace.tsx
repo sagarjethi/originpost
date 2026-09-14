@@ -2,6 +2,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
+  FolderOpen,
+  SlidersHorizontal,
+  Sparkles,
+  MessageSquare,
   Check,
   ChevronLeft,
   Image as ImageIcon,
@@ -11,9 +15,15 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
+import { agentPostSkills } from "@originpost/domain";
+import { AgentConnections } from "./agent-connections";
 import styles from "./news-post-workspace.module.css";
 
+type Board = { id: string; name: string; status: string };
 type Template = {
+  boardId?: string;
+  skills?: string[];
+  exampleCaption?: string;
   id: string;
   name: string;
   language: string;
@@ -31,6 +41,9 @@ type Template = {
   palette: string[];
 };
 type Run = {
+  conversationId?: string;
+  parentRunId?: string;
+  requestMessage?: string;
   id: string;
   input: string;
   status: string;
@@ -72,6 +85,9 @@ const stages = [
 const finished = (r: Run) =>
   ["ready", "blocked", "failed", "uncertain"].includes(r.status);
 const initial = {
+  boardId: "",
+  skills: ["clear-language", "source-first"] as string[],
+  exampleCaption: "",
   name: "News post",
   language: "English",
   format: "portrait",
@@ -119,17 +135,49 @@ export function NewsPostWorkspace({
     [imageUrl, setImageUrl] = useState(""),
     [logoUrl, setLogoUrl] = useState("");
   const [mobileHistory, setMobileHistory] = useState(false);
+  const [projectId, setProjectId] = useState("");
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [settingsMode, setSettingsMode] = useState<"new" | "edit">("new");
+  const contextRef = useRef<HTMLDialogElement>(null);
   const [uploadRights, setUploadRights] = useState("owned");
   const submission = useRef<{ key: string; fingerprint: string } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null),
     settingsRef = useRef<HTMLDialogElement>(null),
     settingsButton = useRef<HTMLButtonElement>(null);
   const selectedRun = runs.find((r) => r.id === selected),
-    activeTemplate = templates.find((t) => t.id === templateId);
+    activeTemplate =
+      templates.find((t) => t.id === templateId) ?? selectedRun?.template;
   const role = auth.memberships.find(
     (m) => m.workspaceId === workspaceId,
   )?.role;
   const editable = Boolean(role && role !== "viewer");
+  const projectTemplates = templates.filter(
+    (t) => !projectId || t.boardId === projectId,
+  );
+  const historyRuns = runs
+    .filter((r) => !projectId || r.template.boardId === projectId)
+    .filter(
+      (r, i, list) =>
+        list.findIndex(
+          (other) =>
+            (other.conversationId ?? other.id) === (r.conversationId ?? r.id),
+        ) === i,
+    );
+  const earlierTurns = selectedRun
+    ? runs
+        .filter(
+          (r) =>
+            r.id !== selectedRun.id &&
+            (r.conversationId ?? r.id) ===
+              (selectedRun.conversationId ?? selectedRun.id) &&
+            r.createdAt < selectedRun.createdAt,
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    : [];
+  const canRevise = Boolean(
+    selectedRun && finished(selectedRun) && selectedRun.status !== "uncertain",
+  );
   const query = `workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`;
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await apiFetch(path, init, auth.csrfToken);
@@ -145,6 +193,21 @@ export function NewsPostWorkspace({
     }
     return response.json() as Promise<T>;
   }
+  useEffect(() => {
+    let live = true;
+    void request<{ boards: Board[] }>(`/v1/boards?${query}`)
+      .then((r) => {
+        if (live) setBoards(r.boards.filter((b) => b.status !== "archived"));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [query]);
+  useEffect(() => {
+    if (contextOpen) contextRef.current?.showModal();
+    else contextRef.current?.close();
+  }, [contextOpen]);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -163,10 +226,14 @@ export function NewsPostWorkspace({
         setRuns(newRuns);
         setTemplates(newTemplates);
         setCapability(newCapability);
+        const openedRun = first ? newRuns.find((run) => run.id === new URLSearchParams(window.location.search).get("conversation")) : undefined;
         setTemplateId((old) =>
-          newTemplates.some((t) => t.id === old)
+          openedRun?.template.id ?? (newTemplates.some(
+            (t) => t.id === old && (!projectId || t.boardId === projectId),
+          )
             ? old
-            : (newTemplates[0]?.id ?? ""),
+            : (newTemplates.find((t) => !projectId || t.boardId === projectId)
+                ?.id ?? "")),
         );
         if (first)
           setSelected(
@@ -197,7 +264,7 @@ export function NewsPostWorkspace({
       clearTimeout(timer);
       window.removeEventListener("popstate", pop);
     };
-  }, [workspaceId, brandId, auth.user.id]);
+  }, [workspaceId, brandId, auth.user.id, projectId]);
   useEffect(() => {
     let live = true;
     if (settings) {
@@ -228,7 +295,8 @@ export function NewsPostWorkspace({
   useEffect(() => {
     let live = true;
     setImageUrl("");
-    if (selectedRun?.outputMediaId)
+    const refreshPreview = () => {
+      if (!selectedRun?.outputMediaId) return;
       void request<{ url: string; previewUrl?: string }>(
         `/v1/media-assets/${encodeURIComponent(selectedRun.outputMediaId)}/download-url?${query}`,
       )
@@ -238,8 +306,12 @@ export function NewsPostWorkspace({
         .catch((e) => {
           if (live) setError(e.message);
         });
+    };
+    refreshPreview();
+    const timer = setInterval(refreshPreview, 4 * 60 * 1000);
     return () => {
       live = false;
+      clearInterval(timer);
     };
   }, [selectedRun?.outputMediaId, query]);
   useEffect(() => {
@@ -261,6 +333,13 @@ export function NewsPostWorkspace({
   }, [settings, form.logoMediaId, query]);
   function choose(id: string) {
     setSelected(id);
+    setInput("");
+    setDirection("");
+    const chosen = runs.find((r) => r.id === id);
+    if (chosen) {
+      setProjectId(chosen.template.boardId ?? "");
+      setTemplateId(chosen.template.id);
+    }
     setMobileHistory(false);
     const url = new URL(location.href);
     if (id) url.searchParams.set("conversation", id);
@@ -275,9 +354,10 @@ export function NewsPostWorkspace({
     const payload = {
       workspaceId,
       brandId,
-      templateId,
-      input: input.trim(),
-      direction,
+      templateId: activeTemplate.id,
+      input: selectedRun ? selectedRun.input : input.trim(),
+      direction: selectedRun ? input.trim() : direction,
+      ...(selectedRun ? { parentRunId: selectedRun.id } : {}),
     };
     const fingerprint = JSON.stringify(payload);
     const storageKey = `originpost:post-request:${auth.user.id}:${workspaceId}:${brandId}`;
@@ -314,8 +394,15 @@ export function NewsPostWorkspace({
       setBusy(false);
     }
   }
-  async function uploadTemplateImage(file: File | undefined) {
+  async function uploadTemplateImage(
+    file: File | undefined,
+    purpose: "logo" | "reference",
+  ) {
     if (!file || busy) return;
+    if (purpose === "reference" && form.referenceMediaIds.length >= 3) {
+      setError("A template supports up to three style references.");
+      return;
+    }
     if (
       !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
       file.size > 16 * 1024 * 1024
@@ -373,15 +460,15 @@ export function NewsPostWorkspace({
         );
       setAssets((old) => [asset, ...old.filter((a) => a.id !== asset.id)]);
       setForm((old) =>
-        old.logoMediaId
+        purpose === "logo"
           ? {
               ...old,
-              referenceMediaIds:
-                old.referenceMediaIds.length < 3
-                  ? [...old.referenceMediaIds, asset.id]
-                  : old.referenceMediaIds,
+              logoMediaId: asset.id,
+              referenceMediaIds: old.referenceMediaIds.filter(
+                (id) => id !== asset.id,
+              ),
             }
-          : { ...old, logoMediaId: asset.id },
+          : { ...old, referenceMediaIds: [...old.referenceMediaIds, asset.id] },
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Image upload failed.");
@@ -421,12 +508,20 @@ export function NewsPostWorkspace({
             ...Object.fromEntries(
               Object.keys(initial).map((k) => [
                 k,
-                activeTemplate[k as keyof Template],
+                activeTemplate[k as keyof Template] ??
+                  initial[k as keyof typeof initial],
               ]),
             ),
           }
         : initial,
     );
+    setSettingsMode(activeTemplate ? "edit" : "new");
+    setSettings(true);
+  }
+  function newTemplate() {
+    setForm({ ...initial, boardId: projectId, footer: "" });
+    setSettingsMode("new");
+    setError("");
     setSettings(true);
   }
   return (
@@ -436,7 +531,7 @@ export function NewsPostWorkspace({
         aria-label="Post runs"
       >
         <div className={styles.historyHeader}>
-          <span>YOUR POSTS</span>
+          <span>PROJECT CHATS</span>
           <button
             aria-label="Close post history"
             onClick={() => setMobileHistory(false)}
@@ -451,11 +546,41 @@ export function NewsPostWorkspace({
             inputRef.current?.focus();
           }}
         >
-          <Plus size={17} /> New post
+          <Plus size={17} /> New chat
+        </button>
+        <label className={styles.projectPicker}>
+          <span>
+            <FolderOpen size={14} /> Project board
+          </span>
+          <select
+            aria-label="Project board"
+            value={projectId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setProjectId(id);
+              choose("");
+              setTemplateId(
+                templates.find((t) => !id || t.boardId === id)?.id ?? "",
+              );
+            }}
+          >
+            <option value="">All brand projects</option>
+            {boards.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className={styles.subtleButton}
+          onClick={() => onNavigate("Boards")}
+        >
+          Manage projects <ArrowRight size={13} />
         </button>
         <p>Saved in {brandName}</p>
         <div className={styles.runList}>
-          {runs.map((r) => (
+          {historyRuns.map((r) => (
             <button
               key={r.id}
               onClick={() => choose(r.id)}
@@ -467,12 +592,20 @@ export function NewsPostWorkspace({
               <span>
                 <strong>{r.copy?.headline ?? r.input}</strong>
                 <small>
-                  {r.status === "ready" ? "Ready for your review" : r.status}
+                  {r.status === "ready"
+                    ? "Ready for review"
+                    : r.status === "uncertain"
+                      ? "Check previous attempt"
+                      : r.status === "failed" || r.status === "blocked"
+                        ? "Needs attention"
+                        : "Creating your post"}
                 </small>
               </span>
             </button>
           ))}
-          {!runs.length && !loading && <p>Your next story starts here.</p>}
+          {!historyRuns.length && !loading && (
+            <p>Your next story starts here.</p>
+          )}
         </div>
         <button
           className={styles.templateButton}
@@ -485,17 +618,19 @@ export function NewsPostWorkspace({
           </span>
         </button>
       </aside>
-      <div className={styles.main}>
+      <div className={`${styles.main} ${!selectedRun ? styles.starting : ""}`}>
         <header className={styles.header}>
           <button
             className={styles.mobileToggle}
             onClick={() => setMobileHistory(true)}
-            aria-label="Open post history"
+            aria-label="Open project chats"
           >
-            <ChevronLeft size={19} />
+            <MessageSquare size={19} />
           </button>
           <div>
-            <strong>News studio</strong>
+            <strong>
+              {boards.find((b) => b.id === projectId)?.name ?? "Origin Agent"}
+            </strong>
             <span>{brandName} / Agent</span>
           </div>
           <span className={styles.badge}>
@@ -505,10 +640,32 @@ export function NewsPostWorkspace({
                 ? "Ready to create"
                 : "Setup needed"}
           </span>
-          <button onClick={openSettings} aria-label="Open project template">
-            <Settings2 size={18} />
+          <button
+            className={styles.contextButton}
+            onClick={() => setContextOpen(true)}
+            aria-label="Open agent setup"
+          >
+            <SlidersHorizontal size={18} />
+            <span>Setup</span>
           </button>
         </header>
+        <div className={styles.contextBar}>
+          <button onClick={openSettings}>
+            <FolderOpen size={14} />
+            {activeTemplate?.name ?? "Choose a template"}
+          </button>
+          <button onClick={openSettings}>
+            <Sparkles size={14} />
+            {activeTemplate?.skills?.length ?? 0} writing skills
+          </button>
+          <button onClick={openSettings}>
+            <ImageIcon size={14} />
+            {activeTemplate?.referenceMediaIds.length ?? 0} references
+          </button>
+          <button onClick={() => setContextOpen(true)}>
+            Social accounts <ArrowRight size={13} />
+          </button>
+        </div>
         <div className={styles.body}>
           {!loading && !capability?.available && (
             <div className={styles.setup}>
@@ -519,15 +676,37 @@ export function NewsPostWorkspace({
                   {capability?.reason ??
                     "The workflow API is not available on this server yet."}
                 </p>
-                <button onClick={() => onNavigate("Agent plugins")}>
-                  Open runtime settings <ArrowRight size={13} />
+                <button onClick={() => setContextOpen(true)}>
+                  Review setup <ArrowRight size={13} />
                 </button>
               </div>
             </div>
           )}
           {selectedRun ? (
             <article className={styles.result}>
-              <div className={styles.request}>{selectedRun.input}</div>
+              {earlierTurns.length > 0 && (
+                <details className={styles.earlierTurns}>
+                  <summary>
+                    {earlierTurns.length} earlier{" "}
+                    {earlierTurns.length === 1 ? "version" : "versions"} in this
+                    chat
+                  </summary>
+                  {earlierTurns.map((turn) => (
+                    <div key={turn.id}>
+                      <p>
+                        <strong>You</strong> {turn.requestMessage ?? turn.input}
+                      </p>
+                      <button onClick={() => choose(turn.id)}>
+                        {turn.copy?.headline ?? "Open this version"}{" "}
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </details>
+              )}
+              <div className={styles.request}>
+                {selectedRun.requestMessage ?? selectedRun.input}
+              </div>
               <div className={styles.speaker}>
                 <span>O</span>
                 <strong>Origin</strong>
@@ -540,28 +719,38 @@ export function NewsPostWorkspace({
                     ? "This post needs attention."
                     : "Bringing your story together."}
               </h1>
-              <ol className={styles.stages}>
-                {stages.map((s, i) => {
-                  const index = stages.findIndex(
-                      (stage) => stage.id === selectedRun.status,
-                    ),
-                    done = selectedRun.status === "ready" || index > i,
-                    active = selectedRun.status === s.id;
-                  return (
-                    <li key={s.id} aria-current={active ? "step" : undefined}>
-                      {done ? (
-                        <Check size={17} />
-                      ) : active ? (
-                        <LoaderCircle className={styles.spin} size={17} />
-                      ) : (
-                        <span className={styles.stepNumber}>{i + 1}</span>
-                      )}
-                      <span>{s.label}</span>
-                      {active && <small>In progress</small>}
-                    </li>
-                  );
-                })}
-              </ol>
+              <details
+                className={styles.activity}
+                open={!finished(selectedRun)}
+              >
+                <summary>
+                  {selectedRun.status === "ready"
+                    ? "Research, copy, and image complete"
+                    : "Task activity"}
+                </summary>
+                <ol className={styles.stages}>
+                  {stages.map((s, i) => {
+                    const index = stages.findIndex(
+                        (stage) => stage.id === selectedRun.status,
+                      ),
+                      done = selectedRun.status === "ready" || index > i,
+                      active = selectedRun.status === s.id;
+                    return (
+                      <li key={s.id} aria-current={active ? "step" : undefined}>
+                        {done ? (
+                          <Check size={17} />
+                        ) : active ? (
+                          <LoaderCircle className={styles.spin} size={17} />
+                        ) : (
+                          <span className={styles.stepNumber}>{i + 1}</span>
+                        )}
+                        <span>{s.label}</span>
+                        {active && <small>In progress</small>}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </details>
               {selectedRun.error && (
                 <p className={styles.error} role="status">
                   {selectedRun.error}
@@ -613,18 +802,18 @@ export function NewsPostWorkspace({
                 >
                   Sources & review <ArrowRight size={15} />
                 </a>
-                <button
-                  onClick={() => {
-                    setInput(selectedRun.input);
-                    setTemplateId(selectedRun.template.id);
-                    choose("");
-                    setDirection(
-                      "Create a new visual direction while preserving the verified facts.",
-                    );
-                  }}
-                >
-                  Create another version
-                </button>
+                {canRevise && (
+                  <button
+                    onClick={() => {
+                      setInput(
+                        "Create a new visual direction while preserving the verified facts.",
+                      );
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    Request changes
+                  </button>
+                )}
               </div>
               <p className={styles.note}>
                 Generated imagery is labeled. Publishing requires review of the
@@ -633,30 +822,52 @@ export function NewsPostWorkspace({
             </article>
           ) : (
             <div className={styles.welcome}>
-              <span className={styles.wordmark}>
-                O<em>✳</em>
+              <span className={styles.agentMark}>
+                <Sparkles size={28} />
               </span>
-              <p className={styles.eyebrow}>YOUR STORY. YOUR SIGNATURE.</p>
+              <p className={styles.eyebrow}>
+                YOUR PROJECT. YOUR CREATIVE TEAM.
+              </p>
               <h1>
-                One news link.
+                What are we
                 <br />
-                <em>A complete post.</em>
+                <em>creating today?</em>
               </h1>
               <p>
-                Research, words, and a finished image.
+                Start with a story. Bring your brand, skills, and references.
                 <br />
-                Made with your project’s logo and visual direction.
+                Keep each version together, from the first brief to review.
               </p>
-              <div className={styles.steps}>
-                <span>
-                  01 <strong>Verify</strong>
-                </span>
-                <span>
-                  02 <strong>Create</strong>
-                </span>
-                <span>
-                  03 <strong>Review</strong>
-                </span>
+              <div className={styles.starters}>
+                <button
+                  onClick={() => {
+                    setInput("");
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <MessageSquare size={18} />
+                  <strong>News to post</strong>
+                  <span>Paste a link or a story</span>
+                </button>
+                <button onClick={newTemplate}>
+                  <FolderOpen size={18} />
+                  <strong>Build a template</strong>
+                  <span>Save your logo and style</span>
+                </button>
+                <button
+                  onClick={() => {
+                    openSettings();
+                    setForm((old) => ({
+                      ...old,
+                      styleInstructions:
+                        "Follow the uploaded reference’s visual hierarchy and mood. Create an original composition using verified facts; do not copy its claims or branding.",
+                    }));
+                  }}
+                >
+                  <ImageIcon size={18} />
+                  <strong>Create a similar post</strong>
+                  <span>Add an example to follow</span>
+                </button>
               </div>
             </div>
           )}
@@ -665,9 +876,8 @@ export function NewsPostWorkspace({
               {error || loadError}
             </div>
           )}
-
         </div>
-        {!selectedRun && (
+        {(!selectedRun || canRevise) && (
           <form className={styles.composerDock} onSubmit={start}>
             <div className={styles.templateSelect}>
               <label htmlFor="post-template">Project template</label>
@@ -679,13 +889,13 @@ export function NewsPostWorkspace({
                 <option value="" disabled>
                   Choose a template
                 </option>
-                {templates.map((t) => (
+                {projectTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} · {t.language} · {t.format}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={openSettings}>
+              <button type="button" onClick={newTemplate}>
                 <Plus size={15} /> New
               </button>
             </div>
@@ -700,7 +910,11 @@ export function NewsPostWorkspace({
                 onChange={(e) => setInput(e.target.value)}
                 maxLength={8000}
                 rows={3}
-                placeholder="Paste the news link or news text here…"
+                placeholder={
+                  selectedRun
+                    ? "Describe what to change in the next version…"
+                    : "Paste a news link or tell Origin what the post is about…"
+                }
                 required
               />
               <details>
@@ -739,17 +953,72 @@ export function NewsPostWorkspace({
                   ) : (
                     <ImageIcon size={16} />
                   )}{" "}
-                  Research & create
+                  {selectedRun ? "Create revision" : "Research & create"}
                 </button>
               </div>
             </div>
             <p className={styles.note}>
-              Starts research, writing, one paid image request, and exact brand
-              composition. Saves an unapproved draft. No auto-publishing.
+              {selectedRun
+                ? "Creates a separate version from the original story. "
+                : ""}
+              Each request researches sources and generates one paid image.
+              Review the draft before publishing.
             </p>
           </form>
         )}
       </div>
+      <dialog
+        ref={contextRef}
+        className={`${styles.dialog} ${styles.contextDialog}`}
+        onCancel={() => setContextOpen(false)}
+        onClose={() => setContextOpen(false)}
+        aria-labelledby="agent-context-title"
+      >
+        <header>
+          <div>
+            <small>PROJECT CONTEXT</small>
+            <h2 id="agent-context-title">Make Origin your own</h2>
+          </div>
+          <button
+            aria-label="Close agent setup"
+            onClick={() => setContextOpen(false)}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className={styles.contextTemplate}>
+          <strong>
+            {activeTemplate?.name ?? "Start with a brand template"}
+          </strong>
+          <p>
+            {activeTemplate
+              ? `${activeTemplate.language} · ${activeTemplate.format} · ${activeTemplate.referenceMediaIds.length} visual references`
+              : "Add your original logo, writing skills, and examples once."}
+          </p>
+          <button
+            onClick={() => {
+              setContextOpen(false);
+              openSettings();
+            }}
+          >
+            Configure template <ArrowRight size={14} />
+          </button>
+          <button
+            onClick={() => {
+              setContextOpen(false);
+              newTemplate();
+            }}
+          >
+            New template <Plus size={14} />
+          </button>
+        </div>
+        <AgentConnections
+          auth={auth}
+          workspaceId={workspaceId}
+          brandId={brandId}
+          onNavigate={onNavigate}
+        />
+      </dialog>
       <dialog
         ref={settingsRef}
         className={styles.dialog}
@@ -761,7 +1030,11 @@ export function NewsPostWorkspace({
           <header>
             <div>
               <small>PROJECT TEMPLATE</small>
-              <h2 id="template-heading">Make it unmistakably yours.</h2>
+              <h2 id="template-heading">
+                {settingsMode === "new"
+                  ? "Create your brand template"
+                  : "Refine your brand template"}
+              </h2>
             </div>
             <button
               type="button"
@@ -775,6 +1048,24 @@ export function NewsPostWorkspace({
             Saved for this brand. Each post keeps the exact template version it
             started with.
           </p>
+          <label>
+            Project board
+            <select
+              value={form.boardId}
+              onChange={(e) => setForm({ ...form, boardId: e.target.value })}
+            >
+              <option value="">Brand-wide template</option>
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <small className={styles.note}>
+              Organizes this template. Board agents and their installed skills
+              stay in Boards.
+            </small>
+          </label>
           <label>
             Template name
             <input
@@ -825,6 +1116,22 @@ export function NewsPostWorkspace({
                   </option>
                 ))}
             </select>
+          </label>
+          <label>
+            Upload original logo
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={busy || !editable}
+              onChange={(e) => {
+                void uploadTemplateImage(e.target.files?.[0], "logo");
+                e.target.value = "";
+              }}
+            />
+            <small className={styles.note}>
+              Use a logo you own or have permission to use. It is placed exactly
+              after image generation.
+            </small>
           </label>
           {logoUrl && <TemplateLogoPreview url={logoUrl} template={form} />}
           <div className={styles.formGrid}>
@@ -911,29 +1218,58 @@ export function NewsPostWorkspace({
               These images guide style only. Their text, logo, and factual
               content are not reused.
             </p>
-            <div className={styles.referenceList} aria-label="Available style references">{assets
-              .filter((a) => a.id !== form.logoMediaId)
-              .map((a) => (
-                <label className={styles.checkbox} key={a.id}>
-                  <input
-                    type="checkbox"
-                    checked={form.referenceMediaIds.includes(a.id)}
-                    disabled={
-                      !form.referenceMediaIds.includes(a.id) &&
-                      form.referenceMediaIds.length >= 3
-                    }
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        referenceMediaIds: e.target.checked
-                          ? [...form.referenceMediaIds, a.id]
-                          : form.referenceMediaIds.filter((id) => id !== a.id),
-                      })
-                    }
-                  />
-                  {a.fileName}
-                </label>
-              ))}</div>
+            <div className={styles.referencePreviews}>
+              {form.referenceMediaIds.map((id) => (
+                <ReferenceThumbnail
+                  key={id}
+                  id={id}
+                  query={query}
+                  auth={auth}
+                  name={
+                    assets.find((a) => a.id === id)?.fileName ??
+                    "Style reference"
+                  }
+                  onRemove={() =>
+                    setForm({
+                      ...form,
+                      referenceMediaIds: form.referenceMediaIds.filter(
+                        (ref) => ref !== id,
+                      ),
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div
+              className={styles.referenceList}
+              aria-label="Available style references"
+            >
+              {assets
+                .filter((a) => a.id !== form.logoMediaId)
+                .map((a) => (
+                  <label className={styles.checkbox} key={a.id}>
+                    <input
+                      type="checkbox"
+                      checked={form.referenceMediaIds.includes(a.id)}
+                      disabled={
+                        !form.referenceMediaIds.includes(a.id) &&
+                        form.referenceMediaIds.length >= 3
+                      }
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          referenceMediaIds: e.target.checked
+                            ? [...form.referenceMediaIds, a.id]
+                            : form.referenceMediaIds.filter(
+                                (id) => id !== a.id,
+                              ),
+                        })
+                      }
+                    />
+                    {a.fileName}
+                  </label>
+                ))}
+            </div>
             {!assets.length && (
               <p>No ready, rights-cleared images in this brand.</p>
             )}
@@ -949,13 +1285,13 @@ export function NewsPostWorkspace({
                 </select>
               </label>
               <label>
-                Upload logo or reference
+                Add style reference
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   disabled={busy || !editable}
                   onChange={(e) => {
-                    void uploadTemplateImage(e.target.files?.[0]);
+                    void uploadTemplateImage(e.target.files?.[0], "reference");
                     e.target.value = "";
                   }}
                 />
@@ -965,8 +1301,45 @@ export function NewsPostWorkspace({
               Manage images in Library ↗
             </a>
           </fieldset>
+          <fieldset>
+            <legend>Reusable writing skills</legend>
+            <div className={styles.skillGrid}>
+              {agentPostSkills.map((skill) => (
+                <label key={skill.id} className={styles.skillCard}>
+                  <input
+                    type="checkbox"
+                    checked={form.skills.includes(skill.id)}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        skills: e.target.checked
+                          ? [...form.skills, skill.id]
+                          : form.skills.filter((id) => id !== skill.id),
+                      })
+                    }
+                  />
+                  <span>
+                    <strong>{skill.label}</strong>
+                    <small>{skill.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label>
-            Visual instructions
+            Example caption to learn the style
+            <textarea
+              rows={3}
+              maxLength={1500}
+              value={form.exampleCaption}
+              onChange={(e) =>
+                setForm({ ...form, exampleCaption: e.target.value })
+              }
+              placeholder="Paste a post you like. Origin follows its tone and structure, not its facts."
+            />
+          </label>
+          <label>
+            Custom writing and visual instructions
             <textarea
               value={form.styleInstructions}
               onChange={(e) =>
@@ -1023,7 +1396,7 @@ export function NewsPostWorkspace({
               type="submit"
               disabled={busy || !editable || !form.logoMediaId}
             >
-              {busy ? "Saving…" : "Save template"}
+              {busy ? "Saving…" : settingsMode === "edit" ? "Save new version" : "Save template"}
             </button>
           </footer>
         </form>
@@ -1113,6 +1486,52 @@ function TemplateLogoPreview({
       <figcaption>
         Logo placement preview · final text layout is composed after generation
       </figcaption>
+    </figure>
+  );
+}
+
+function ReferenceThumbnail({
+  id,
+  query,
+  auth,
+  name,
+  onRemove,
+}: {
+  id: string;
+  query: string;
+  auth: AuthView;
+  name: string;
+  onRemove: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let live = true;
+    void apiFetch(
+      `/v1/media-assets/${encodeURIComponent(id)}/download-url?${query}`,
+      {},
+      auth.csrfToken,
+    )
+      .then(async (r) => {
+        if (!r.ok) return;
+        const value = await r.json();
+        if (live) setUrl(value.previewUrl ?? value.url);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [id, query, auth.csrfToken]);
+  return (
+    <figure>
+      {url ? <img src={url} alt={name} /> : <ImageIcon size={24} />}
+      <figcaption>{name}</figcaption>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove reference ${name}`}
+      >
+        <X size={13} />
+      </button>
     </figure>
   );
 }

@@ -44,3 +44,13 @@ On 2026-09-14, migration 066 was applied locally and the local UI was connected 
 ## Validation
 
 HTTP integration coverage substitutes external research/text/image providers while exercising real content creation, image receipts, media storage, rendering, and unapproved drafts. Additional coverage checks duplicate requests, concurrent claims, disputed evidence, expired claims, original logo pixels/hash rejection, multipart references, and PostgreSQL scope/CAS/idempotency in an isolated schema. Live provider credentials remain necessary for a real-news acceptance run.
+
+## Project chat UI checkpoint — 2026-09-15
+
+Implemented project filtering using existing Boards, versioned template configuration, explicit original-logo and reference uploads, reference thumbnails, four reusable writing presets, and a caption example used only for tone and structure. Board association organizes templates; it does not execute Board-installed Hermes skills or share their memory.
+
+Completed runs accept revision messages in the same saved conversation. A revision retains the original source input and snapshots its template; it researches and generates a new paid image. Prior versions stay accessible. Unknown parents, changed source inputs, and active or uncertain parents are rejected. This is a post-revision conversation, not general-purpose multi-agent group chat.
+
+The setup drawer reads actual brand account and generation capability status, distinguishes test connections, and links to channel, runtime, and Board configuration. Instagram, Facebook, and YouTube use the existing connector setup; publishing checks and approval still apply. Private output previews refresh while open.
+
+The crawler, new viral-news card discovery, arbitrary social connectors, and expanded one-click publishing remain deferred until the UI checkpoint can be pushed. No Git remote is configured locally. Live image/text runtimes still require configuration; no real post was generated or published in this UI pass.

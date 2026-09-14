@@ -124,6 +124,8 @@ describe("news post workflow with external providers substituted", () => {
           logoMargin: 3,
           referenceMediaIds: [],
           styleInstructions: "Clean editorial illustration",
+          skills: ["clear-language"],
+          exampleCaption: "A short, specific opening. What changes for you?",
           footer: "City news",
         },
       })
@@ -252,20 +254,101 @@ describe("news post workflow with external providers substituted", () => {
     ))!;
     expect(item.researchRuns).toHaveLength(1);
   });
-  it("blocks changed evidence before writing or generating",async()=>{
-    const started=await start("changed-evidence"); await research(started.body.id);
-    const run=await advance(started.body.id);
-    const item=(await infrastructure.repository.get("default",run.contentItemId))!;
-    await request(app.getHttpServer()).post(`/v1/content-items/${item.id}/sources?workspaceId=default`).set("If-Match",String(item.version)).send({kind:"note",title:"New evidence",notes:"A correction arrived",rights:"unknown",confidence:0}).expect(201);
-    expect(await advance(run.id)).toMatchObject({status:"blocked",error:expect.stringContaining("evidence changed")});
+  it("blocks changed evidence before writing or generating", async () => {
+    const started = await start("changed-evidence");
+    await research(started.body.id);
+    const run = await advance(started.body.id);
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    await request(app.getHttpServer())
+      .post(`/v1/content-items/${item.id}/sources?workspaceId=default`)
+      .set("If-Match", String(item.version))
+      .send({
+        kind: "note",
+        title: "New evidence",
+        notes: "A correction arrived",
+        rights: "unknown",
+        confidence: 0,
+      })
+      .expect(201);
+    expect(await advance(run.id)).toMatchObject({
+      status: "blocked",
+      error: expect.stringContaining("evidence changed"),
+    });
   });
-  it("returns a validation error for an invalid template",async()=>{
-    await request(app.getHttpServer()).post("/v1/agent-posts/templates").send({workspaceId:"default",brandId:"brand_default",template:{name:"Incomplete"}}).expect(400);
+  it("returns a validation error for an invalid template", async () => {
+    await request(app.getHttpServer())
+      .post("/v1/agent-posts/templates")
+      .send({
+        workspaceId: "default",
+        brandId: "brand_default",
+        template: { name: "Incomplete" },
+      })
+      .expect(400);
   });
-  it("prevents deleting an original logo used by a saved template",async()=>{
-    const template=(await infrastructure.agentPostRepository.template("default",templateId))!;
-    const logo=(await infrastructure.mediaRepository.get("default",template.logo.mediaId))!;
-    await request(app.getHttpServer()).post(`/v1/media-assets/${logo.id}/trash`).send({workspaceId:"default",version:logo.version}).expect(403);
+  it("prevents deleting an original logo used by a saved template", async () => {
+    const template = (await infrastructure.agentPostRepository.template(
+      "default",
+      templateId,
+    ))!;
+    const logo = (await infrastructure.mediaRepository.get(
+      "default",
+      template.logo.mediaId,
+    ))!;
+    await request(app.getHttpServer())
+      .post(`/v1/media-assets/${logo.id}/trash`)
+      .send({ workspaceId: "default", version: logo.version })
+      .expect(403);
   });
 
+  it("stores revisions in the same conversation and preserves the original story", async () => {
+    const original = (await start("success")).body;
+    const body = {
+      workspaceId: "default",
+      brandId: "brand_default",
+      templateId,
+      input: original.input,
+      parentRunId: original.id,
+      direction: "Make the caption shorter.",
+    };
+    const revised = await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "revision")
+      .send(body)
+      .expect(201);
+    expect(revised.body).toMatchObject({
+      conversationId: original.conversationId,
+      parentRunId: original.id,
+      requestMessage: "Make the caption shorter.",
+      input: original.input,
+    });
+    expect(revised.body.template.skills).toEqual(["clear-language"]);
+    await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "revision")
+      .send({ ...body, direction: "Different request" })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "wrong-story")
+      .send({ ...body, input: "A different story" })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/v1/agent-posts")
+      .set("Idempotency-Key", "unknown-parent")
+      .send({ ...body, parentRunId: "missing" })
+      .expect(404);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it("applies selected writing skills and treats example captions as style only", () => {
+    const call = text.mock.calls[0] as unknown as [
+      { messages: { content: string }[] },
+    ];
+    const context = JSON.parse(call[0].messages[1].content);
+    expect(context.writingSkills[0]).toContain("everyday language");
+    expect(context.styleExampleOnly).toContain("specific opening");
+    expect(context.exampleRule).toContain("Never copy its facts");
+  });
 });

@@ -2,9 +2,53 @@ import { z } from "zod";
 import { DomainError } from "./errors.js";
 import type { CreativeSpec } from "./creative-studio.js";
 
+export const agentPostSkills = [
+  {
+    id: "clear-language",
+    label: "Clear language",
+    description: "Short sentences, familiar words",
+    instruction:
+      "Write in clear everyday language. Prefer short sentences and one idea per line.",
+  },
+  {
+    id: "local-angle",
+    label: "Local angle",
+    description: "Explain why this matters nearby",
+    instruction:
+      "Use a local angle only when the verified facts support it. Explain the practical impact without inventing locations or effects.",
+  },
+  {
+    id: "source-first",
+    label: "Source first",
+    description: "Keep facts and attribution visible",
+    instruction:
+      "Preserve source attribution and uncertainty. Distinguish confirmed facts from allegations. Do not strengthen claims for engagement.",
+  },
+  {
+    id: "social-copy",
+    label: "Social copy",
+    description: "A concise hook and neutral question",
+    instruction:
+      "Open with a specific factual hook. Keep the caption concise, include one neutral story-related question, and use a few relevant hashtags. Avoid clickbait.",
+  },
+] as const;
+export const agentPostSkillIds = [
+  "clear-language",
+  "local-angle",
+  "source-first",
+  "social-copy",
+] as const;
+export function agentPostSkillInstructions(ids: readonly string[] = []) {
+  return agentPostSkills
+    .filter((skill) => ids.includes(skill.id))
+    .map((skill) => skill.instruction);
+}
 const color = z.string().regex(/^#[a-f0-9]{6}$/i);
 export const agentPostTemplateSchema = z
   .object({
+    boardId: z.string().max(200).optional(),
+    skills: z.array(z.enum(agentPostSkillIds)).max(4).optional(),
+    exampleCaption: z.string().trim().max(1500).optional(),
     name: z.string().trim().min(1).max(100),
     language: z.string().trim().min(2).max(40),
     format: z.enum(["square", "portrait", "story"]),
@@ -65,6 +109,9 @@ export type AgentPostRun = {
   version: number;
   fingerprint: string;
   input: string;
+  conversationId?: string;
+  parentRunId?: string;
+  requestMessage?: string;
   template: AgentPostTemplate;
   status: AgentPostStage;
   contentItemId: string;

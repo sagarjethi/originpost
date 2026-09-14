@@ -9,6 +9,7 @@ import { ConfigService } from "@nestjs/config";
 import { createHash, randomUUID } from "node:crypto";
 import {
   agentPostCopySchema,
+  agentPostSkillInstructions,
   agentPostCreativeSpec,
   agentPostTemplateSchema,
   can,
@@ -117,6 +118,22 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         400,
       );
     const parsed = validated.data;
+    if (parsed.boardId) {
+      const board = await this.infrastructure.agentBoardRepository.get(
+        w,
+        parsed.boardId,
+      );
+      if (
+        !board ||
+        board.brandId !== dto.brandId ||
+        board.status === "archived"
+      )
+        throw new DomainError(
+          "Choose an active project board in this brand.",
+          "project_not_found",
+          404,
+        );
+    }
     const template = {
       ...parsed,
       id: `post_template_${randomUUID()}`,
@@ -199,6 +216,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       dto.templateId,
       dto.input,
       dto.direction ?? "",
+      ...(dto.parentRunId ? [dto.parentRunId] : []),
     ]);
     const previous = await this.store.get(w, id);
     if (previous) {
@@ -210,6 +228,30 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         );
       return visible(previous);
     }
+    const parent = dto.parentRunId
+      ? await this.store.get(w, dto.parentRunId)
+      : null;
+    if (dto.parentRunId && (!parent || parent.brandId !== dto.brandId))
+      throw new DomainError(
+        "Conversation not found in this brand.",
+        "conversation_not_found",
+        404,
+      );
+    if (
+      parent &&
+      (!postRunTerminal(parent.status) || parent.status === "uncertain")
+    )
+      throw new DomainError(
+        "Wait for this run to finish or resolve its uncertain result before creating a revision.",
+        "conversation_busy",
+        409,
+      );
+    if (parent && (!dto.direction?.trim() || parent.input !== dto.input))
+      throw new DomainError(
+        "Keep the original story and describe your requested changes.",
+        "revision_invalid",
+        400,
+      );
     const capability = await this.capability(w, dto.brandId, actor);
     if (!capability.available)
       throw new DomainError(
@@ -235,6 +277,10 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       version: 1,
       fingerprint,
       input: dto.input,
+      conversationId: parent?.conversationId ?? parent?.id ?? id,
+      ...(parent
+        ? { parentRunId: parent.id, requestMessage: dto.direction! }
+        : {}),
       template: {
         ...template,
         styleInstructions: [template.styleInstructions, dto.direction]
@@ -473,6 +519,10 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
               claims,
               sources: item.sources.filter((s) => sourceIds.has(s.id)),
               style: t.styleInstructions,
+              writingSkills: agentPostSkillInstructions(t.skills),
+              styleExampleOnly: t.exampleCaption ?? "",
+              exampleRule:
+                "Use the example only for tone and structure. Never copy its facts, names, numbers, claims, or branding.",
             }),
           },
         ],

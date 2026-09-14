@@ -69,7 +69,7 @@ describe("Boards detail UI", () => {
   it("renders Tasks as a Board-level surface even when Hermes is unavailable", () => {
     const markup = renderToStaticMarkup(createElement(BoardDetailPanel, { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "setup_required" }, plugin: { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, isolation: { ...verifiedIsolation, verified: false }, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] }, panel: "tasks", isOwner: true, canManageTasks: true, canApproveTasks: true, busy: "", pendingDetail: null, tasks: [{ id: "agent_board_task_11111111-1111-4111-8111-111111111111", boardId: "board-1", version: 1, title: "Verify Mumbai event", description: "Official source", status: "triage", priority: "high", assignee: "team", parentTaskIds: [], createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:00:00.000Z" }], onPanelChange: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() }));
     expect(markup).toContain("Board tasks");
-    expect(markup).toContain("Tasks remain usable even when Hermes is unavailable");
+    expect(markup).toContain("Plan the work, assign owners, and review results.");
     expect(markup).toContain("Verify Mumbai event");
     expect(markup).not.toContain("BUILT-IN INTERNAL PLUGIN");
     expect(markup).not.toContain("Restricted Board runtime");

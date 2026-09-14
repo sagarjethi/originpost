@@ -151,6 +151,9 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.2.8)
+      '@originpost/domain':
+        specifier: workspace:0.1.0-alpha.1
+        version: link:../../packages/domain
       lucide-react:
         specifier: 1.35.0
         version: 1.35.0(react@19.2.8)

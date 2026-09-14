@@ -14,6 +14,7 @@
     "@fontsource-variable/newsreader": "5.2.8",
     "@hugeicons/core-free-icons": "^4.3.2",
     "@hugeicons/react": "^1.1.10",
+    "@originpost/domain": "workspace:0.1.0-alpha.1",
     "lucide-react": "1.35.0",
     "next": "16.3.3",
     "react": "19.2.8",

@@ -492,3 +492,13 @@ Exit: Instagram, Facebook, and YouTube contract tests show that an Agent Run nev
 The feature is ready only when the user can complete the principal journeys from `/agent`, every durable or external effect has a visible proposal and receipt, refresh preserves the exact conversation URL, Board memory/skills remain isolated, and all existing Board/content/publishing invariants pass unchanged.
 
 The expanded feature also requires: one-agent and group-chat journeys, correct `@mention` routing, independently attributable child results, a usable image-plus-caption package, and bounded partial-failure recovery. Optional local Codex integration is a separately gated adapter and does not block delivery through the existing product runtimes.
+
+## Project chat UI checkpoint — 2026-09-15
+
+Implemented project filtering using existing Boards, versioned template configuration, explicit original-logo and reference uploads, reference thumbnails, four reusable writing presets, and a caption example used only for tone and structure. Board association organizes templates; it does not execute Board-installed Hermes skills or share their memory.
+
+Completed runs accept revision messages in the same saved conversation. A revision retains the original source input and snapshots its template; it researches and generates a new paid image. Prior versions stay accessible. Unknown parents, changed source inputs, and active or uncertain parents are rejected. This is a post-revision conversation, not general-purpose multi-agent group chat.
+
+The setup drawer reads actual brand account and generation capability status, distinguishes test connections, and links to channel, runtime, and Board configuration. Instagram, Facebook, and YouTube use the existing connector setup; publishing checks and approval still apply. Private output previews refresh while open.
+
+The crawler, new viral-news card discovery, arbitrary social connectors, and expanded one-click publishing remain deferred until the UI checkpoint can be pushed. No Git remote is configured locally. Live image/text runtimes still require configuration; no real post was generated or published in this UI pass.
