@@ -226,6 +226,7 @@ export function SourceSignalDesk({ auth, workspaceId, brandId, onOpenContent }: 
           <small className={styles.seen}>Seen {signal.occurrenceCount} time{signal.occurrenceCount === 1 ? "" : "s"} · first seen {shortTime(signal.firstSeenAt)}</small>
         </div>
         <div className={styles.actions}>
+          {(signal.state === "new" || signal.state === "saved") && <a className={styles.primary} href={`/agent?sourceSignal=${encodeURIComponent(signal.id)}&sourceVersion=${signal.version}`}>Create post</a>}
           {signal.state === "new" ? <><button className={styles.primary} disabled={busyId === signal.id} onClick={() => void mutate(signal, "save")}><BookmarkPlus size={14} /> Save & research</button><button disabled={busyId === signal.id} onClick={() => void mutate(signal, "dismiss")}><XCircle size={14} /> Dismiss</button></> : null}
           {signal.state === "saving" ? <button disabled><Loader2 className={styles.spin} size={14} /> Saving safely</button> : null}
           {signal.state === "dismissed" ? <button disabled={busyId === signal.id} onClick={() => void mutate(signal, "restore")}><RotateCcw size={14} /> Restore</button> : null}

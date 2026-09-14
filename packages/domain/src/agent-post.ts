@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DomainError } from "./errors.js";
+import type { SourceEvidence } from "./types.js";
 import type { CreativeSpec } from "./creative-studio.js";
 
 export const agentPostSkills = [
@@ -188,6 +189,14 @@ export type AgentPostRun = {
   version: number;
   fingerprint: string;
   input: string;
+  sourceLead?: {
+    id: string;
+    version: number;
+    title: string;
+    summary: string;
+    capturedAt: string;
+    sources: SourceEvidence[];
+  };
   conversationId?: string;
   parentRunId?: string;
   requestMessage?: string;

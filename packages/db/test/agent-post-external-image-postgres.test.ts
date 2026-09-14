@@ -44,6 +44,24 @@ const url = process.env.TEST_DATABASE_URL;
       createdBy: "editor",
       fingerprint: "request",
       input: "Verified library story",
+      sourceLead: {
+        id: "signal_original",
+        version: 3,
+        title: "Library",
+        summary: "Lead",
+        capturedAt: now,
+        sources: [
+          {
+            id: "source_original",
+            kind: "url",
+            title: "Original",
+            url: "https://example.org/news",
+            capturedAt: now,
+            rights: "reference-only",
+            confidence: 0,
+          },
+        ],
+      },
       contentItemId: "content",
       template: {
         id: "template",
@@ -70,6 +88,7 @@ const url = process.env.TEST_DATABASE_URL;
       },
     };
     await repo.create(run);
+    expect((await repo.get("w", "post"))?.sourceLead).toEqual(run.sourceLead);
     expect((await repo.get("w", "post"))?.status).toBe("awaiting-image");
     expect(await repo.pending()).toEqual([]);
     const next: AgentPostRun = {

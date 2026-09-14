@@ -47,6 +47,17 @@ type Run = {
   requestMessage?: string;
   id: string;
   input: string;
+  sourceLead?: {
+    id: string;
+    version: number;
+    title: string;
+    sources: Array<{
+      id: string;
+      title: string;
+      url?: string;
+      publisher?: string;
+    }>;
+  };
   status: string;
   createdAt: string;
   version: number;
@@ -142,6 +153,22 @@ export function NewsPostWorkspace({
   const [capability, setCapability] = useState<Capability | null>(null),
     [templateId, setTemplateId] = useState(""),
     [selected, setSelected] = useState("");
+  const [sourceLead, setSourceLead] = useState<{
+    id: string;
+    version: number;
+    title: string;
+    sources: Array<{
+      id: string;
+      title: string;
+      url?: string;
+      publisher?: string;
+    }>;
+  } | null>(null);
+  const [leadStatus, setLeadStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [leadError, setLeadError] = useState("");
+  const leadLoadSequence = useRef(0);
   const [input, setInput] = useState(""),
     [direction, setDirection] = useState(""),
     [error, setError] = useState(""),
@@ -300,6 +327,68 @@ export function NewsPostWorkspace({
     };
   }, [workspaceId, brandId, auth.user.id, projectId]);
   useEffect(() => {
+    const loadLead = () => {
+      const sequence = ++leadLoadSequence.current;
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get("sourceSignal");
+      setSourceLead(null);
+      setLeadError("");
+      if (!id || params.has("conversation")) {
+        setLeadStatus("idle");
+        return;
+      }
+      setLeadStatus("loading");
+      void request<{
+        id: string;
+        version: number;
+        brandId: string;
+        title: string;
+        summary: string;
+        state: string;
+        sources: Array<{
+          id: string;
+          title: string;
+          url?: string;
+          publisher?: string;
+        }>;
+      }>(`/v1/signals/${encodeURIComponent(id)}?${query}`)
+        .then((lead) => {
+          if (sequence !== leadLoadSequence.current) return;
+          if (lead.brandId !== brandId)
+            throw new Error(
+              "This lead belongs to another brand. Open it from that brand’s source desk.",
+            );
+          if (lead.state === "dismissed" || lead.state === "saving")
+            throw new Error(
+              "Restore the lead or wait for it to finish saving, then reopen it from the source desk.",
+            );
+          if (params.get("sourceVersion") !== String(lead.version))
+            throw new Error(
+              "This lead changed. Reopen its current version from the source desk.",
+            );
+          setSourceLead(lead);
+          setInput(`${lead.title}\n\n${lead.summary}`.slice(0, 8000));
+          setLeadStatus("ready");
+        })
+        .catch((cause) => {
+          if (sequence === leadLoadSequence.current) {
+            setLeadStatus("error");
+            setLeadError(
+              cause instanceof Error
+                ? cause.message
+                : "Could not load this news lead.",
+            );
+          }
+        });
+    };
+    loadLead();
+    window.addEventListener("popstate", loadLead);
+    return () => {
+      leadLoadSequence.current++;
+      window.removeEventListener("popstate", loadLead);
+    };
+  }, [workspaceId, brandId, auth.user.id]);
+  useEffect(() => {
     let live = true;
     if (settings) {
       settingsRef.current?.showModal();
@@ -366,6 +455,10 @@ export function NewsPostWorkspace({
     };
   }, [settings, form.logoMediaId, query]);
   function choose(id: string) {
+    leadLoadSequence.current++;
+    setSourceLead(null);
+    setLeadStatus("idle");
+    setLeadError("");
     setSelected(id);
     setInput("");
     setDirection("");
@@ -376,13 +469,22 @@ export function NewsPostWorkspace({
     }
     setMobileHistory(false);
     const url = new URL(location.href);
+    url.searchParams.delete("sourceSignal");
+    url.searchParams.delete("sourceVersion");
     if (id) url.searchParams.set("conversation", id);
     else url.searchParams.delete("conversation");
     history.pushState({}, "", url.pathname + url.search);
   }
   async function start(e: FormEvent) {
     e.preventDefault();
-    if (!input.trim() || !activeTemplate || busy) return;
+    if (
+      !input.trim() ||
+      !activeTemplate ||
+      busy ||
+      leadStatus === "loading" ||
+      leadStatus === "error"
+    )
+      return;
     setBusy(true);
     setError("");
     const payload = {
@@ -392,7 +494,14 @@ export function NewsPostWorkspace({
       imageMode: activeImageMode,
       input: selectedRun ? selectedRun.input : input.trim(),
       direction: selectedRun ? input.trim() : direction,
-      ...(selectedRun ? { parentRunId: selectedRun.id } : {}),
+      ...(selectedRun
+        ? { parentRunId: selectedRun.id }
+        : sourceLead
+          ? {
+              sourceSignalId: sourceLead.id,
+              sourceSignalVersion: sourceLead.version,
+            }
+          : {}),
     };
     const fingerprint = JSON.stringify(payload);
     const storageKey = `originpost:post-request:${auth.user.id}:${workspaceId}:${brandId}`;
@@ -1187,6 +1296,44 @@ export function NewsPostWorkspace({
                 <Plus size={15} /> New
               </button>
             </div>
+            {leadStatus === "loading" && (
+              <p role="status">Loading the news lead and its sources…</p>
+            )}
+            {leadError && (
+              <p role="alert">
+                {leadError} <a href="/signals">Back to source desk</a>
+              </p>
+            )}
+            {(sourceLead || selectedRun?.sourceLead) && (
+              <section
+                className={styles.leadContext}
+                aria-label="News lead sources"
+              >
+                <strong>
+                  From the source desk ·{" "}
+                  {(sourceLead ?? selectedRun?.sourceLead)!.title}
+                </strong>
+                <p>
+                  These are leads to verify. Research, copy review and image
+                  review still run before your approval.
+                </p>
+                <ul>
+                  {(sourceLead ?? selectedRun?.sourceLead)!.sources.map(
+                    (source) => (
+                      <li key={source.id}>
+                        {source.url ? (
+                          <a href={source.url} target="_blank" rel="noreferrer">
+                            {source.publisher ?? source.title}
+                          </a>
+                        ) : (
+                          source.title
+                        )}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </section>
+            )}
             <div className={styles.composer}>
               <label htmlFor="news-input" className={styles.srOnly}>
                 News link or text
@@ -1230,6 +1377,8 @@ export function NewsPostWorkspace({
                   disabled={
                     busy ||
                     !editable ||
+                    leadStatus === "loading" ||
+                    leadStatus === "error" ||
                     !input.trim() ||
                     !activeTemplate ||
                     !creationAvailable

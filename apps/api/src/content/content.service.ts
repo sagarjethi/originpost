@@ -4,7 +4,7 @@ import { InstagramOfficialConnector, type ConnectorMedia } from "@originpost/con
 import {
   acknowledgeManualHandoff, addDraft, addDraftSchema, addExternalReviewComment, addReviewComment, addSource, addSourceSchema, approvalSchema, calendarScheduleCsv, can, collaboratorInviteProof, confirmManualPublication, confirmProviderPublication,
   assertScheduleConflictAcknowledgement, cancelTarget, createContentItem, createContentItemSchema, createNotification, createOutboxMessage, createReviewLink as createDomainReviewLink, DomainError, inspectScheduleConflicts, recordApproval, rescheduleTarget, rescheduleTargetSchema, revokeReviewLink as revokeDomainReviewLink, scheduleSchema, scheduleTarget, startResearch, startResearchSchema, transition, transitionSchema, validateMeasuredMedia,
-  type Actor, type ContentItem, type InstagramPublishSettings, type OutboxMessageInput, type PlatformDraft, type ProviderPublishOperation, type ScheduleConflictPreflight,
+  type SourceEvidence, type Actor, type ContentItem, type InstagramPublishSettings, type OutboxMessageInput, type PlatformDraft, type ProviderPublishOperation, type ScheduleConflictPreflight,
 } from "@originpost/domain";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import { resolveActiveBrand } from "../common/brand-context.js";
@@ -124,6 +124,16 @@ export class ContentService implements OnModuleInit {
     const parsed = createContentItemSchema.parse(dto);
     const brandId = await resolveActiveBrand(this.infrastructure.organizationRepository, parsed.workspaceId, parsed.brandId);
     return this.save(createContentItem({ ...parsed, brandId, actor }));
+  }
+
+  /** Internal source-desk handoff. Discovery is a lead, never verified copy or media permission. */
+  async createWithDiscoveredSources(dto: CreateContentDto, sources: SourceEvidence[], actor: Actor) {
+    const parsed = createContentItemSchema.parse(dto);
+    const brandId = await resolveActiveBrand(this.infrastructure.organizationRepository, parsed.workspaceId, parsed.brandId);
+    const result = createContentItem({ ...parsed, brandId, actor });
+    result.item.sources = structuredClone(sources).map(source => ({ ...source, rights: "reference-only" as const, confidence: 0 }));
+    result.event.detail = { ...result.event.detail, discoveredSourceIds: sources.map(source => source.id) };
+    return this.save(result);
   }
 
   async addSource(workspaceId: string, id: string, dto: AddSourceDto, actor: Actor, expectedVersion?: number) {

@@ -1,6 +1,6 @@
 # Master agent chat plan
 
-Status: updated 2026-09-14. The `/agent` route now implements a durable news-to-image workflow with project templates, logo placement/cropping, uploaded style references, research, copy, image generation, deterministic composition, and an unapproved draft. See [implemented scope and configuration](agent-chat-ui.md). Named multi-agent group chats and publishing directly from chat remain proposed. The local image provider and text runtime still require configuration for live generation.
+Status: updated 2026-09-15. The `/agent` route implements a durable news-to-image workflow with project templates, exact logo composition, style references, source-desk lead handoff, research, separate copy and image checks, an interactive Codex upload path, and a version-bound `@Publisher` action through the existing approval and scheduling workflow. See [implemented scope and configuration](agent-chat-ui.md). General participant mentions, named multi-agent group chats and additional platform package adaptations remain proposed. A live generation-to-publication acceptance run still requires configured text/vision/image providers and a live social account.
 
 ## Decision
 
@@ -524,3 +524,7 @@ Finished agent posts expose a bounded `@Publisher` action. An editor can approve
 ### Pixel review checkpoint
 
 New runs now inspect the finished image through a configured, sample-tested vision model before drafting. The reviewer receives actual card/logo bytes and frozen source evidence; exact expected headline/footer strings are withheld from its transcription prompt. Stored text comparisons and four visual checks gate progress. Runtime profiles, usage records and the `reviewing-image` stage persist this contract. Human publication approval remains separate. A live model acceptance run, general agent mentions and platform adaptations remain outstanding.
+
+### Source desk → Agent handoff checkpoint
+
+News leads now have a **Create post** link into the active brand’s Agent workspace. Starting the run validates the selected signal/version and snapshots its source records, including capture references. Revisions inherit that snapshot; subsequent crawler changes cannot replace it. The workflow creates a separate content item with reference-only, unverified sources, copies no discovery claim verdicts, and starts fresh research. The research worker now sends saved source links and bounded excerpts to the provider as explicitly untrusted leads. Creation still requires configured runtimes and human publication review; this checkpoint is not a live end-to-end provider/publication acceptance run.

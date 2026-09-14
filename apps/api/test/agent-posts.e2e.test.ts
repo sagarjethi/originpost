@@ -10,7 +10,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { completeResearch } from "@originpost/domain";
+import { completeResearch, type SourceSignal } from "@originpost/domain";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { INFRASTRUCTURE } from "../src/common/tokens.js";
@@ -227,6 +227,125 @@ describe("news post workflow with external providers substituted", () => {
     );
     await infrastructure.repository.commit(result.item, result.event);
   }
+  it("freezes a versioned news lead, preserves capture evidence and keeps discovery unverified", async () => {
+    const signal: SourceSignal = {
+      id: "signal_post_handoff",
+      workspaceId: "default",
+      brandId: "brand_default",
+      monitorId: "monitor_handoff",
+      monitorRunId: "monitor_run_handoff",
+      version: 1,
+      state: "new",
+      urgency: "normal",
+      score: 70,
+      rankReasons: ["Tracked source"],
+      eventFingerprint: "handoff",
+      title: "Library opens",
+      summary: "A council announcement to verify.",
+      sources: [
+        {
+          id: "source_lead",
+          kind: "url",
+          title: "Council release",
+          url: "https://example.org/lead",
+          publisher: "Council",
+          capturedAt: "2026-09-15T00:00:00.000Z",
+          rights: "owned",
+          confidence: 100,
+          snapshot: {
+            sha256: "a".repeat(64),
+            capturedAt: "2026-09-15T00:00:00.000Z",
+            pageUrl: "https://example.org/news",
+            width: 1440,
+            height: 1000,
+          },
+        },
+      ],
+      claims: [
+        {
+          id: "discovery_claim",
+          text: "Discovery claimed this was confirmed",
+          status: "supported",
+          sourceIds: ["source_lead"],
+        },
+      ],
+      discovery: {
+        query: "Latest council news",
+        provider: "public-websites",
+        model: "public-pages",
+        toolsUsed: ["browser"],
+      },
+      occurrenceCount: 1,
+      firstSeenAt: "2026-09-15T00:00:00.000Z",
+      lastSeenAt: "2026-09-15T00:00:00.000Z",
+    };
+    await infrastructure.sourceSignalRepository.ingest([signal]);
+    const payload = {
+      workspaceId: "default",
+      brandId: "brand_default",
+      templateId,
+      input: signal.title,
+      sourceSignalId: signal.id,
+      sourceSignalVersion: 1,
+    };
+    const send = (key: string, body = payload) =>
+      request(app.getHttpServer())
+        .post("/v1/agent-posts")
+        .set("Idempotency-Key", key)
+        .send(body);
+    await send("lead-version", { ...payload, sourceSignalVersion: 2 }).expect(
+      409,
+    );
+    await send("lead-brand", { ...payload, brandId: "brand_elsewhere" }).expect(
+      404,
+    );
+    const first = await send("lead-success").expect(201);
+    expect(first.body.sourceLead).toMatchObject({
+      id: signal.id,
+      version: 1,
+      sources: signal.sources,
+    });
+    await infrastructure.sourceSignalRepository.ingest([
+      { ...signal, title: "Corrected title", sources: [] },
+    ]);
+    expect((await send("lead-success").expect(201)).body.sourceLead.title).toBe(
+      "Library opens",
+    );
+    await send("lead-stale").expect(409);
+    const run = await advance(first.body.id);
+    expect(run.status).toBe("researching");
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    expect(item.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "source_lead",
+          url: "https://example.org/lead",
+          rights: "reference-only",
+          confidence: 0,
+          snapshot: signal.sources[0]!.snapshot,
+        }),
+      ]),
+    );
+    expect(item.claims).toEqual([]);
+    expect(item.researchRuns.at(-1)?.status).toBe("queued");
+    await infrastructure.agentPostRepository.replace(
+      { ...run, status: "blocked", version: run.version + 1 },
+      run.version,
+    );
+    const revision = await send("lead-revision", {
+      workspaceId: "default",
+      brandId: "brand_default",
+      templateId,
+      input: signal.title,
+      parentRunId: run.id,
+      direction: "Use a shorter headline",
+    } as typeof payload).expect(201);
+    expect(revision.body.sourceLead).toEqual(first.body.sourceLead);
+  });
+
   it("reaches an exact rendered image and unapproved draft, reusing duplicate requests", async () => {
     const first = await start("success");
     publishRunId = first.body.id;
@@ -969,13 +1088,11 @@ describe("news post workflow with external providers substituted", () => {
       });
     try {
       await expect(
-        app
-          .get(AgentPostImageReviewService)
-          .review(run, item, {
-            id: "post-owner",
-            name: "Owner",
-            role: "owner",
-          }),
+        app.get(AgentPostImageReviewService).review(run, item, {
+          id: "post-owner",
+          name: "Owner",
+          role: "owner",
+        }),
       ).rejects.toMatchObject({ code: "image_changed" });
       expect(vision.mock.calls.length).toBe(before);
     } finally {

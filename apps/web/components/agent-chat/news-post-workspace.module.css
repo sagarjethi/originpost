@@ -1423,3 +1423,8 @@
   color: inherit;
   font: inherit;
 }
+
+.leadContext { padding: 12px 16px; border: 1px solid var(--line, #dedfd9); border-radius: 12px; margin-bottom: 12px; font-size: 13px; }
+.leadContext p { margin: 6px 0; color: var(--muted, #626b66); }
+.leadContext ul { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 6px 0; padding-left: 18px; }
+.leadContext a { color: inherit; text-decoration: underline; }

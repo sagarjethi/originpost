@@ -21,6 +21,8 @@ export class CreateAgentPostDto extends AgentPostQueryDto {
   @IsOptional() @IsIn(["server", "codex-upload"]) imageMode?:
     | "server"
     | "codex-upload";
+  @IsOptional() @IsString() @Length(1, 200) sourceSignalId?: string;
+  @IsOptional() @IsInt() @Min(1) sourceSignalVersion?: number;
   @IsOptional() @IsString() @Length(1, 200) parentRunId?: string;
   @IsString() @Length(1, 200) templateId!: string;
   @IsString() @Length(3, 8000) input!: string;

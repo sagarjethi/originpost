@@ -80,3 +80,9 @@ After composition, `reviewing-image` reads the exact stored card bytes and the a
 Receipts retain the card/logo identifiers and hashes, input/evidence/copy hashes, transcribed text, checks, model/provider and time. Image bytes do not enter the runtime usage ledger. Chat publishing checks that a stored image-review receipt still matches the current asset and copy. Existing runs already past composition are not retroactively marked reviewed.
 
 This automated check can be wrong, especially for small or non-Latin text. It cannot establish event authenticity or image-use rights and never creates a human approval. Local live acceptance still requires configured providers. See [the image-review integration notes](research/2026-09-15-image-review.md).
+
+## Create a post from the source desk
+
+Use **Create post** beside a new or saved lead. Agent loads the exact lead version and displays its original sources. Choose a template and image mode, edit the brief if needed, and submit. Opening the page alone does not start a paid run. Stale, dismissed, saving and other-brand leads cannot start; reopen the current lead from its source desk.
+
+The server snapshots the selected lead and capture metadata, carries those sources into a new content item as reference-only with zero verification confidence, and does not inherit crawler claim verdicts. Research receives the original links, dates and bounded excerpts as untrusted leads. The request includes up to 20 web references and states how many were omitted. A new research result, copy review, image review and human release approval are still required. Revisions retain the original lead snapshot; the original source-desk record remains independently available for triage.

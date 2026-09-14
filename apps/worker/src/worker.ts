@@ -1,3 +1,4 @@
+import { researchContext } from "./research-context.js";
 import "dotenv/config";
 import { createHash } from "node:crypto";
 import { HermesBoardPlugin, HermesSourcingProvider, LumaMumbaiSourcingProvider, MockSourcingProvider, type SourcingProvider } from "@originpost/agents";
@@ -1219,7 +1220,7 @@ const researchWorker = new Worker<ResearchJob>(
       const result = await sourcing.research({
         sessionKey: `originpost-research:${item.workspaceId}:${item.id}`,
         query: run.query,
-        context: `${item.title}\n${item.summary}`,
+        context: researchContext(item),
         depth: run.depth,
         languages: run.languages,
         ...(run.region ? { region: run.region } : {}),

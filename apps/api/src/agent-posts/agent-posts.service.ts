@@ -231,6 +231,9 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       dto.input,
       dto.direction ?? "",
       ...(dto.parentRunId ? [dto.parentRunId] : []),
+      ...(dto.sourceSignalId || dto.sourceSignalVersion
+        ? [dto.sourceSignalId, dto.sourceSignalVersion]
+        : []),
       ...(dto.imageMode === "codex-upload" ? [dto.imageMode] : []),
     ]);
     const previous = await this.store.get(w, id);
@@ -267,6 +270,48 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         "revision_invalid",
         400,
       );
+    if (
+      Boolean(dto.sourceSignalId) !== Boolean(dto.sourceSignalVersion) ||
+      (parent && dto.sourceSignalId)
+    )
+      throw new DomainError(
+        "Choose one versioned news lead for a new conversation. Revisions keep the original sources.",
+        "source_lead_invalid",
+        400,
+      );
+    let sourceLead = parent?.sourceLead;
+    if (dto.sourceSignalId) {
+      const signal = await this.infrastructure.sourceSignalRepository.get(
+        w,
+        dto.sourceSignalId,
+      );
+      if (!signal || signal.brandId !== dto.brandId)
+        throw new DomainError(
+          "News lead not found in this brand.",
+          "source_lead_not_found",
+          404,
+        );
+      if (signal.version !== dto.sourceSignalVersion)
+        throw new DomainError(
+          "This news lead changed. Reopen it from the source desk before creating the post.",
+          "source_lead_changed",
+          409,
+        );
+      if (signal.state === "dismissed" || signal.state === "saving")
+        throw new DomainError(
+          "Restore this lead or wait for it to finish saving before creating a post.",
+          "source_lead_unavailable",
+          409,
+        );
+      sourceLead = {
+        id: signal.id,
+        version: signal.version,
+        title: signal.title,
+        summary: signal.summary,
+        capturedAt: new Date().toISOString(),
+        sources: structuredClone(signal.sources),
+      };
+    }
     const capability = await this.capability(w, dto.brandId, actor);
     if (
       !(dto.imageMode === "codex-upload"
@@ -298,6 +343,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       version: 1,
       fingerprint,
       input: dto.input,
+      ...(sourceLead ? { sourceLead } : {}),
       imageMode: dto.imageMode ?? "server",
       conversationId: parent?.conversationId ?? parent?.id ?? id,
       ...(parent
@@ -572,16 +618,19 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     const w = run.workspaceId,
       t = run.template;
     if (run.status === "queued") {
-      let item = await this.content.create(
+      let item = await this.content.createWithDiscoveredSources(
         {
           workspaceId: w,
           brandId: run.brandId,
           contentId: run.contentItemId,
-          title: run.input.replace(/\s+/g, " ").slice(0, 180),
+          title: (run.sourceLead?.title ?? run.input)
+            .replace(/\s+/g, " ")
+            .slice(0, 180),
           summary: run.input.slice(0, 2000),
           researchDepth: "standard",
           riskLevel: "medium",
         },
+        run.sourceLead?.sources ?? [],
         actor,
       );
       for (let offset = 0; offset < run.input.length; offset += 1900)
@@ -601,7 +650,9 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       const urls = [
         ...new Set(run.input.match(/https?:\/\/[^\s<>]+/g) ?? []),
       ].slice(0, 4);
-      for (const url of urls) {
+      for (const url of urls.filter(
+        (url) => !item.sources.some((source) => source.url === url),
+      )) {
         const parsed = new URL(url);
         if (parsed.username || parsed.password)
           throw new DomainError(
