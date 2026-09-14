@@ -99,7 +99,13 @@ export class CreativeRenderCoordinator implements OnModuleInit, OnApplicationShu
       }
       const stored = await this.infrastructure.mediaObjectStore.read(source.objectKey);
       const sourceBytes = await boundedObjectBytes(stored.body);
-      const rendered = await renderCreativeImage(render.specSnapshot, sourceBytes);
+      let logoBytes: Buffer | undefined;
+      if (render.specSnapshot.logo) {
+        const logo = await this.infrastructure.mediaRepository.get(render.workspaceId, render.specSnapshot.logo.mediaId);
+        if (!logo || logo.brandId !== render.brandId || logo.status !== "ready" || logo.inspectionStatus !== "ready" || !["owned", "cleared"].includes(logo.rights) || logo.sha256 !== render.specSnapshot.logo.sha256 || logo.syntheticLineage) throw new CreativeRenderFailure("logo_not_ready", "The approved logo changed or is no longer usable.", "logo");
+        logoBytes = await boundedObjectBytes((await this.infrastructure.mediaObjectStore.read(logo.objectKey)).body);
+      }
+      const rendered = await renderCreativeImage(render.specSnapshot, sourceBytes, logoBytes);
       if (rendered.rendererVersion !== render.rendererVersion) throw new CreativeRenderFailure("renderer_version_changed", "The renderer version changed after this render was approved. Create a new revision and render again.");
       const output = await this.media.createGeneratedImage({
         id: `media_${render.id}`,
@@ -111,8 +117,8 @@ export class CreativeRenderCoordinator implements OnModuleInit, OnApplicationShu
         bytes: rendered.bytes,
         rights: source.rights as "owned" | "cleared",
         altText: render.specSnapshot.headline,
-        sourceMediaId: source.id,
-        renderId: render.id,
+        origin: { type: "creative-render", sourceMediaId: source.id, renderId: render.id },
+        ...(source.syntheticLineage ? { syntheticLineage: source.syntheticLineage } : {}),
       }, actor);
       if (output.sha256 !== rendered.sha256 || output.widthPixels !== rendered.width || output.heightPixels !== rendered.height) throw new CreativeRenderFailure("output_inspection_mismatch", "The stored output did not match the renderer's exact dimensions and hash.");
       const finishedAt = new Date().toISOString();

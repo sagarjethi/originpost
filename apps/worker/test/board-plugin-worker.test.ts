@@ -34,8 +34,8 @@ describe("Board plugin reconciler", () => {
     const queued = queueAgentBoardReconcile({ current: created.board, actor: owner, expectedVersion: 1, desiredSkills: ["news-research"] });
     await repository.update(queued.board, 1, queued.event, queued.outbox);
     const runtime: BoardRuntimePort = {
-      inspect: vi.fn(), deactivate: vi.fn(), listPendingWrites: vi.fn(), pendingWriteDetail: vi.fn(), decidePendingWrite: vi.fn(), run: vi.fn(),
-      reconcile: vi.fn().mockResolvedValue({ healthy: true, configured: true, policyCompliant: true, modelReady: true, version: "0.21.1", memory: { isolation: "dedicated-profile", enabled: true, writeApproval: true }, isolation: { mode: "profile-scoped", verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false }, skills: [{ name: "news-research", description: "", category: "news", enabled: true, provenance: "bundled", approved: true, userManageable: true }], safeToolsets: ["memory"], restartRequired: false }),
+      inspect: vi.fn(), deactivate: vi.fn(), listPendingWrites: vi.fn(), pendingWriteDetail: vi.fn(), decidePendingWrite: vi.fn(), run: vi.fn(), executeTask: vi.fn(),
+      reconcile: vi.fn().mockResolvedValue({ healthy: true, configured: true, policyCompliant: true, modelReady: true, version: "0.21.2", memory: { isolation: "dedicated-profile", enabled: true, writeApproval: true }, isolation: { mode: "profile-scoped", verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false }, skills: [{ name: "news-research", description: "", category: "news", enabled: true, provenance: "bundled", approved: true, userManageable: true }], safeToolsets: ["memory"], restartRequired: false }),
     };
     const stale = await processBoardPluginReconcile({ workspaceId: "w", brandId: "b", boardId: created.board.id, configurationEpoch: 1 }, { boards: repository, runtime, secret: "x".repeat(32) });
     expect(stale).toEqual({ skipped: true, reason: "stale-configuration-epoch" });

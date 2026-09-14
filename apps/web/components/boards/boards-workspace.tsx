@@ -1,12 +1,12 @@
 "use client";
 
-import { Activity, Archive, Bot, Brain, Check, CheckCircle2, ChevronRight, Columns3, FilePlus2, Hash, Loader2, LockKeyhole, Plus, RefreshCw, Send, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, TriangleAlert, X } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Activity, Archive, Bot, Brain, Check, CheckCircle2, ChevronRight, Columns3, FilePlus2, Hash, ListTodo, Loader2, LockKeyhole, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, TriangleAlert, X } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, type AuthView } from "../../lib/api-client";
-import { boardStatusLabel, formatBoardStamp, parseBoard, parseBoardHermes, parseBoardRuns, parseBoards, type BoardHermesView, type BoardPendingWriteDetailView, type BoardPendingWriteView, type BoardRunView, type BoardSkillView, type BoardView } from "./board-utils";
+import { BOARD_TASK_STATUSES, boardTaskHandoffRequestBody, boardTaskNextStatuses, formatBoardStamp, hasActiveBoardTaskExecution, parseBoard, parseBoardHermes, parseBoardRuns, parseBoards, parseBoardTask, parseBoardTaskComments, parseBoardTaskExecutions, parseBoardTaskHandoff, parseBoardTasks, type BoardHermesView, type BoardPendingWriteDetailView, type BoardPendingWriteView, type BoardRunView, type BoardSkillView, type BoardTaskCommentView, type BoardTaskExecutionStatus, type BoardTaskExecutionView, type BoardTaskStatus, type BoardTaskView, type BoardView } from "./board-utils";
 import styles from "./boards-workspace.module.css";
 
-type BoardPanel = "work" | "overview" | "memory" | "skills";
+type BoardPanel = "tasks" | "work" | "overview" | "memory" | "skills";
 type BoardRunResult = { runId: string; model: string; text: string; usage?: { inputTokens?: number; outputTokens?: number } };
 
 const emptyPlugin: BoardHermesView = { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, isolation: { verified: false, profileScoped: false, memoryScoped: false, skillsScoped: false, stateScoped: false, externalSkillsBlocked: false, unsafeToolsBlocked: false, filesystemSandbox: false }, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] };
@@ -43,6 +43,121 @@ function BoardWork({ board, runtimeReady, canRun, busy, prompt, result, runs, on
   </div>;
 }
 
+type BoardTaskCreateInput = { title: string; description?: string; priority: "low" | "normal" | "high" | "urgent"; assignee: "team" | "board-agent"; parentTaskIds: string[] };
+type BoardTaskPatch = { status?: BoardTaskStatus; assignee?: "team" | "board-agent"; parentTaskIds?: string[]; blockedReason?: string; resultSummary?: string };
+
+function taskStatusLabel(status: BoardTaskStatus) {
+  if (status === "todo") return "To do";
+  if (status === "running") return "In progress";
+  return status[0]!.toUpperCase() + status.slice(1);
+}
+
+function executionStatusLabel(status: BoardTaskExecutionStatus) {
+  if (status === "queued") return "Queued";
+  if (status === "running") return "Running";
+  if (status === "succeeded") return "Ready for review";
+  if (status === "uncertain") return "Needs verification";
+  return "Failed";
+}
+
+function BoardTasks({ board, tasks, comments, executions, handoffContentItemIds, selectedTaskId, includeArchived, canManage, canApprove, busy, onSelect, onIncludeArchived, onCreate, onUpdate, onComment, onRelease, onHandoff, onOpenContent }: {
+  board: BoardView;
+  tasks: BoardTaskView[];
+  comments: BoardTaskCommentView[];
+  executions: BoardTaskExecutionView[];
+  handoffContentItemIds: Record<string, string>;
+  selectedTaskId: string;
+  includeArchived: boolean;
+  canManage: boolean;
+  canApprove: boolean;
+  busy: string;
+  onSelect: (taskId: string) => void;
+  onIncludeArchived: (value: boolean) => void;
+  onCreate: (input: BoardTaskCreateInput) => Promise<boolean>;
+  onUpdate: (task: BoardTaskView, patch: BoardTaskPatch) => Promise<boolean>;
+  onComment: (task: BoardTaskView, body: string) => Promise<boolean>;
+  onRelease: (task: BoardTaskView) => Promise<boolean>;
+  onHandoff: (task: BoardTaskView, execution: BoardTaskExecutionView) => Promise<boolean>;
+  onOpenContent: (contentItemId: string) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const selected = tasks.find((task) => task.id === selectedTaskId);
+  const columns = includeArchived ? BOARD_TASK_STATUSES : BOARD_TASK_STATUSES.filter((status) => status !== "archived");
+  const editableDependencies = selected && ["triage", "todo", "blocked"].includes(selected.status);
+  const editableAssignment = selected && ["triage", "todo"].includes(selected.status);
+  const latestExecution = executions.reduce<BoardTaskExecutionView | undefined>((latest, execution) => !latest || Date.parse(execution.updatedAt) > Date.parse(latest.updatedAt) ? execution : latest, undefined);
+  const reviewExecution = selected?.status === "review" && latestExecution?.status === "succeeded" ? latestExecution : undefined;
+
+  async function createTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const priority = String(data.get("priority"));
+    const description = String(data.get("description") ?? "").trim();
+    const saved = await onCreate({
+      title: String(data.get("title") ?? "").trim(),
+      ...(description ? { description } : {}),
+      priority: priority === "low" || priority === "high" || priority === "urgent" ? priority : "normal",
+      assignee: data.get("assignee") === "board-agent" ? "board-agent" : "team",
+      parentTaskIds: data.getAll("parentTaskIds").map(String),
+    });
+    if (saved) { form.reset(); setCreating(false); }
+  }
+
+  return <section className={styles.tasksSurface} aria-label="Board tasks">
+    <header className={styles.tasksHead}>
+      <div><span><ListTodo size={19} /></span><div><strong>Board tasks</strong><p>Plan the work, assign owners, and review results.</p></div></div>
+      <div><label><input type="checkbox" checked={includeArchived} onChange={(event) => onIncludeArchived(event.target.checked)} />Show archived</label>{canManage && board.status !== "archived" ? <button type="button" onClick={() => setCreating((value) => !value)}><Plus size={13} />New task</button> : null}</div>
+    </header>
+
+    {creating ? <form className={styles.taskForm} onSubmit={(event) => void createTask(event)}>
+      <label>Task title<input name="title" required minLength={1} maxLength={180} placeholder="Verify the Luma Mumbai event" /></label>
+      <label>Description<textarea name="description" rows={3} maxLength={8_000} placeholder="Capture the official organizer page and prepare a source-backed brief." /></label>
+      <div><label>Priority<select name="priority" defaultValue="normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label>Execution owner<select name="assignee" defaultValue="team" aria-label="Task execution owner"><option value="team">Team</option><option value="board-agent">Board agent (Hermes)</option></select></label></div>
+      {tasks.filter((task) => task.status !== "archived").length ? <fieldset><legend>Dependencies</legend>{tasks.filter((task) => task.status !== "archived").map((task) => <label key={task.id}><input type="checkbox" name="parentTaskIds" value={task.id} />{task.title}<small>{taskStatusLabel(task.status)}</small></label>)}</fieldset> : null}
+      <footer><button type="button" onClick={() => setCreating(false)}>Cancel</button><button type="submit" disabled={Boolean(busy)}>{busy === "task:create" ? <Loader2 className={styles.spin} size={13} /> : <Plus size={13} />}Create in triage</button></footer>
+    </form> : null}
+
+    <div className={styles.taskBoard}>
+      {columns.map((status) => {
+        const rows = tasks.filter((task) => task.status === status);
+        return <section key={status} className={styles.taskColumn} aria-label={taskStatusLabel(status) + " tasks"}>
+          <header><strong>{taskStatusLabel(status)}</strong><span>{rows.length}</span></header>
+          <div>{rows.map((task) => <article key={task.id} className={selectedTaskId === task.id ? styles.selectedTask : ""}>
+            <button type="button" onClick={() => onSelect(task.id)}><strong>{task.title}</strong><span>{task.priority} · {task.assignee === "board-agent" ? "Board agent" : "Team"}</span>{task.parentTaskIds.length ? <small>{task.parentTaskIds.length} {task.parentTaskIds.length === 1 ? "dependency" : "dependencies"}</small> : null}</button>
+            {canManage && board.status !== "archived" && task.status !== "archived" && boardTaskNextStatuses(task.status).filter((next) => (next !== "done" || canApprove) && !(task.assignee === "board-agent" && task.status === "ready" && next === "running")).length ? <label><span>Move</span><select aria-label={"Move " + task.title} value={task.status} disabled={Boolean(busy)} onChange={(event) => void onUpdate(task, { status: event.target.value as BoardTaskStatus })}><option value={task.status}>{taskStatusLabel(task.status)}</option>{boardTaskNextStatuses(task.status).filter((next) => (next !== "done" || canApprove) && !(task.assignee === "board-agent" && task.status === "ready" && next === "running")).map((next) => <option key={next} value={next}>{taskStatusLabel(next)}</option>)}</select></label> : null}
+          </article>)}
+          {!rows.length ? <p>No tasks</p> : null}</div>
+        </section>;
+      })}
+    </div>
+
+    {selected ? <aside className={styles.taskDetail} aria-label="Selected task details">
+      <header><div><small>{taskStatusLabel(selected.status)} · v{selected.version}</small><h3>{selected.title}</h3><p>{selected.description || "No description yet."}</p></div><button type="button" onClick={() => onSelect("")} aria-label="Close task details"><X size={15} /></button></header>
+      {selected.blockedReason ? <p className={styles.taskCallout}><TriangleAlert size={14} />{selected.blockedReason}</p> : null}
+      {selected.resultSummary ? <p className={styles.taskCallout}><CheckCircle2 size={14} />{selected.resultSummary}</p> : null}
+      <section className={styles.taskAssignment}><h4>Execution owner</h4>{editableAssignment && canManage && board.status !== "archived" ? <label><span>Who performs this task?</span><select aria-label="Execution owner" value={selected.assignee} disabled={Boolean(busy)} onChange={(event) => void onUpdate(selected, { assignee: event.target.value === "board-agent" ? "board-agent" : "team" })}><option value="team">Team</option><option value="board-agent">Board agent (Hermes)</option></select></label> : <p>{selected.assignee === "board-agent" ? "Board agent (Hermes)" : "Team"}</p>}<small>The execution owner can only be changed before work begins.</small></section>
+      {selected.assignee === "board-agent" || executions.length ? <section className={styles.taskExecutions} aria-label="Hermes execution history">
+        <header><div><h4>Hermes execution</h4><p>Release starts Board-scoped work. A manager or owner must review the result separately before marking the task done.</p></div>{latestExecution ? <em role="status" aria-live="polite">{hasActiveBoardTaskExecution(executions) ? <><Loader2 className={styles.spin} size={12} />Refreshing</> : `Latest: ${executionStatusLabel(latestExecution.status)}`}</em> : null}</header>
+        {selected.assignee === "board-agent" && selected.status === "ready" ? <div className={styles.releaseTask}><div><strong>Ready to release</strong><p>Hermes will use only this Board’s approved memory and skills.</p></div>{canApprove ? <button type="button" onClick={() => void onRelease(selected)} disabled={Boolean(busy) || board.status !== "ready"}>{busy === "task:release" ? <Loader2 className={styles.spin} size={13} /> : <Send size={13} />}Release to Hermes</button> : <span><LockKeyhole size={13} />Manager or owner required</span>}{board.status !== "ready" ? <small>Finish this Board’s Hermes setup before release.</small> : null}</div> : null}
+        <div className={styles.executionList}>{executions.map((execution) => <article key={execution.id}>
+          <header><strong>{executionStatusLabel(execution.status)}</strong><time dateTime={execution.updatedAt}>{formatBoardStamp(execution.updatedAt)}</time></header>
+          {execution.model ? <small>{execution.model}</small> : null}
+          {execution.resultText ? <pre>{execution.resultText}</pre> : null}
+          {execution.errorSummary ? <p className={styles.executionError}><TriangleAlert size={13} />{execution.errorSummary}</p> : null}
+          {execution.status === "succeeded" ? <p><ShieldCheck size={13} />Execution finished. Human approval is still required to complete this task.</p> : null}
+          {reviewExecution?.id === execution.id ? <div className={styles.taskHandoff}>
+            <div><strong>Continue in Content Inbox</strong><p>Create an unapproved Content item with this Board, task, and execution recorded as provenance. Source checks, drafting, and editorial approval still happen there. Nothing is published by this action.</p></div>
+            {execution.contentItemId || handoffContentItemIds[execution.id] ? <button type="button" aria-label={`Open Content Inbox item for ${selected.title}`} onClick={() => onOpenContent((execution.contentItemId || handoffContentItemIds[execution.id])!)}><FilePlus2 size={13} />Open Content item</button> : canApprove ? <button type="button" aria-label={`Create review Content Inbox item from ${selected.title}`} onClick={() => void onHandoff(selected, execution)} disabled={Boolean(busy)}>{busy === `task:handoff:${execution.id}` ? <Loader2 className={styles.spin} size={13} /> : <FilePlus2 size={13} />}Create &amp; open review item</button> : <span><LockKeyhole size={13} />Manager or owner required</span>}
+          </div> : null}
+        </article>)}{!executions.length ? <p>No Hermes execution has been released for this task.</p> : null}</div>
+      </section> : null}
+      <section><h4>Dependencies</h4>{editableDependencies && canManage && board.status !== "archived" ? <form key={selected.id + ":" + selected.version} className={styles.dependencyForm} onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void onUpdate(selected, { parentTaskIds: data.getAll("parentTaskIds").map(String) }); }}>{tasks.filter((task) => task.id !== selected.id && task.status !== "archived").map((task) => <label key={task.id}><input type="checkbox" name="parentTaskIds" value={task.id} defaultChecked={selected.parentTaskIds.includes(task.id)} />{task.title}<small>{taskStatusLabel(task.status)}</small></label>)}<button type="submit" disabled={Boolean(busy)}>Save dependencies</button></form> : selected.parentTaskIds.length ? <ul>{selected.parentTaskIds.map((id) => <li key={id}>{tasks.find((task) => task.id === id)?.title ?? "Completed task"}</li>)}</ul> : <p>No dependencies.</p>}</section>
+      <section><h4>Comments</h4><div className={styles.taskComments}>{comments.map((comment) => <article key={comment.id}><strong>{comment.authorName}</strong><time dateTime={comment.createdAt}>{formatBoardStamp(comment.createdAt)}</time><p>{comment.body}</p></article>)}{!comments.length ? <p>No comments yet.</p> : null}</div>{canManage && board.status !== "archived" && selected.status !== "archived" ? <form className={styles.commentForm} onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const body = String(new FormData(form).get("body") ?? "").trim(); if (body) void onComment(selected, body).then((saved) => { if (saved) form.reset(); }); }}><label htmlFor={"task-comment-" + selected.id}>Add a comment</label><textarea id={"task-comment-" + selected.id} name="body" required maxLength={4_000} rows={2} /><button type="submit" disabled={Boolean(busy)}><MessageSquare size={13} />Comment</button></form> : null}</section>
+    </aside> : null}
+  </section>;
+}
+
 function skillState(skill: BoardSkillView) {
   if (skill.enabled && skill.applied) return "Allowed";
   if (skill.enabled) return "Approved · applying";
@@ -66,22 +181,38 @@ function PendingWrites({ subsystem, plugin, detail, busy, isOwner, onReview, onD
   </div>;
 }
 
-export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, panel, isOwner, canRun = false, busy, pendingDetail, runPrompt = "", runResult = null, runs = [], onPanelChange, onRunPromptChange = () => undefined, onRun = () => undefined, onHandoff = () => undefined, onTest, onReconcile, onToggleSkill, onReviewPending, onPendingDecision, onEdit, onArchive }: {
+export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, panel, isOwner, canRun = false, canManageTasks = false, canApproveTasks = false, busy, pendingDetail, runPrompt = "", runResult = null, runs = [], tasks = [], taskComments = [], taskExecutions = [], taskHandoffContentItemIds = {}, selectedTaskId = "", includeArchivedTasks = false, onPanelChange, onRunPromptChange = () => undefined, onRun = () => undefined, onHandoff = () => undefined, onSelectTask = () => undefined, onIncludeArchivedTasks = () => undefined, onCreateTask = async () => false, onUpdateTask = async () => false, onCommentTask = async () => false, onReleaseTask = async () => false, onHandoffTask = async () => false, onOpenContent = () => undefined, onTest, onReconcile, onToggleSkill, onReviewPending, onPendingDecision, onEdit, onArchive }: {
   board: BoardView;
   plugin: BoardHermesView;
   pluginUnavailable?: boolean;
   panel: BoardPanel;
   isOwner: boolean;
   canRun?: boolean;
+  canManageTasks?: boolean;
+  canApproveTasks?: boolean;
   busy: string;
   pendingDetail: BoardPendingWriteDetailView | null;
   runPrompt?: string;
   runResult?: BoardRunResult | null;
   runs?: BoardRunView[];
+  tasks?: BoardTaskView[];
+  taskComments?: BoardTaskCommentView[];
+  taskExecutions?: BoardTaskExecutionView[];
+  taskHandoffContentItemIds?: Record<string, string>;
+  selectedTaskId?: string;
+  includeArchivedTasks?: boolean;
   onPanelChange: (panel: BoardPanel) => void;
   onRunPromptChange?: (value: string) => void;
   onRun?: (event: FormEvent<HTMLFormElement>) => void;
   onHandoff?: () => void;
+  onSelectTask?: (taskId: string) => void;
+  onIncludeArchivedTasks?: (value: boolean) => void;
+  onCreateTask?: (input: BoardTaskCreateInput) => Promise<boolean>;
+  onUpdateTask?: (task: BoardTaskView, patch: BoardTaskPatch) => Promise<boolean>;
+  onCommentTask?: (task: BoardTaskView, body: string) => Promise<boolean>;
+  onReleaseTask?: (task: BoardTaskView) => Promise<boolean>;
+  onHandoffTask?: (task: BoardTaskView, execution: BoardTaskExecutionView) => Promise<boolean>;
+  onOpenContent?: (contentItemId: string) => void;
   onTest: () => void;
   onReconcile: () => void;
   onToggleSkill: (skill: BoardSkillView) => void;
@@ -91,18 +222,29 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
   onArchive: () => void;
 }) {
   const state = pluginState(board, plugin, pluginUnavailable);
+  const boardState = board.status === "archived" ? { label: "Archived", className: styles.attention } : { label: "Active", className: styles.ready };
   return <section className={styles.detail} aria-labelledby="board-detail-title">
     <header className={styles.detailHead}>
       <div><p>BOARD</p><h2 id="board-detail-title">{board.name}</h2><span>{board.purpose || "A dedicated working context for this brand."}</span></div>
-      <div className={styles.detailActions}>{isOwner && board.status !== "archived" ? <button onClick={onEdit}>Edit board</button> : null}<em className={state.className}>{state.label}</em></div>
+      <div className={styles.detailActions}>{isOwner && board.status !== "archived" ? <button onClick={onEdit}>Edit board</button> : null}<em className={(panel === "tasks" ? boardState : state).className}>{(panel === "tasks" ? boardState : state).label}</em></div>
     </header>
 
-    <div className={styles.boundary}>
+    <nav className={styles.boardTabs} aria-label="Board areas">
+      <button className={panel === "tasks" ? styles.activeBoardTab : ""} onClick={() => onPanelChange("tasks")} aria-current={panel === "tasks" ? "page" : undefined}><ListTodo size={15} />Tasks</button>
+      <button className={panel === "work" ? styles.activeBoardTab : ""} onClick={() => onPanelChange("work")} aria-current={panel === "work" ? "page" : undefined}><Send size={15} />Work</button>
+      <button className={["overview", "memory", "skills"].includes(panel) ? styles.activeBoardTab : ""} onClick={() => onPanelChange("overview")} aria-current={["overview", "memory", "skills"].includes(panel) ? "page" : undefined}><Bot size={15} />Hermes settings</button>
+    </nav>
+
+    {panel === "tasks" ? <BoardTasks board={board} tasks={tasks} comments={taskComments} executions={taskExecutions} handoffContentItemIds={taskHandoffContentItemIds} selectedTaskId={selectedTaskId} includeArchived={includeArchivedTasks} canManage={canManageTasks} canApprove={canApproveTasks} busy={busy} onSelect={onSelectTask} onIncludeArchived={onIncludeArchivedTasks} onCreate={onCreateTask} onUpdate={onUpdateTask} onComment={onCommentTask} onRelease={onReleaseTask} onHandoff={onHandoffTask} onOpenContent={onOpenContent} /> : null}
+
+    {panel === "work" ? <article className={styles.boardSurface}><BoardWork board={board} runtimeReady={!pluginUnavailable && plugin.configured && plugin.healthy && plugin.modelReady && plugin.isolation.verified} canRun={canRun} busy={busy} prompt={runPrompt} result={runResult} runs={runs} onPrompt={onRunPromptChange} onRun={onRun} onHandoff={onHandoff} /></article> : null}
+
+    {panel !== "tasks" ? <div className={styles.boundary}>
       <span><LockKeyhole size={19} /></span>
       <div><strong>{plugin.isolation.verified ? "Verified Board state boundary" : "Restricted Board runtime"}</strong><p>{plugin.isolation.verified ? "Memory, skills, and runtime state are attested to this Board’s dedicated profile. Filesystem tools stay disabled; a Hermes Profile is not an operating-system sandbox." : "OriginPost has not verified this Board’s profile-scoped state. Work remains unavailable until the internal check passes."}</p></div>
-    </div>
+    </div> : null}
 
-    <article className={styles.plugin}>
+    {panel !== "tasks" && panel !== "work" ? <article className={styles.plugin}>
       <header className={styles.pluginHead}>
         <span className={styles.pluginIcon}><Bot size={21} /></span>
         <div><small>BUILT-IN INTERNAL PLUGIN</small><h3>Hermes</h3><p>Board intelligence, managed inside this board.</p></div>
@@ -112,11 +254,9 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
       {plugin.pending ? <div className={styles.applyingBanner}><Loader2 className={styles.spin} size={14} /><div><strong>Approved changes are applying</strong><p>This Board stays unavailable until Hermes matches the exact Board policy.</p></div></div> : null}
       {pluginUnavailable ? <div className={styles.applyingBanner}><TriangleAlert size={14} /><div><strong>Plugin status could not be verified</strong><p>The saved Board setup was not changed. Retry the connection check when the service is available.</p></div></div> : null}
 
-      <nav className={styles.pluginTabs} aria-label="Hermes board settings">
-        {(["work", "overview", "memory", "skills"] as const).map((value) => <button key={value} className={panel === value ? styles.activeTab : ""} onClick={() => onPanelChange(value)} aria-current={panel === value ? "page" : undefined}>{value === "work" ? <Send size={14} /> : value === "overview" ? <Sparkles size={14} /> : value === "memory" ? <Brain size={14} /> : <ToggleRight size={14} />}{value[0]!.toUpperCase() + value.slice(1)}</button>)}
+      <nav className={styles.pluginTabs} aria-label="Hermes plugin settings">
+        {(["overview", "memory", "skills"] as const).map((value) => <button key={value} className={panel === value ? styles.activeTab : ""} onClick={() => onPanelChange(value)} aria-current={panel === value ? "page" : undefined}>{value === "overview" ? <Sparkles size={14} /> : value === "memory" ? <Brain size={14} /> : <ToggleRight size={14} />}{value[0]!.toUpperCase() + value.slice(1)}</button>)}
       </nav>
-
-      {panel === "work" ? <BoardWork board={board} runtimeReady={!pluginUnavailable && plugin.configured && plugin.healthy && plugin.modelReady && plugin.isolation.verified} canRun={canRun} busy={busy} prompt={runPrompt} result={runResult} runs={runs} onPrompt={onRunPromptChange} onRun={onRun} onHandoff={onHandoff} /> : null}
 
       {panel === "overview" ? <div className={styles.overview}>
         <div><span><Brain size={17} /></span><strong>Profile-scoped memory</strong><p>{plugin.isolation.memoryScoped ? "The memory tree is contained in this Board’s dedicated profile." : "Memory path attestation is required before work can run."}</p></div>
@@ -142,18 +282,18 @@ export function BoardDetailPanel({ board, plugin, pluginUnavailable = false, pan
         <PendingWrites subsystem="skills" plugin={plugin} detail={pendingDetail} busy={busy} isOwner={isOwner} onReview={onReviewPending} onDecision={onPendingDecision} />
         <p className={styles.privacyNote}><ShieldCheck size={14} /> {plugin.skillWriteApproval ? "Skill writes inside Hermes require approval; Board access changes require an owner here." : "Skill approval protection needs attention."} Existing skill instructions stay private; only an exact pending change is shown during owner review.</p>
       </div> : null}
-    </article>
+    </article> : null}
 
-    <footer className={styles.detailFoot}><span>Last connection check: {formatBoardStamp(plugin.lastCheckedAt ?? board.lastCheckedAt)}</span>{isOwner && board.status !== "archived" ? <button className={styles.archiveButton} onClick={onArchive}><Archive size={13} />Archive board</button> : null}</footer>
+    <footer className={styles.detailFoot}>{panel !== "tasks" ? <span>Last connection check: {formatBoardStamp(plugin.lastCheckedAt ?? board.lastCheckedAt)}</span> : <span>Tasks are stored in this Board and do not require Hermes.</span>}{isOwner && board.status !== "archived" ? <button className={styles.archiveButton} onClick={onArchive}><Archive size={13} />Archive board</button> : null}</footer>
   </section>;
 }
 
-export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView; workspaceId: string; brandId: string }) {
+export function BoardsWorkspace({ auth, workspaceId, brandId, onOpenContent }: { auth: AuthView; workspaceId: string; brandId: string; onOpenContent?: (contentItemId: string) => void }) {
   const [boards, setBoards] = useState<BoardView[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [plugin, setPlugin] = useState<BoardHermesView>(emptyPlugin);
   const [pluginUnavailable, setPluginUnavailable] = useState(false);
-  const [panel, setPanel] = useState<BoardPanel>("work");
+  const [panel, setPanel] = useState<BoardPanel>("tasks");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
@@ -164,9 +304,23 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
   const [runPrompt, setRunPrompt] = useState("");
   const [runResult, setRunResult] = useState<BoardRunResult | null>(null);
   const [runs, setRuns] = useState<BoardRunView[]>([]);
+  const [tasks, setTasks] = useState<BoardTaskView[]>([]);
+  const [taskComments, setTaskComments] = useState<BoardTaskCommentView[]>([]);
+  const [taskExecutions, setTaskExecutions] = useState<BoardTaskExecutionView[]>([]);
+  const [taskHandoffContentItemIds, setTaskHandoffContentItemIds] = useState<Record<string, string>>({});
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [includeArchivedTasks, setIncludeArchivedTasks] = useState(false);
+  const detailRequest = useRef(0);
+  const commentRequest = useRef(0);
+  const executionRequest = useRef(0);
+  const pendingCommentKeys = useRef(new Map<string, { body: string; version: number; key: string }>());
+  const pendingReleaseKeys = useRef(new Map<string, { version: number; key: string }>());
+  const pendingHandoffKeys = useRef(new Map<string, { version: number; key: string }>());
   const role = membershipRole(auth, workspaceId);
   const isOwner = role === "owner";
   const canRun = role !== "viewer";
+  const canManageTasks = role !== "viewer";
+  const canApproveTasks = role === "owner" || role === "manager";
   const selected = useMemo(() => boards.find((board) => board.id === selectedId) ?? boards.find((board) => board.status !== "archived") ?? boards[0], [boards, selectedId]);
 
   const load = useCallback(async () => {
@@ -186,46 +340,259 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
   }, [auth.csrfToken, brandId, workspaceId]);
 
   const loadDetail = useCallback(async (boardId: string) => {
+    const requestId = ++detailRequest.current;
     setDetailLoading(true);
     setError("");
     try {
-      const [boardResponse, pluginResponse, runsResponse] = await Promise.all([
+      const [boardResponse, tasksResponse, pluginResponse, runsResponse] = await Promise.all([
         apiFetch(`/v1/boards/${encodeURIComponent(boardId)}?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken),
-        apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/plugins/hermes?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken),
-        apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/runs?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=20`, { cache: "no-store" }, auth.csrfToken),
+        apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/tasks?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&includeArchived=${includeArchivedTasks}`, { cache: "no-store" }, auth.csrfToken),
+        panel === "tasks" ? Promise.resolve(null) : apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/plugins/hermes?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken),
+        panel === "work" ? apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/runs?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=20`, { cache: "no-store" }, auth.csrfToken) : Promise.resolve(null),
       ]);
+      if (detailRequest.current !== requestId) return;
       if (!boardResponse.ok) throw new Error();
       const boardBody = await boardResponse.json().catch(() => ({}));
       const parsedBoard = parseBoard((boardBody as { board?: unknown }).board ?? boardBody);
       if (parsedBoard) setBoards((current) => current.map((board) => board.id === parsedBoard.id ? parsedBoard : board));
-      if (pluginResponse.ok) {
+      if (pluginResponse?.ok) {
         setPlugin(parseBoardHermes(await pluginResponse.json().catch(() => ({}))));
         setPluginUnavailable(false);
-      } else {
+      } else if (pluginResponse) {
         setPlugin(emptyPlugin);
         setPluginUnavailable(true);
         setError(safeRequestMessage("Could not verify this Board’s internal Hermes plugin."));
+      } else {
+        setPlugin(emptyPlugin);
+        setPluginUnavailable(false);
       }
-      if (runsResponse.ok) setRuns(parseBoardRuns(await runsResponse.json().catch(() => ({}))));
-      else {
+      if (runsResponse?.ok) setRuns(parseBoardRuns(await runsResponse.json().catch(() => ({}))));
+      else if (runsResponse) {
         setRuns([]);
         setError((current) => current || safeRequestMessage("Could not load this Board’s recent run ledger."));
+      } else setRuns([]);
+      if (tasksResponse.ok) {
+        const nextTasks = parseBoardTasks(await tasksResponse.json().catch(() => ({}))).filter((task) => task.boardId === boardId);
+        setTasks(nextTasks);
+        setSelectedTaskId((current) => nextTasks.some((task) => task.id === current) ? current : "");
+      } else {
+        setTasks([]);
+        setError((current) => current || safeRequestMessage("Could not load this Board’s tasks."));
       }
     } catch {
+      if (detailRequest.current !== requestId) return;
       setPlugin(emptyPlugin);
       setPluginUnavailable(true);
       setRuns([]);
+      setTasks([]);
       setError(safeRequestMessage("Could not load this Board."));
     } finally {
-      setDetailLoading(false);
+      if (detailRequest.current === requestId) setDetailLoading(false);
+    }
+  }, [auth.csrfToken, brandId, includeArchivedTasks, panel, workspaceId]);
+
+  const loadTaskExecutions = useCallback(async (boardId: string, taskId: string, quiet = false) => {
+    const requestId = ++executionRequest.current;
+    try {
+      const response = await apiFetch(`/v1/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/executions?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`, { cache: "no-store" }, auth.csrfToken);
+      if (!response.ok) throw new Error();
+      const next = parseBoardTaskExecutions(await response.json().catch(() => ({}))).filter((execution) => execution.taskId === taskId);
+      if (executionRequest.current === requestId) setTaskExecutions(next);
+      return next;
+    } catch {
+      if (executionRequest.current === requestId && !quiet) {
+        setTaskExecutions([]);
+        setError(safeRequestMessage("Could not load this task’s Hermes execution history."));
+      }
+      return null;
     }
   }, [auth.csrfToken, brandId, workspaceId]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (selectedId) void loadDetail(selectedId); else setPlugin(emptyPlugin); }, [loadDetail, selectedId]);
-  useEffect(() => { setFormMode(null); setPanel("work"); setNotice(""); setRunPrompt(""); setRunResult(null); }, [brandId, workspaceId]);
+  useEffect(() => { if (selectedId) void loadDetail(selectedId); else { detailRequest.current += 1; setPlugin(emptyPlugin); setTasks([]); } }, [loadDetail, selectedId]);
+  useEffect(() => { setFormMode(null); setPanel("tasks"); setNotice(""); setRunPrompt(""); setRunResult(null); setSelectedTaskId(""); setTaskComments([]); setTaskExecutions([]); setTaskHandoffContentItemIds({}); setIncludeArchivedTasks(false); }, [brandId, workspaceId]);
   useEffect(() => { setPendingDetail(null); }, [selectedId, panel]);
-  useEffect(() => { setRunPrompt(""); setRunResult(null); }, [selectedId]);
+  useEffect(() => { setRunPrompt(""); setRunResult(null); setSelectedTaskId(""); setTaskComments([]); setTaskExecutions([]); }, [selectedId]);
+  useEffect(() => {
+    const requestId = ++commentRequest.current;
+    if (!selectedId || !selectedTaskId) { setTaskComments([]); return; }
+    void (async () => {
+      try {
+        const response = await apiFetch(`/v1/boards/${encodeURIComponent(selectedId)}/tasks/${encodeURIComponent(selectedTaskId)}/comments?workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=100`, { cache: "no-store" }, auth.csrfToken);
+        if (!response.ok) throw new Error();
+        const comments = parseBoardTaskComments(await response.json().catch(() => ({})));
+        if (commentRequest.current === requestId) setTaskComments(comments);
+      } catch {
+        if (commentRequest.current === requestId) { setTaskComments([]); setError(safeRequestMessage("Could not load this task’s comments.")); }
+      }
+    })();
+  }, [auth.csrfToken, brandId, selectedId, selectedTaskId, workspaceId]);
+  useEffect(() => {
+    executionRequest.current += 1;
+    if (!selectedId || !selectedTaskId) { setTaskExecutions([]); return; }
+    setTaskExecutions([]);
+    void loadTaskExecutions(selectedId, selectedTaskId);
+  }, [loadTaskExecutions, selectedId, selectedTaskId]);
+  useEffect(() => {
+    if (!selectedId || !selectedTaskId || !hasActiveBoardTaskExecution(taskExecutions)) return;
+    const timer = window.setInterval(() => { void loadTaskExecutions(selectedId, selectedTaskId, true); }, 2_500);
+    return () => window.clearInterval(timer);
+  }, [loadTaskExecutions, selectedId, selectedTaskId, taskExecutions]);
+
+  async function createTask(input: BoardTaskCreateInput) {
+    if (!selected || !canManageTasks || selected.status === "archived") return false;
+    setBusy("task:create"); setError(""); setNotice("");
+    try {
+      const response = await apiFetch("/v1/boards/" + encodeURIComponent(selected.id) + "/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ workspaceId, brandId, ...input }),
+      }, auth.csrfToken);
+      if (!response.ok) throw new Error();
+      const body = await response.json().catch(() => ({})) as { task?: unknown };
+      const saved = parseBoardTask(body.task);
+      setNotice("Task created in triage. Release it through the Board workflow when its scope is clear.");
+      await loadDetail(selected.id);
+      if (saved?.boardId === selected.id) setSelectedTaskId(saved.id);
+      return true;
+    } catch {
+      setError(safeRequestMessage("Could not create this Board task."));
+      return false;
+    } finally { setBusy(""); }
+  }
+
+  async function updateTask(task: BoardTaskView, patch: BoardTaskPatch) {
+    if (!selected || !canManageTasks || task.boardId !== selected.id || selected.status === "archived") return false;
+    const next = { ...patch };
+    if (patch.status === "blocked") {
+      const reason = window.prompt("Why is this task blocked?", task.blockedReason ?? "");
+      if (!reason?.trim()) return false;
+      next.blockedReason = reason.trim();
+    }
+    if (patch.status === "review") {
+      const result = window.prompt("Add the result or evidence for review:", task.resultSummary ?? "");
+      if (!result?.trim()) return false;
+      next.resultSummary = result.trim();
+    }
+    if (patch.status === "done" && !task.resultSummary) {
+      const result = window.prompt("Add the verified completion result:", "");
+      if (!result?.trim()) return false;
+      next.resultSummary = result.trim();
+    }
+    if (patch.status === "archived" && !window.confirm("Archive this task? It will become read-only.")) return false;
+    setBusy("task:update"); setError(""); setNotice("");
+    try {
+      const response = await apiFetch("/v1/boards/" + encodeURIComponent(selected.id) + "/tasks/" + encodeURIComponent(task.id), {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "if-match": String(task.version) },
+        body: JSON.stringify({ workspaceId, brandId, ...next }),
+      }, auth.csrfToken);
+      if (!response.ok) {
+        if (response.status === 409) await loadDetail(selected.id);
+        throw new Error();
+      }
+      setNotice("Board task updated.");
+      await loadDetail(selected.id);
+      setSelectedTaskId(task.id);
+      return true;
+    } catch {
+      setError(safeRequestMessage("Could not update this Board task. It may have changed or a dependency may still be open."));
+      return false;
+    } finally { setBusy(""); }
+  }
+
+  async function releaseTask(task: BoardTaskView) {
+    if (!selected || !canApproveTasks || selected.status !== "ready" || task.boardId !== selected.id || task.status !== "ready" || task.assignee !== "board-agent") return false;
+    if (!window.confirm(`Release “${task.title}” to this Board’s Hermes agent? This starts execution but does not approve the result.`)) return false;
+    setBusy("task:release"); setError(""); setNotice("");
+    const pending = pendingReleaseKeys.current.get(task.id);
+    const request = pending?.version === task.version ? pending : { version: task.version, key: crypto.randomUUID() };
+    pendingReleaseKeys.current.set(task.id, request);
+    try {
+      const response = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}/tasks/${encodeURIComponent(task.id)}/release`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "if-match": String(task.version), "idempotency-key": request.key },
+        body: JSON.stringify({ workspaceId, brandId }),
+      }, auth.csrfToken);
+      if (!response.ok) {
+        if (response.status === 409) await loadDetail(selected.id);
+        throw new Error();
+      }
+      pendingReleaseKeys.current.delete(task.id);
+      setNotice("Task released to Hermes. Execution status will refresh here; human review remains required.");
+      await Promise.all([loadDetail(selected.id), loadTaskExecutions(selected.id, task.id)]);
+      setSelectedTaskId(task.id);
+      return true;
+    } catch {
+      setError(safeRequestMessage("Could not release this task to Hermes. Its current Board state was preserved."));
+      return false;
+    } finally { setBusy(""); }
+  }
+
+  async function handoffTask(task: BoardTaskView, execution: BoardTaskExecutionView) {
+    if (!selected || !canApproveTasks || selected.status === "archived" || task.boardId !== selected.id || task.status !== "review" || execution.taskId !== task.id || execution.status !== "succeeded") return false;
+    const existingContentItemId = taskHandoffContentItemIds[execution.id];
+    if (existingContentItemId) {
+      onOpenContent?.(existingContentItemId);
+      return true;
+    }
+    if (!window.confirm(`Create a Content Inbox item from “${task.title}”? It will keep this Board and execution as provenance, remain unapproved, and will not be published.`)) return false;
+    setBusy(`task:handoff:${execution.id}`); setError(""); setNotice("");
+    const request = pendingHandoffKeys.current.get(execution.id) ?? { version: task.version, key: crypto.randomUUID() };
+    pendingHandoffKeys.current.set(execution.id, request);
+    try {
+      const response = await apiFetch(`/v1/boards/${encodeURIComponent(selected.id)}/tasks/${encodeURIComponent(task.id)}/handoff`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "if-match": String(request.version), "idempotency-key": request.key },
+        body: JSON.stringify(boardTaskHandoffRequestBody(workspaceId, brandId, execution.id)),
+      }, auth.csrfToken);
+      if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) pendingHandoffKeys.current.delete(execution.id);
+        if (response.status === 409) await loadDetail(selected.id);
+        throw new Error();
+      }
+      const body = await response.json().catch(() => ({})) as { task?: unknown };
+      const handoff = parseBoardTaskHandoff(body, execution.id);
+      if (!handoff) throw new Error();
+      const savedTask = parseBoardTask(body.task);
+      if (savedTask?.boardId === selected.id && savedTask.id === task.id) setTasks((current) => current.map((value) => value.id === savedTask.id ? savedTask : value));
+      pendingHandoffKeys.current.delete(execution.id);
+      setTaskHandoffContentItemIds((current) => ({ ...current, [execution.id]: handoff.contentItemId }));
+      setNotice("Content Inbox item created for source checking and editorial review. It is not approved, scheduled, or published.");
+      onOpenContent?.(handoff.contentItemId);
+      return true;
+    } catch {
+      setError(safeRequestMessage("Could not create the Content Inbox handoff. No approval or publishing action was taken."));
+      return false;
+    } finally { setBusy(""); }
+  }
+
+  async function commentTask(task: BoardTaskView, body: string) {
+    if (!selected || !canManageTasks || task.boardId !== selected.id || selected.status === "archived") return false;
+    setBusy("task:comment"); setError(""); setNotice("");
+    const pending = pendingCommentKeys.current.get(task.id);
+    const request = pending?.body === body && pending.version === task.version ? pending : { body, version: task.version, key: crypto.randomUUID() };
+    pendingCommentKeys.current.set(task.id, request);
+    try {
+      const response = await apiFetch("/v1/boards/" + encodeURIComponent(selected.id) + "/tasks/" + encodeURIComponent(task.id) + "/comments", {
+        method: "POST",
+        headers: { "content-type": "application/json", "if-match": String(task.version), "idempotency-key": request.key },
+        body: JSON.stringify({ workspaceId, brandId, body }),
+      }, auth.csrfToken);
+      if (!response.ok) {
+        if (response.status === 409) await loadDetail(selected.id);
+        throw new Error();
+      }
+      const commentsResponse = await apiFetch("/v1/boards/" + encodeURIComponent(selected.id) + "/tasks/" + encodeURIComponent(task.id) + "/comments?workspaceId=" + encodeURIComponent(workspaceId) + "&brandId=" + encodeURIComponent(brandId) + "&limit=100", { cache: "no-store" }, auth.csrfToken);
+      if (commentsResponse.ok) setTaskComments(parseBoardTaskComments(await commentsResponse.json().catch(() => ({}))));
+      setNotice("Comment added to the Board task.");
+      pendingCommentKeys.current.delete(task.id);
+      return true;
+    } catch {
+      setError(safeRequestMessage("Could not add this task comment."));
+      return false;
+    } finally { setBusy(""); }
+  }
 
   async function submitBoard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -244,7 +611,7 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
       const responseBody = await response.json().catch(() => ({}));
       const saved = parseBoard((responseBody as { board?: unknown }).board ?? responseBody);
       setFormMode(null);
-      setNotice(editing ? "Board details updated." : "Board created with a dedicated Hermes profile. Work unlocks after its state boundary is verified.");
+      setNotice(editing ? "Board details updated." : "Board created. Tasks are ready now; optional Hermes work unlocks after its state boundary is verified.");
       await load();
       if (saved) setSelectedId(saved.id);
     } catch {
@@ -363,25 +730,25 @@ export function BoardsWorkspace({ auth, workspaceId, brandId }: { auth: AuthView
 
   return <main className={styles.module} aria-labelledby="boards-title">
     <header className={styles.hero}>
-      <div><p>BOARD WORKSPACES</p><h1 id="boards-title">Boards</h1><span>Create focused workspaces with dedicated, policy-restricted Hermes profiles.</span></div>
+      <div><p>BOARD WORKSPACES</p><h1 id="boards-title">Boards</h1><span>Keep each project’s tasks, people, and agent work together.</span></div>
       <div>{isOwner ? <button className={styles.primary} onClick={() => setFormMode("create")}><Plus size={15} />New board</button> : <em>Owner setup only</em>}<button onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? styles.spin : ""} size={15} />Refresh</button></div>
     </header>
     {error ? <div className={styles.error} role="alert"><TriangleAlert size={15} />{error}</div> : null}
     {notice ? <div className={styles.notice} role="status"><CheckCircle2 size={15} />{notice}</div> : null}
     {formMode && isOwner ? <form className={styles.form} onSubmit={submitBoard}>
-      <header><div><small>{formMode === "edit" ? "EDIT BOARD" : "NEW BOARD"}</small><strong>{formMode === "edit" ? "Update the board’s public details" : "Start with a dedicated, restricted context"}</strong></div><button type="button" onClick={() => setFormMode(null)} aria-label="Close board form"><X size={16} /></button></header>
+      <header><div><small>{formMode === "edit" ? "EDIT BOARD" : "NEW BOARD"}</small><strong>{formMode === "edit" ? "Update the board’s public details" : "Start a focused workspace"}</strong></div><button type="button" onClick={() => setFormMode(null)} aria-label="Close board form"><X size={16} /></button></header>
       <label>Board name<input name="name" required minLength={2} maxLength={100} defaultValue={formMode === "edit" ? selected?.name : ""} placeholder="Mumbai events" /></label>
-      <label>Board purpose<textarea name="purpose" rows={3} maxLength={600} defaultValue={formMode === "edit" ? selected?.purpose : ""} placeholder="Plan verified Mumbai event coverage." /><small>Hermes uses this focus for future work in this Board. Changing it does not erase existing Board memory.</small></label>
-      <footer><p><ShieldCheck size={14} />A dedicated internal Hermes context is created for this board.</p><button className={styles.primary} disabled={Boolean(busy)}>{busy ? <Loader2 className={styles.spin} size={14} /> : <Check size={14} />}{formMode === "edit" ? "Save changes" : "Create board"}</button></footer>
+      <label>Board purpose<textarea name="purpose" rows={3} maxLength={600} defaultValue={formMode === "edit" ? selected?.purpose : ""} placeholder="Plan verified Mumbai event coverage." /><small>This focus guides the team. Optional Hermes memory and skills are managed later inside this Board.</small></label>
+      <footer><p><ShieldCheck size={14} />Board tasks work independently; optional Hermes setup stays internal.</p><button className={styles.primary} disabled={Boolean(busy)}>{busy ? <Loader2 className={styles.spin} size={14} /> : <Check size={14} />}{formMode === "edit" ? "Save changes" : "Create board"}</button></footer>
     </form> : null}
     <div className={styles.layout}>
       <aside className={styles.boardList} aria-label="Boards">
         <header><div><h2>Your boards</h2><p>{boards.filter((board) => board.status !== "archived").length} active for this brand</p></div><Columns3 size={19} /></header>
-        {boards.map((board) => <button key={board.id} className={selected?.id === board.id ? styles.selectedBoard : ""} onClick={() => { setSelectedId(board.id); setPanel("work"); }} aria-current={selected?.id === board.id ? "true" : undefined}><span><Bot size={17} /></span><div><strong>{board.name}</strong><small>{boardStatusLabel(board.status)}</small></div><ChevronRight size={15} /></button>)}
+        {boards.map((board) => <button key={board.id} className={selected?.id === board.id ? styles.selectedBoard : ""} onClick={() => { setSelectedId(board.id); setPanel("tasks"); }} aria-current={selected?.id === board.id ? "true" : undefined}><span><Columns3 size={17} /></span><div><strong>{board.name}</strong><small>{board.status === "archived" ? "Archived" : "Active"}</small></div><ChevronRight size={15} /></button>)}
         {!loading && boards.length === 0 ? <div className={styles.emptyList}><Columns3 size={24} /><strong>No boards yet</strong><p>Create a board for a campaign, beat, or ongoing project.</p></div> : null}
         {loading ? <div className={styles.loading}><Loader2 className={styles.spin} size={18} />Loading boards…</div> : null}
       </aside>
-      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} pluginUnavailable={pluginUnavailable} panel={panel} isOwner={isOwner} canRun={canRun} busy={busy} pendingDetail={pendingDetail} runPrompt={runPrompt} runResult={runResult} runs={runs} onPanelChange={setPanel} onRunPromptChange={setRunPrompt} onRun={(event) => void runBoard(event)} onHandoff={() => void handoffRun()} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Bot size={28} /><strong>Select or create a board</strong><p>Every Board gets a dedicated internal Hermes profile. Memory and skills are managed only after you open a Board.</p></div>}</div>
+      <div className={styles.detailShell}>{detailLoading && selected ? <div className={styles.detailLoading}><Loader2 className={styles.spin} size={18} />Opening board…</div> : selected ? <BoardDetailPanel board={selected} plugin={plugin} pluginUnavailable={pluginUnavailable} panel={panel} isOwner={isOwner} canRun={canRun} canManageTasks={canManageTasks} canApproveTasks={canApproveTasks} busy={busy} pendingDetail={pendingDetail} runPrompt={runPrompt} runResult={runResult} runs={runs} tasks={tasks} taskComments={taskComments} taskExecutions={taskExecutions} taskHandoffContentItemIds={taskHandoffContentItemIds} selectedTaskId={selectedTaskId} includeArchivedTasks={includeArchivedTasks} onPanelChange={setPanel} onRunPromptChange={setRunPrompt} onRun={(event) => void runBoard(event)} onHandoff={() => void handoffRun()} onSelectTask={setSelectedTaskId} onIncludeArchivedTasks={setIncludeArchivedTasks} onCreateTask={createTask} onUpdateTask={updateTask} onCommentTask={commentTask} onReleaseTask={releaseTask} onHandoffTask={handoffTask} onOpenContent={(contentItemId) => onOpenContent?.(contentItemId)} onTest={() => void testPlugin()} onReconcile={() => void reconcilePlugin()} onToggleSkill={(skill) => void toggleSkill(skill)} onReviewPending={(write) => void reviewPendingWrite(write)} onPendingDecision={(decision) => void decidePendingWrite(decision)} onEdit={() => setFormMode("edit")} onArchive={() => void archiveBoard()} /> : <div className={styles.emptyDetail}><Columns3 size={28} /><strong>Select or create a board</strong><p>Use Boards for focused tasks. Optional Hermes memory and skills appear only inside the selected Board.</p></div>}</div>
     </div>
   </main>;
 }

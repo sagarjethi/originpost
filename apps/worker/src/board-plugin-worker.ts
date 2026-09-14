@@ -40,7 +40,7 @@ export async function processBoardPluginDecision(job: BoardPluginDecisionJob, de
   if (dependencies.organizations && (await dependencies.organizations.getBrand(job.workspaceId, job.brandId))?.status !== "active") return { skipped: true, reason: "brand-inactive" } as const;
   if (current.configurationEpoch !== job.requestedConfigurationEpoch || current.capabilityEpoch !== job.requestedCapabilityEpoch) return { skipped: true, reason: "stale-capability-epoch" } as const;
   const derived = deriveBoardRuntimeSecrets(dependencies.secret, { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, capabilityEpoch: current.capabilityEpoch });
-  const binding = { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, capabilityEpoch: current.capabilityEpoch, ...derived };
+  const binding = { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, kanbanBoardRef: current.hermesBoardRef, capabilityEpoch: current.capabilityEpoch, ...derived };
   const result = await dependencies.runtime.decidePendingWrite(
     binding,
     { configurationEpoch: current.configurationEpoch, purpose: current.purpose, enabledSkills: current.desiredSkills },
@@ -70,7 +70,7 @@ export async function processBoardPluginDeactivate(job: BoardPluginDeactivateJob
   if (current.configurationEpoch !== job.configurationEpoch || current.capabilityEpoch !== job.capabilityEpoch) return { skipped: true, reason: "stale-configuration-epoch" } as const;
   if (current.runtimeDeactivatedAt) return { skipped: true, reason: "already-deactivated" } as const;
   const derived = deriveBoardRuntimeSecrets(dependencies.secret, { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, capabilityEpoch: current.capabilityEpoch });
-  await dependencies.runtime.deactivate({ workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, capabilityEpoch: current.capabilityEpoch, ...derived });
+  await dependencies.runtime.deactivate({ workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, kanbanBoardRef: current.hermesBoardRef, capabilityEpoch: current.capabilityEpoch, ...derived });
   const latest = await dependencies.boards.get(job.workspaceId, job.boardId);
   if (!latest || latest.version !== current.version || latest.status !== "archived" || latest.configurationEpoch !== job.configurationEpoch || latest.capabilityEpoch !== job.capabilityEpoch) return { skipped: true, reason: "lease-fence-lost" } as const;
   const at = new Date().toISOString();
@@ -96,7 +96,7 @@ export async function processBoardPluginReconcile(job: BoardPluginReconcileJob, 
   if (dependencies.organizations && (await dependencies.organizations.getBrand(job.workspaceId, job.brandId))?.status !== "active") return { skipped: true, reason: "brand-inactive" } as const;
   if (current.configurationEpoch !== job.configurationEpoch) return { skipped: true, reason: "stale-configuration-epoch" } as const;
   const derived = deriveBoardRuntimeSecrets(dependencies.secret, { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, capabilityEpoch: current.capabilityEpoch });
-  const binding = { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, capabilityEpoch: current.capabilityEpoch, ...derived };
+  const binding = { workspaceId: current.workspaceId, brandId: current.brandId, boardId: current.id, profile: current.hermesProfile, kanbanBoardRef: current.hermesBoardRef, capabilityEpoch: current.capabilityEpoch, ...derived };
   const at = new Date().toISOString();
   const event = (action: string, detail: Record<string, unknown>): AuditEvent => ({ id: `evt_${randomUUID()}`, workspaceId: current.workspaceId, actorId: "board-plugin-worker", actorType: "system", action, detail: { boardId: current.id, configurationEpoch: job.configurationEpoch, ...detail }, createdAt: at });
   try {

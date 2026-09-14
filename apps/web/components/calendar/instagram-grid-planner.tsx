@@ -26,7 +26,7 @@ function PreviewMedia({ url, preview, title }: { url?: string | undefined; previ
   return <img src={url} alt={preview.altText || title} onError={() => setFailed(true)} />;
 }
 
-export function InstagramGridPlanner({ auth, workspaceId, brandId, dataMode }: { auth: AuthView; workspaceId: string; brandId: string; dataMode: "api" | "demo" | "loading" }) {
+export function InstagramGridPlanner({ auth, workspaceId, brandId, dataMode }: { auth: AuthView; workspaceId: string; brandId: string; dataMode: "api" | "demo" | "loading" | "error" }) {
   const [view, setView] = useState<View | null>(null);
   const [accountId, setAccountId] = useState("");
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -64,7 +64,7 @@ export function InstagramGridPlanner({ auth, workspaceId, brandId, dataMode }: {
     return () => { cancelled = true; };
   }, [auth.csrfToken, dataMode, mediaIds, workspaceId]);
 
-  if (dataMode !== "api") return <div className={styles.state}><Camera size={28} /><strong>Instagram grid needs the connected API</strong><p>The demo calendar cannot claim profile coverage. Connect an Instagram account to view OriginPost-owned plans.</p></div>;
+  if (dataMode !== "api") return <div className={styles.state}><Camera size={28} /><strong>Instagram grid needs the connected API</strong><p>Profile plans are unavailable while the API is disconnected. Connect an Instagram account to view OriginPost-owned plans.</p></div>;
   if (loading && !view) return <div className={styles.state} role="status"><LoaderCircle className={styles.spin} size={28} /><strong>Building the profile projection…</strong><p>Reading approved targets, proofs, and inspected Library media.</p></div>;
 
   return <section className={styles.module} aria-labelledby="instagram-grid-title">

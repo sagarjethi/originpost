@@ -4,57 +4,65 @@ import {
   Archive,
   AlertCircle,
   Bot,
-  BarChart3,
-  Blocks,
-  Building2,
   CalendarDays,
-  Cable,
   Check,
+  ChevronDown,
   CircleCheck,
   Clock3,
-  Columns3,
   FileText,
-  Home,
+  HelpCircle,
   Inbox,
-  Library,
-  KeyRound,
   Menu,
-  MessagesSquare,
   MoreHorizontal,
   Newspaper,
-  Palette,
   Plus,
-  Radar,
-  RotateCcw,
   Search,
   Share2,
-  Settings,
   ShieldCheck,
   Sparkles,
   WandSparkles,
   X,
-  Zap,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  ActivitySparkIcon,
+  ApiIcon,
+  Building02Icon,
+  Calendar03Icon,
+  ChartBreakoutSquareIcon,
+  ContentWritingIcon,
+  DashboardCircleIcon,
+  FolderLibraryIcon,
+  GlobalSearchIcon,
+  HelpCircleIcon as HugeHelpCircleIcon,
+  Message02Icon,
+  MoreHorizontalCircle01Icon,
+  PackageOpenIcon,
+  PaintBoardIcon,
+  Plug02Icon,
+  Recycle03Icon,
+  ShieldCheckIcon as HugeShieldCheckIcon,
+  SquareKanbanIcon,
+  StackStarIcon,
+  WorkflowSquare06Icon,
+  ZapIcon as HugeZapIcon,
+} from "@hugeicons/core-free-icons";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiBasePath, apiFetch, type AuthMode, type AuthView } from "@/lib/api-client";
+import { resolveWorkspaceLocation, workspaceHref, workspaceRouteForNav, type WorkspaceContentFilter } from "@/lib/workspace-route";
 import { WorkspaceModules, type BrandView, type WorkspaceModule } from "./workspace-modules";
 import { YouTubePublishReview } from "./youtube-publish-review";
+import { belongsToContentWorkspace } from "@/lib/content-workspace";
+import { saveContentIntake } from "@/lib/content-intake";
+import { useModalFocus } from "@/hooks/use-modal-focus";
 import { ContentStudio } from "./content-studio/content-studio";
 import { ContentCalendar } from "./calendar/content-calendar";
 import { NotificationActionCenter, type WorkspaceNotification } from "./notifications/notification-action-center";
 import { externalPostIdPlaceholder, liveUrlPlaceholder, platformBadge, platformLabel } from "./platform-ui";
+import { HelpCenter } from "./help/help-center";
+import { NewsPostWorkspace } from "./agent-chat/news-post-workspace";
 
 type Status = "inbox" | "researching" | "drafting" | "review" | "approved" | "scheduled" | "action_required" | "publishing" | "published" | "failed" | "archived";
-const workspaceModuleRoutes: Record<WorkspaceModule, string> = {
-  boards: "Boards", signals: "Signals", evergreen: "Reuse", analytics: "Analytics", engagement: "Engagement",
-  automations: "Automations", batches: "Batches", organizations: "Organizations", channels: "Channels",
-  plugins: "Agent plugins", library: "Library", creative: "Creative Studio", developer: "Developer API",
-};
-
-function workspaceModuleFromQuery(value: string | null): { module: WorkspaceModule; nav: string } | null {
-  const module = value?.toLowerCase() as WorkspaceModule | undefined;
-  return module && module in workspaceModuleRoutes ? { module, nav: workspaceModuleRoutes[module] } : null;
-}
 type ContentItem = {
   id: string;
   brandId?: string;
@@ -112,74 +120,35 @@ function versionHeaders(item: ContentItem): Record<string, string> {
   return item.version ? { "if-match": String(item.version) } : {};
 }
 
-const fallbackItems: ContentItem[] = [
-  {
-    id: "demo-1",
-    title: "Local climate update needs review",
-    summary: "A monitored suggestion is waiting for a source and editor decision.",
-    status: "researching",
-    researchDepth: "standard",
-    riskLevel: "medium",
-    sources: [{ id: "s1", title: "Official weather bulletin", publisher: "Primary source", confidence: 92 }],
-    claims: [], researchRuns: [],
-    drafts: [],
-    approvals: [],
-    targets: [],
-    proofs: [],
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "demo-2",
-    title: "Product launch carousel",
-    summary: "Instagram carousel prepared from the approved launch brief.",
-    status: "review",
-    researchDepth: "quick",
-    riskLevel: "low",
-    sources: [{ id: "s2", title: "Approved launch brief", publisher: "Internal", confidence: 100 }],
-    claims: [], researchRuns: [],
-    drafts: [{ id: "d1", platform: "instagram", format: "carousel", caption: "Launch caption ready for review." }],
-    approvals: [],
-    targets: [],
-    proofs: [],
-    updatedAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: "demo-3",
-    title: "Founder interview short",
-    summary: "One approved short is scheduled for tomorrow morning.",
-    status: "scheduled",
-    researchDepth: "standard",
-    riskLevel: "low",
-    sources: [{ id: "s3", title: "Recorded interview", publisher: "Owned media", confidence: 100 }],
-    claims: [], researchRuns: [],
-    drafts: [{ id: "d2", platform: "youtube", format: "short", caption: "Three lessons from the build." }],
-    approvals: [{ id: "a1", decision: "approved", actorName: "Local Owner" }],
-    targets: [{ id: "t1", platform: "youtube", accountId: "youtube-main", draftId: "d2", deliveryMode: "auto_publish", status: "queued", scheduledFor: new Date(Date.now() + 86400000).toISOString() }],
-    proofs: [],
-    updatedAt: new Date(Date.now() - 7200000).toISOString(),
-  },
+const primaryNavGroups = [
+  { label: "Work", items: [
+    { label: "Home", icon: DashboardCircleIcon },
+    { label: "Agent", icon: ActivitySparkIcon },
+    { label: "Boards", icon: SquareKanbanIcon },
+    { label: "Content", icon: ContentWritingIcon },
+  ] },
+  { label: "Plan", items: [
+    { label: "Calendar", icon: Calendar03Icon },
+    { label: "Engagement", icon: Message02Icon },
+  ] },
+  { label: "Outcomes", items: [
+    { label: "Analytics", icon: ChartBreakoutSquareIcon },
+    { label: "Library", icon: FolderLibraryIcon },
+  ] },
 ];
 
-const nav = [
-  { label: "Home", icon: Home },
-  { label: "Boards", icon: Columns3 },
-  { label: "Inbox", icon: Inbox },
-  { label: "Research", icon: Search, count: 3 },
-  { label: "Signals", icon: Radar },
-  { label: "Create", icon: WandSparkles },
-  { label: "Reuse", icon: RotateCcw },
-  { label: "Calendar", icon: CalendarDays },
-  { label: "Engagement", icon: MessagesSquare },
-  { label: "Analytics", icon: BarChart3 },
-  { label: "Library", icon: Library },
-  { label: "Creative Studio", icon: Palette },
-  { label: "Batches", icon: FileText },
-  { label: "Proof", icon: ShieldCheck },
-  { label: "Automations", icon: Zap },
-  { label: "Organizations", icon: Building2 },
-  { label: "Channels", icon: Cable },
-  { label: "Agent plugins", icon: Blocks },
-  { label: "Developer API", icon: KeyRound },
+const secondaryNav = [
+  { label: "Research", icon: GlobalSearchIcon },
+  { label: "Signals", icon: ActivitySparkIcon },
+  { label: "Reuse", icon: Recycle03Icon },
+  { label: "Creative Studio", icon: PaintBoardIcon },
+  { label: "Batches", icon: StackStarIcon },
+  { label: "Proof", icon: HugeShieldCheckIcon },
+  { label: "Automations", icon: HugeZapIcon },
+  { label: "Organizations", icon: Building02Icon },
+  { label: "Channels", icon: Plug02Icon },
+  { label: "Agent plugins", icon: PackageOpenIcon },
+  { label: "Developer API", icon: ApiIcon },
 ];
 
 const statusLabel: Record<Status, string> = {
@@ -214,15 +183,17 @@ export function OriginPostApp() {
   const [brands, setBrands] = useState<BrandView[]>([]);
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
-  const [items, setItems] = useState<ContentItem[]>(fallbackItems);
-  const [selectedId, setSelectedId] = useState(fallbackItems[0]!.id);
-  const [filter, setFilter] = useState<"all" | "review" | "scheduled" | "action">("all");
+  const [items, setItems] = useState<ContentItem[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [filter, setFilter] = useState<WorkspaceContentFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [connection, setConnection] = useState<"loading" | "api" | "demo">("loading");
+  const [connection, setConnection] = useState<"loading" | "api" | "error">("loading");
   const [activeNav, setActiveNav] = useState("Home");
+  const [moreNavOpen, setMoreNavOpen] = useState(false);
   const [activeModule, setActiveModule] = useState<WorkspaceModule | null>(null);
   const [creativeContentItemId, setCreativeContentItemId] = useState("");
   const [engagementUnreadCount, setEngagementUnreadCount] = useState(0);
@@ -231,31 +202,43 @@ export function OriginPostApp() {
   const [reviewShareUrl, setReviewShareUrl] = useState("");
   const [reviewShareBusy, setReviewShareBusy] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+  const scopeSwitcherRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sidebarWasOpen = useRef(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const createBusyRef = useRef(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [composerError, setComposerError] = useState("");
+  const [workspaceError, setWorkspaceError] = useState("");
+  const closeComposer = useCallback(() => { if (!createBusyRef.current) setComposerOpen(false); }, []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  useModalFocus(composerOpen, composerRef, closeComposer);
+  useModalFocus(mobileSidebar && sidebarOpen, sidebarRef, closeSidebar);
+  const showContentSearch = ["Home", "Content", "Research", "Proof"].includes(activeNav);
 
-  function navigate(label: string) {
-    setActiveNav(label);
+  function applyWorkspaceLocation(label: string, nextFilter: WorkspaceContentFilter, itemId?: string) {
+    const route = workspaceRouteForNav(label) ?? workspaceRouteForNav("Home")!;
+    setActiveNav(route.nav);
+    setActiveModule(route.module as WorkspaceModule | null);
+    setFilter(nextFilter);
+    if (itemId) setSelectedId(itemId);
+    if (route.nav === "Creative Studio") setCreativeContentItemId(itemId ?? "");
+    document.title = route.nav === "Home" ? "OriginPost — From source to published proof" : `${route.nav} — OriginPost`;
+  }
+
+  function navigate(label: string, options: { filter?: WorkspaceContentFilter; itemId?: string; replace?: boolean } = {}) {
+    const route = workspaceRouteForNav(label) ?? workspaceRouteForNav("Home")!;
+    const itemId = options.itemId ?? (route.nav === "Create" ? selectedId : route.nav === "Creative Studio" ? creativeContentItemId : undefined);
+    const nextFilter = options.filter ?? route.defaultFilter;
+    const href = workspaceHref(route.nav, { filter: nextFilter, ...(itemId ? { itemId } : {}) });
+    if (`${window.location.pathname}${window.location.search}` !== href) window.history[options.replace ? "replaceState" : "pushState"]({}, "", href);
+    applyWorkspaceLocation(route.nav, nextFilter, itemId);
     setSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    if (label === "Create") { setComposerOpen(true); return; }
-    if (label === "Boards") { setActiveModule("boards"); return; }
-    if (label === "Signals") { setActiveModule("signals"); return; }
-    if (label === "Automations") { setActiveModule("automations"); return; }
-    if (label === "Analytics") { setActiveModule("analytics"); return; }
-    if (label === "Reuse") { setActiveModule("evergreen"); return; }
-    if (label === "Engagement") { setActiveModule("engagement"); return; }
-    if (label === "Library") { setActiveModule("library"); return; }
-    if (label === "Creative Studio") { setActiveModule("creative"); return; }
-    if (label === "Batches") { setActiveModule("batches"); return; }
-    if (label === "Organizations") { setActiveModule("organizations"); return; }
-    if (label === "Channels") { setActiveModule("channels"); return; }
-    if (label === "Agent plugins") { setActiveModule("plugins"); return; }
-    if (label === "Developer API") { setActiveModule("developer"); return; }
-    setActiveModule(null);
-    if (label === "Calendar") setFilter("scheduled");
-    else if (label === "Inbox" || label === "Research" || label === "Proof" || label === "Home") setFilter("all");
+  }
+
+  function openContentFilter(nextFilter: WorkspaceContentFilter) {
+    navigate(["Research", "Proof"].includes(activeNav) ? activeNav : "Content", { filter: nextFilter });
   }
 
   async function openNotificationAction(notification: WorkspaceNotification) {
@@ -281,10 +264,7 @@ export function OriginPostApp() {
 
   async function openContentItem(contentItemId: string) {
     await refresh();
-    setSelectedId(contentItemId);
-    setActiveNav("Home");
-    setActiveModule(null);
-    setFilter("all");
+    navigate("Content", { itemId: contentItemId });
     setSearchQuery("");
     window.requestAnimationFrame(() => document.querySelector(".detail-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
@@ -311,8 +291,10 @@ export function OriginPostApp() {
       setItems(data);
       setSelectedId((current) => data.some((item) => item.id === current) ? current : data[0]?.id ?? current);
       setConnection("api");
+      setWorkspaceError("");
     } catch {
-      if (activeAuth.mode === "sessions") setConnection("loading"); else setConnection("demo");
+      setConnection("error");
+      setWorkspaceError("Could not refresh this workspace. Previously loaded items may be out of date.");
     }
   }
 
@@ -346,12 +328,21 @@ export function OriginPostApp() {
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); }, [selectedId]);
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); setComposerOpen(false); }, [activeWorkspaceId, activeBrandId]);
   useEffect(() => {
-    const result = new URLSearchParams(window.location.search).get("channel");
-    if (result === "connected" || result === "error" || result === "select_facebook" || result === "select_instagram" || result === "select_meta_messaging") { setActiveNav("Channels"); setActiveModule("channels"); }
-    const requestedModule = workspaceModuleFromQuery(new URLSearchParams(window.location.search).get("module"));
-    if (requestedModule) { setActiveNav(requestedModule.nav); setActiveModule(requestedModule.module); }
-    const contentItemId = new URLSearchParams(window.location.search).get("item")?.trim();
-    if (contentItemId) { setSelectedId(contentItemId); setActiveNav("Home"); setActiveModule(null); setFilter("all"); }
+    const syncFromUrl = (canonicalizeLegacy = false) => {
+      const resolved = resolveWorkspaceLocation(window.location.pathname, window.location.search);
+      applyWorkspaceLocation(resolved.route.nav, resolved.filter, resolved.itemId);
+      if (canonicalizeLegacy && resolved.legacy) {
+        const url = new URL(window.location.href);
+        url.pathname = resolved.route.path;
+        url.searchParams.delete("module");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+      window.scrollTo({ top: 0, behavior: "auto" });
+    };
+    syncFromUrl(true);
+    const onPopState = () => syncFromUrl(false);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
   useEffect(() => {
     if (!auth || !activeWorkspaceId || !activeBrandId) return;
@@ -376,21 +367,31 @@ export function OriginPostApp() {
     return () => media.removeEventListener("change", sync);
   }, []);
   useEffect(() => {
-    if (!mobileSidebar) return;
-    if (sidebarOpen) sidebarRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    else if (sidebarWasOpen.current) menuButtonRef.current?.focus();
-    sidebarWasOpen.current = sidebarOpen;
-  }, [mobileSidebar, sidebarOpen]);
-  useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        searchInputRef.current?.focus();
+        if (!showContentSearch) navigate("Content");
+        requestAnimationFrame(() => searchInputRef.current?.focus());
       }
     };
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
-  }, []);
+  }, [showContentSearch]);
+  useEffect(() => {
+    if (!scopeMenuOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!scopeSwitcherRef.current?.contains(event.target as Node)) setScopeMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setScopeMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePress);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePress);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [scopeMenuOpen]);
 
   const hasActiveResearch = items.some((item) => item.researchRuns?.some((run) => run.status === "queued" || run.status === "running"));
   useEffect(() => {
@@ -400,17 +401,20 @@ export function OriginPostApp() {
   }, [hasActiveResearch]);
 
   const visible = useMemo(() => items.filter((item) => {
+    if (!belongsToContentWorkspace(activeNav, item)) return false;
     const query = searchQuery.trim().toLocaleLowerCase();
     if (query) {
       const searchable = [item.title, item.summary, ...item.sources.flatMap((source) => [source.title, source.publisher ?? ""]), ...item.proofs.map((proof) => proof.liveUrl)].join(" ").toLocaleLowerCase();
       if (!searchable.includes(query)) return false;
     }
+    if (filter === "new") return item.status === "inbox" || item.status === "researching";
     if (filter === "review") return item.status === "review";
     if (filter === "scheduled") return item.status === "scheduled" || item.status === "publishing";
     if (filter === "action") return item.status === "action_required";
     return item.status !== "archived";
-  }), [filter, items, searchQuery]);
-  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  }), [activeNav, filter, items, searchQuery]);
+  const selectionItems = ["Content", "Research", "Proof"].includes(activeNav) ? visible : items;
+  const selected = selectionItems.find((item) => item.id === selectedId) ?? selectionItems[0];
   const youtubeDraft = selected?.drafts.filter((draft) => draft.platform === "youtube").at(-1);
   const recentResearch = selected?.researchRuns?.at(-1);
   const reviewCount = items.filter((item) => item.status === "review").length;
@@ -427,6 +431,15 @@ export function OriginPostApp() {
   const supportedClaims = selected?.claims.filter((claim) => claim.status === "supported").length ?? 0;
   const crossCheckLabel = (selected?.sources.length ?? 0) >= 2 && sourcePublishers.size >= 2 && supportedClaims > 0 ? "Cross-checked" : (selected?.sources.length ?? 0) >= 2 ? "Check the claims" : "Needs a second source";
   const newestSourceDate = selected?.sources.map((source) => source.publishedAt ? new Date(source.publishedAt).getTime() : 0).filter(Boolean).sort((a, b) => b - a)[0];
+  const homeQueue = [...items]
+    .filter((item) => item.status !== "archived" && item.status !== "published")
+    .sort((a, b) => {
+      const priority: Partial<Record<Status, number>> = { failed: 0, action_required: 1, review: 2, researching: 3, inbox: 4, drafting: 5, approved: 6, scheduled: 7, publishing: 8 };
+      return (priority[a.status] ?? 10) - (priority[b.status] ?? 10) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    })
+    .slice(0, 5);
+  const nextUp = homeQueue[0];
+  const showSecondaryNav = moreNavOpen || secondaryNav.some((item) => item.label === activeNav);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setLoginBusy(true); setLoginError("");
@@ -567,47 +580,20 @@ export function OriginPostApp() {
 
   async function createItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (createBusyRef.current) return;
     const form = new FormData(event.currentTarget);
     const title = String(form.get("title") ?? "").trim();
-    const summary = String(form.get("summary") ?? "").trim();
-    const researchNow = form.get("researchNow") === "on";
     if (!title) return;
+    createBusyRef.current = true; setCreateBusy(true); setComposerError("");
     try {
-      const response = await apiFetch(`/v1/content-items`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workspaceId: activeWorkspaceId, brandId: activeBrandId, title, summary, researchDepth: "standard", riskLevel: "low" }),
-      }, auth?.csrfToken);
-      if (!response.ok) throw new Error("Create failed");
-      let item = await response.json() as ContentItem;
-      if (researchNow) {
-        const researchResponse = await apiFetch(`/v1/content-items/${item.id}/research?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...versionHeaders(item) },
-          body: JSON.stringify({ query: title, depth: "standard", languages: ["English", "Gujarati", "Hindi"], region: "India", sourceLimit: 8, freshnessHours: 168 }),
-        }, auth?.csrfToken);
-        if (!researchResponse.ok) throw await apiError(researchResponse, "Research could not start");
-        item = await researchResponse.json() as ContentItem;
-      }
-      setItems((current) => [item, ...current.filter((entry) => entry.id !== item.id)]);
-      setSelectedId(item.id);
-      setConnection("api");
-    } catch {
-      const item: ContentItem = {
-        id: `local-${Date.now()}`,
-        title,
-        summary,
-        status: "inbox",
-        researchDepth: "standard",
-        riskLevel: "low",
-        sources: [], claims: [], researchRuns: [], drafts: [], approvals: [], targets: [], proofs: [],
-        updatedAt: new Date().toISOString(),
-      };
-      setItems((current) => [item, ...current]);
-      setSelectedId(item.id);
-      setConnection("demo");
-    }
-    setComposerOpen(false);
+      const result = await saveContentIntake<ContentItem>({workspaceId:activeWorkspaceId,brandId:activeBrandId,title,summary:String(form.get("summary") ?? "").trim(),researchNow:form.get("researchNow")==="on",...(auth?.csrfToken ? {csrfToken:auth.csrfToken} : {})});
+      setItems(current => [result.item,...current.filter(item=>item.id!==result.item.id)]);
+      setSelectedId(result.item.id); setConnection("api");
+      setWorkspaceError(result.warning ?? ""); setComposerOpen(false);
+      navigate("Create", {itemId:result.item.id});
+    } catch(error) {
+      setComposerError(error instanceof Error ? error.message : "Content could not be saved. Your input is still here.");
+    } finally { createBusyRef.current=false; setCreateBusy(false); }
   }
 
   async function researchItem(item: ContentItem) {
@@ -626,7 +612,7 @@ export function OriginPostApp() {
         await refresh();
         return;
       }
-      setConnection("demo");
+      setWorkspaceError(error instanceof Error ? error.message : "Research could not start.");
     }
   }
 
@@ -638,71 +624,113 @@ export function OriginPostApp() {
   const activeBrand = brands.find((brand) => brand.id === activeBrandId) ?? brands[0];
   return (
     <div className="app-shell">
-      <aside ref={sidebarRef} className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`} aria-hidden={mobileSidebar && !sidebarOpen} inert={mobileSidebar && !sidebarOpen}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <aside ref={sidebarRef} className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`} aria-hidden={mobileSidebar && !sidebarOpen} inert={composerOpen || (mobileSidebar && !sidebarOpen)}>
         <div className="brand-row">
           <div className="brand-mark"><span>O</span></div>
-          <div><strong>OriginPost</strong><small>Source to proof</small></div>
+          <div><strong>OriginPost</strong><small>Editorial intelligence</small></div>
+          <span className="brand-mode">DESK</span>
           <button className="icon-button mobile-only" onClick={() => setSidebarOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
 
-        <div className="workspace-switcher">
-          <span className="workspace-avatar">{(activeMembership?.workspaceName ?? "Workspace").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
-          <span className="workspace-picker"><label><span className="sr-only">Active workspace</span><select value={activeWorkspaceId} onChange={(event) => void switchWorkspace(event.target.value)}>{auth.memberships.map((membership) => <option value={membership.workspaceId} key={membership.workspaceId}>{membership.workspaceName}</option>)}</select></label><label><span className="sr-only">Active brand</span><select value={activeBrandId} onChange={(event) => void switchBrand(event.target.value)} disabled={!brands.length}>{brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label></span>
+        <div className="scope-switcher" ref={scopeSwitcherRef}>
+          <button className="scope-switcher-trigger" type="button" onClick={() => setScopeMenuOpen((open) => !open)} aria-haspopup="dialog" aria-expanded={scopeMenuOpen}>
+            <span className="workspace-avatar">{(activeMembership?.workspaceName ?? "Workspace").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
+            <span className="scope-switcher-copy"><strong>{activeMembership?.workspaceName ?? "Workspace"}</strong><small>{activeBrand?.name ?? "Choose a brand"}</small></span>
+            <ChevronDown className={scopeMenuOpen ? "scope-switcher-chevron open" : "scope-switcher-chevron"} size={16} />
+          </button>
+          {scopeMenuOpen ? <div className="scope-menu" role="dialog" aria-label="Switch workspace or brand">
+            <div className="scope-menu-heading"><span>Workspace</span><small>{auth.memberships.length}</small></div>
+            <div className="scope-option-list" role="listbox" aria-label="Choose workspace">
+              {auth.memberships.map((membership) => {
+                const selectedWorkspace = membership.workspaceId === activeWorkspaceId;
+                return <button type="button" role="option" aria-selected={selectedWorkspace} className={selectedWorkspace ? "scope-option selected" : "scope-option"} key={membership.workspaceId} onClick={() => { setScopeMenuOpen(false); void switchWorkspace(membership.workspaceId); }}>
+                  <span className="scope-option-avatar">{membership.workspaceName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
+                  <span><strong>{membership.workspaceName}</strong><small>{membership.role}</small></span>
+                  {selectedWorkspace ? <Check size={15} /> : null}
+                </button>;
+              })}
+            </div>
+            <div className="scope-menu-divider" />
+            <div className="scope-menu-heading"><span>Brand</span><small>{brands.length}</small></div>
+            <div className="scope-option-list" role="listbox" aria-label="Choose brand">
+              {brands.map((brand) => {
+                const selectedBrand = brand.id === activeBrandId;
+                return <button type="button" role="option" aria-selected={selectedBrand} className={selectedBrand ? "scope-option selected" : "scope-option"} key={brand.id} onClick={() => { setScopeMenuOpen(false); void switchBrand(brand.id); }}>
+                  <span className="scope-option-dot" />
+                  <span><strong>{brand.name}</strong><small>{brand.primaryLanguage} · {brand.timezone}</small></span>
+                  {selectedBrand ? <Check size={15} /> : null}
+                </button>;
+              })}
+              {!brands.length ? <p className="scope-option-empty">No brand is available in this workspace.</p> : null}
+            </div>
+          </div> : null}
         </div>
 
         <nav className="main-nav" aria-label="Primary navigation">
-          {nav.map(({ label, icon: Icon, count }) => {
-            const badge = label === "Engagement" ? engagementUnreadCount : count;
-            return (
-            <button key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={() => navigate(label)} aria-current={activeNav === label ? "page" : undefined}>
-              <Icon size={18} strokeWidth={1.9} /><span>{label}</span>
-              {badge ? <em>{badge > 99 ? "99+" : badge}</em> : null}
-            </button>
-          )})}
+          {primaryNavGroups.map((group) => <div className="nav-cluster" key={group.label}>
+            <div className="nav-section-label"><span>{group.label}</span><small>{String(group.items.length).padStart(2, "0")}</small></div>
+            {group.items.map(({ label, icon }) => {
+              const badge = label === "Engagement" ? engagementUnreadCount : 0;
+              return <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}>
+                <span className="nav-glyph"><HugeiconsIcon icon={icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">{label}</span>
+                {badge ? <em>{badge > 99 ? "99+" : badge}</em> : null}
+              </a>;
+            })}
+          </div>)}
+          <div className="nav-section-rule" />
+          <button className="nav-item nav-more" type="button" onClick={() => setMoreNavOpen((open) => !open)} aria-expanded={showSecondaryNav} aria-controls="secondary-navigation"><span className="nav-glyph"><HugeiconsIcon icon={WorkflowSquare06Icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">Studio &amp; system</span><ChevronDown className={showSecondaryNav ? "nav-chevron open" : "nav-chevron"} size={15} /></button>
+          {showSecondaryNav ? <div id="secondary-navigation" className="secondary-navigation">
+            {secondaryNav.map(({ label, icon }) => <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={icon} size={17} strokeWidth={1.5} /></span><span className="nav-label">{label}</span></a>)}
+          </div> : null}
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="safety-card">
-            <span><ShieldCheck size={18} /> Safe test mode</span>
-            <p>Real publishing is switched off.</p>
-          </div>
-          <button className="nav-item" disabled title="Settings are not available yet"><Settings size={18} /><span>Settings</span></button>
-          {auth.mode === "sessions" ? <button className="user-row" onClick={() => void signOut()} aria-label={`Sign out ${auth.user.displayName}`}><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"} · Sign out</small></div><MoreHorizontal size={17} /></button> : <div className="user-row user-row-static"><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"}</small></div></div>}
+          <button type="button" className="safety-card" onClick={() => navigate("Channels")}><span><ShieldCheck size={18} /> Publishing channels</span><p>Check connections and availability</p></button>
+          <a href={workspaceHref("Help")} className={activeNav === "Help" ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate("Help"); }} aria-current={activeNav === "Help" ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={HugeHelpCircleIcon} size={18} strokeWidth={1.55} /></span><span className="nav-label">Help</span></a>
+          <a href={workspaceHref("Organizations")} className="nav-item" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate("Organizations"); }}><span className="nav-glyph"><HugeiconsIcon icon={Building02Icon} size={18} strokeWidth={1.55} /></span><span className="nav-label">Workspace</span></a>
+          {auth.mode === "sessions" ? <button className="user-row" onClick={() => void signOut()} aria-label={`Sign out ${auth.user.displayName}`}><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"} · Sign out</small></div><HugeiconsIcon icon={MoreHorizontalCircle01Icon} size={17} strokeWidth={1.5} /></button> : <div className="user-row user-row-static"><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"}</small></div></div>}
         </div>
       </aside>
 
       {sidebarOpen ? <button className="scrim" aria-label="Close menu" onClick={() => setSidebarOpen(false)} /> : null}
 
-      <main className="main-area">
+      <main id="main-content" tabIndex={-1} inert={composerOpen || (mobileSidebar && sidebarOpen)} className={`main-area ${activeNav === "Agent" ? "agent-main-area" : ""}`}>
         <header className="topbar">
           <button ref={menuButtonRef} className="icon-button mobile-only" onClick={() => setSidebarOpen(true)} aria-label="Open menu" aria-expanded={sidebarOpen}><Menu size={20} /></button>
-          <div className="search-box"><Search size={17} /><input ref={searchInputRef} aria-label="Search content, sources, or proof" placeholder="Search content, sources, or proof…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /><kbd>⌘ K</kbd></div>
-          <div className={`connection-pill ${connection}`}><span />{connection === "api" ? "API connected" : connection === "demo" ? "Demo data" : "Connecting"}</div>
+          {!showContentSearch ? <div className="agent-topbar-title"><span>Workspace</span><span aria-hidden="true">/</span><strong>{activeNav}</strong></div> : <div className="search-box"><Search size={17} /><input ref={searchInputRef} aria-label="Search content, sources, or proof" placeholder="Search content, sources, or proof…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if(event.key==="Enter") navigate("Content"); if(event.key==="Escape")setSearchQuery(""); }} /><kbd>⌘ K</kbd></div>}
+          {activeNav !== "Agent" && <div className={`connection-pill ${connection}`}><span />{connection === "api" ? "Connected" : connection === "error" ? "Offline" : "Connecting"}</div>}
+          <button className="topbar-help" onClick={() => navigate("Help")}><HelpCircle size={17} /> Help</button>
           <NotificationActionCenter auth={auth} workspaceId={activeWorkspaceId} onNavigate={(notification) => void openNotificationAction(notification)} />
-          <button className="new-button" onClick={() => setComposerOpen(true)}><Plus size={17} /> New content</button>
+          {activeNav !== "Agent" && <button aria-label="New content" className="new-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /><span className="topbar-create-label">New content</span></button>}
         </header>
 
-        {activeModule ? <WorkspaceModules module={activeModule} auth={auth} workspaceId={activeWorkspaceId} activeBrandId={activeBrandId} brands={brands} {...(creativeContentItemId ? { creativeContentItemId } : {})} onOrganizationChanged={reloadOrganization} onEngagementUnreadChange={setEngagementUnreadCount} onOpenContent={(contentItemId) => void openContentItem(contentItemId)} /> : activeNav === "Calendar" ? <ContentCalendar auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? activeBrandId} items={items} loading={connection === "loading"} dataMode={connection} onChanged={() => refresh()} /> : <>
-        <section className="hero-shell">
+        {workspaceError && <div className="workspace-error" role="alert"><AlertCircle size={18}/><p>{workspaceError}</p><button type="button" onClick={() => void refresh()}>Refresh</button></div>}
+        {activeNav === "Agent" ? <NewsPostWorkspace key={`${auth.user.id}:${activeWorkspaceId}:${activeBrandId}`} auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? ""} onNavigate={navigate} /> : activeModule ? <WorkspaceModules module={activeModule} auth={auth} workspaceId={activeWorkspaceId} activeBrandId={activeBrandId} brands={brands} {...(creativeContentItemId ? { creativeContentItemId } : {})} onOrganizationChanged={reloadOrganization} onEngagementUnreadChange={setEngagementUnreadCount} onOpenContent={(contentItemId) => void openContentItem(contentItemId)} /> : activeNav === "Calendar" ? <ContentCalendar auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? activeBrandId} items={items} loading={connection === "loading"} dataMode={connection} onChanged={() => refresh()} /> : activeNav === "Help" ? <HelpCenter onNavigate={navigate} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Create" ? <section className="studio-page">
+          <header className="content-page-head"><div><p className="eyebrow">CREATE</p><h1>Build the exact post</h1><p>Draft, review, prepare media, and schedule one selected Content Item without losing its evidence.</p></div><button className="secondary-button" onClick={() => navigate("Content")}><Inbox size={16} /> Choose another item</button></header>
+          {selected ? <ContentStudio auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} item={selected} onChanged={() => refresh()} onOpenLibrary={() => navigate("Library")} onOpenChannels={() => navigate("Channels")} onOpenCreative={() => navigate("Creative Studio", { itemId: selected.id })} /> : <div className="panel empty-state"><WandSparkles size={23} /><strong>Choose a Content Item first</strong><p>Open Content or add a new item before creating a draft.</p></div>}
+          {selected?.status === "approved" && youtubeDraft ? <section className="youtube-review-shell panel"><YouTubePublishReview auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} contentItemId={selected.id} contentVersion={selected.version} draft={youtubeDraft} fallbackTitle={selected.title} onScheduled={() => refresh()} /></section> : null}
+        </section> : <>
+        {activeNav === "Home" ? <section className="hero-shell home-hero">
           <div className="page-head">
-            <div><p className="eyebrow">TODAY IN ORIGINPOST</p><h1>Your publishing workspace</h1><p>See what needs review, what is ready to publish, and what has already gone live.</p></div>
-            <div className="head-actions"><button className="hero-secondary" onClick={() => navigate("Agent plugins")}><Bot size={17} /> Ask Origin</button><button className="hero-primary" onClick={() => setComposerOpen(true)}><Plus size={17} /> Add content</button></div>
+            <div><p className="eyebrow">TODAY IN ORIGINPOST</p><h1>Source to published proof.</h1><p>Capture an idea or signal, verify the evidence, create the post, get approval, publish, and keep the real result connected.</p></div>
+            <div className="head-actions"><button className="hero-secondary" onClick={() => navigate("Agent")}><Sparkles size={17} /> Ask Origin</button><button className="hero-secondary" onClick={() => navigate("Help")}><HelpCircle size={17} /> See how it works</button><button className="hero-primary" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /> Add content</button></div>
           </div>
           <div className="metrics-grid">
-            <button className="metric-card" onClick={() => setFilter("all")} aria-pressed={filter === "all"}><span className="metric-icon coral"><Inbox size={19} /></span><div><small>New items</small><strong>{items.filter((item) => item.status === "inbox" || item.status === "researching").length}</strong></div></button>
-            <button className="metric-card" onClick={() => setFilter("review")} aria-pressed={filter === "review"}><span className="metric-icon gold"><CircleCheck size={19} /></span><div><small>Needs review</small><strong>{reviewCount}</strong></div></button>
-            <button className="metric-card" onClick={() => setFilter("action")} aria-pressed={filter === "action"}><span className="metric-icon red"><AlertCircle size={19} /></span><div><small>Needs action</small><strong>{actionCount}</strong></div></button>
-            <button className="metric-card" onClick={() => setFilter("scheduled")} aria-pressed={filter === "scheduled"}><span className="metric-icon blue"><CalendarDays size={19} /></span><div><small>Scheduled</small><strong>{scheduledCount}</strong></div></button>
+            <button className="metric-card" onClick={() => openContentFilter("new")}><span className="metric-icon coral"><Inbox size={19} /></span><div><small>New items</small><strong>{items.filter((item) => item.status === "inbox" || item.status === "researching").length}</strong></div></button>
+            <button className="metric-card" onClick={() => openContentFilter("review")}><span className="metric-icon gold"><CircleCheck size={19} /></span><div><small>Needs review</small><strong>{reviewCount}</strong></div></button>
+            <button className="metric-card" onClick={() => openContentFilter("action")}><span className="metric-icon red"><AlertCircle size={19} /></span><div><small>Needs action</small><strong>{actionCount}</strong></div></button>
+            <button className="metric-card" onClick={() => openContentFilter("scheduled")}><span className="metric-icon blue"><CalendarDays size={19} /></span><div><small>Scheduled</small><strong>{scheduledCount}</strong></div></button>
             <button className="metric-card" onClick={() => navigate("Proof")}><span className="metric-icon green"><ShieldCheck size={19} /></span><div><small>Published</small><strong>{items.reduce((sum, item) => sum + item.proofs.length, 0)}</strong></div></button>
           </div>
-        </section>
+        </section> : <header className="content-page-head"><div><p className="eyebrow">{activeNav.toUpperCase()}</p><h1>{activeNav === "Research" ? "Check the facts behind each story" : activeNav === "Proof" ? "See what actually went live" : "Find and move work forward"}</h1><p>{activeNav === "Research" ? "Review source evidence and research runs before creating a post." : activeNav === "Proof" ? "Published receipts and live links, attached to the exact content item." : "Choose one item, see its evidence and exact status, then continue in Create."}</p></div><button className="secondary-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={16} /> Add content</button></header>}
 
-        <section className="workspace-grid">
+        <section className={`workspace-grid ${activeNav === "Home" ? "home-workspace" : ""}`}>
           <div className="panel feed-panel">
-            <div className="panel-title"><div><h2>Content pipeline</h2><p>Choose an item to see its sources, status, and next step.</p></div><div className="tabs" aria-label="Filter content pipeline"><button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")} aria-pressed={filter === "all"}>All</button><button className={filter === "review" ? "selected" : ""} onClick={() => setFilter("review")} aria-pressed={filter === "review"}>Review</button><button className={filter === "action" ? "selected" : ""} onClick={() => setFilter("action")} aria-pressed={filter === "action"}>Action</button><button className={filter === "scheduled" ? "selected" : ""} onClick={() => setFilter("scheduled")} aria-pressed={filter === "scheduled"}>Scheduled</button></div></div>
+            <div className="panel-title"><div><h2>{activeNav === "Home" ? "Your queue" : activeNav === "Research" ? "Source research" : activeNav === "Proof" ? "Published proof" : "Content pipeline"}</h2><p>{activeNav === "Home" ? "Five highest-priority items, ranked by what needs attention." : "Choose an item to see its sources, status, and next step."}</p></div>{activeNav === "Home" ? <button className="secondary-button" onClick={() => navigate("Content")}>View all content</button> : <div className="tabs" aria-label="Filter content pipeline"><button className={filter === "all" ? "selected" : ""} onClick={() => openContentFilter("all")} aria-pressed={filter === "all"}>All</button><button className={filter === "new" ? "selected" : ""} onClick={() => openContentFilter("new")} aria-pressed={filter === "new"}>New</button><button className={filter === "review" ? "selected" : ""} onClick={() => openContentFilter("review")} aria-pressed={filter === "review"}>Review</button><button className={filter === "action" ? "selected" : ""} onClick={() => openContentFilter("action")} aria-pressed={filter === "action"}>Action</button><button className={filter === "scheduled" ? "selected" : ""} onClick={() => openContentFilter("scheduled")} aria-pressed={filter === "scheduled"}>Scheduled</button></div>}</div>
             <div className="content-list">
-              {visible.map((item) => (
-                <button key={item.id} className={`content-row ${selected?.id === item.id ? "selected-row" : ""}`} onClick={() => setSelectedId(item.id)} aria-pressed={selected?.id === item.id}>
+              {(activeNav === "Home" ? homeQueue : visible).map((item) => (
+                <button key={item.id} className={`content-row ${activeNav !== "Home" && selected?.id === item.id ? "selected-row" : ""}`} onClick={() => navigate(["Research", "Proof"].includes(activeNav) ? activeNav : "Content", { filter, itemId: item.id })} aria-pressed={activeNav !== "Home" && selected?.id === item.id}>
                   <span className={`type-icon ${item.status}`}>
                     {item.status === "review" ? <CircleCheck size={19} /> : item.status === "action_required" ? <AlertCircle size={19} /> : item.status === "scheduled" ? <Clock3 size={19} /> : <Newspaper size={19} />}
                   </span>
@@ -711,11 +739,14 @@ export function OriginPostApp() {
                   <MoreHorizontal size={18} />
                 </button>
               ))}
-              {visible.length === 0 ? <div className="empty-state"><Check size={22} /><strong>Nothing waiting here</strong><p>Change the filter or add content to the inbox.</p></div> : null}
+              {(activeNav === "Home" ? homeQueue : visible).length === 0 ? <div className="empty-state"><Check size={22} /><strong>{activeNav === "Home" ? "You're caught up" : "Nothing matches this view"}</strong><p>{activeNav === "Home" ? "No active work needs attention. Add content when you are ready." : "Change the filter or add content to the inbox."}</p></div> : null}
             </div>
           </div>
 
-          <aside className="detail-panel panel">
+          {activeNav === "Home" ? <aside className="home-next panel">
+            <p className="eyebrow">DO THIS NEXT</p>
+            {nextUp ? <><span className={`type-icon ${nextUp.status}`}>{nextUp.status === "review" ? <CircleCheck size={19} /> : nextUp.status === "action_required" || nextUp.status === "failed" ? <AlertCircle size={19} /> : <Newspaper size={19} />}</span><h2>{nextUp.title}</h2><p>{nextUp.status === "action_required" || nextUp.status === "failed" ? "This item may need recovery before other work continues." : nextUp.status === "review" ? "The exact draft is waiting for a human decision." : "Continue the next incomplete step in this item's source-to-proof journey."}</p><button className="primary-wide" onClick={() => navigate("Content", { itemId: nextUp.id })}>Open next action <Sparkles size={16} /></button></> : <><Check size={23} /><h2>No action is due</h2><p>Your active queue is clear.</p><button className="primary-wide" onClick={() => { setComposerOpen(true); setComposerError(""); }}>Add content <Plus size={16} /></button></>}
+          </aside> : <aside className="detail-panel panel">
             {selected ? <>
               <div className="detail-head"><div><p className="eyebrow">CONTENT ITEM</p><h2>{selected.title}</h2></div><button className="icon-button" disabled aria-label="More actions are not available yet" title="More actions are not available yet"><MoreHorizontal size={18} /></button></div>
               <p className="detail-summary">{selected.summary || "Add a short summary so the team understands this item."}</p>
@@ -765,37 +796,14 @@ export function OriginPostApp() {
                 {handoffMessage ? <p className="handoff-message" role="status">{handoffMessage}</p> : null}
               </div> : null}
               <div className="detail-section"><div className="section-label"><span>Next action</span></div><div className="next-action"><Sparkles size={18} /><div><strong>{selected.status === "review" ? "Review and approve this draft" : providerReviewTarget ? `Check the result on ${providerReviewPlatform}` : selected.status === "action_required" ? "Complete the manual publish step" : selected.status === "scheduled" ? "Waiting for publish time" : "Continue the content workflow"}</strong><p>OriginPost keeps every source, decision, and platform result connected.</p></div></div></div>
-              <button className="primary-wide" onClick={() => document.getElementById("content-studio")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Open Content Studio <WandSparkles size={16} /></button>
+              <button className="primary-wide" onClick={() => navigate("Create")}>Open Create <WandSparkles size={16} /></button>
             </> : null}
-          </aside>
-        </section>
-
-        {selected ? <ContentStudio auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} item={selected} onChanged={() => refresh()} onOpenLibrary={() => navigate("Library")} onOpenChannels={() => navigate("Channels")} onOpenCreative={() => { setCreativeContentItemId(selected.id); navigate("Creative Studio"); }} /> : null}
-
-        {selected?.status === "approved" && youtubeDraft ? <section className="youtube-review-shell panel">
-          <YouTubePublishReview
-            auth={auth}
-            workspaceId={activeWorkspaceId}
-            brandId={activeBrandId}
-            contentItemId={selected.id}
-            contentVersion={selected.version}
-            draft={youtubeDraft}
-            fallbackTitle={selected.title}
-            onScheduled={() => refresh()}
-          />
-        </section> : null}
-
-        <section className="suggestions-section">
-          <div className="section-heading"><div><p className="eyebrow">WORKSPACE TOOLS</p><h2>Connected tools and settings</h2></div><button className="secondary-button" onClick={() => navigate("Agent plugins")}><Blocks size={16} /> Manage plugins</button></div>
-          <div className="suggestion-grid">
-            <article className="suggestion-card"><div className="suggestion-top"><span className="trend-chip"><Bot size={13} /> Agent provider</span><small>Optional module</small></div><h3>External source research</h3><p>Find sources, check dates, and save claim links through a workspace provider that is separate from each Board's internal intelligence.</p><div className="reason-row"><span>Workspace scoped</span><span>Audited</span><span>Replaceable</span></div><button onClick={() => navigate("Agent plugins")}>Configure provider <Cable size={15} /></button></article>
-            <article className="suggestion-card warm"><div className="suggestion-top"><span className="trend-chip"><Building2 size={13} /> Organization</span><small>{auth.memberships.length} workspace{auth.memberships.length === 1 ? "" : "s"}</small></div><h3>{activeBrand?.name ?? activeMembership?.workspaceName ?? "Workspace"}</h3><p>Manage people, brands, channels, approval rules, and agent access together.</p><div className="reason-row"><span>{activeMembership?.role ?? "owner"}</span><span>{brands.length} brand{brands.length === 1 ? "" : "s"}</span><span>Safe mode</span></div><button onClick={() => navigate("Organizations")}>Manage organization <Settings size={15} /></button></article>
-          </div>
+          </aside>}
         </section>
         </>}
       </main>
 
-      {composerOpen ? <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Add content"><button className="modal-scrim" aria-label="Close add content dialog" onClick={() => setComposerOpen(false)} /><form className="composer" onSubmit={createItem}><div className="composer-head"><div><p className="eyebrow">NEW CONTENT</p><h2>Add something to the inbox</h2></div><button type="button" className="icon-button" onClick={() => setComposerOpen(false)} aria-label="Close add content dialog"><X size={18} /></button></div><label>What is it about?<input name="title" autoFocus placeholder="Example: New local policy announcement" required /></label><label>Notes<textarea name="summary" placeholder="Paste a note, short brief, or what you already know." rows={5} /></label><label className="check-row"><input type="checkbox" name="researchNow" defaultChecked /><span><strong>Research it now</strong><small>Check fresh sources, dates, and claims after saving.</small></span></label><div className="intake-types"><span><FileText size={15} /> Note</span><span><Search size={15} /> Link</span><span><Newspaper size={15} /> News</span><span><Sparkles size={15} /> AI suggestion</span></div><div className="composer-actions"><button type="button" className="secondary-button" onClick={() => setComposerOpen(false)}>Cancel</button><button className="new-button" type="submit"><Plus size={16} /> Add to inbox</button></div></form></div> : null}
+      {composerOpen ? <div ref={composerRef} className="modal-layer" role="dialog" aria-modal="true" aria-label="Add content"><button tabIndex={-1} className="modal-scrim" aria-label="Close add content dialog" onClick={closeComposer} /><form className="composer" onSubmit={createItem}><div className="composer-head"><div><p className="eyebrow">NEW CONTENT</p><h2>Add something to the inbox</h2></div><button type="button" className="icon-button" onClick={closeComposer} aria-label="Close add content dialog"><X size={18} /></button></div>{composerError && <p className="workspace-error" role="alert">{composerError}</p>}<label>What is it about?<input name="title" autoFocus maxLength={180} placeholder="Example: New local policy announcement" required /></label><label>Notes<textarea name="summary" maxLength={2000} placeholder="Paste a note, short brief, or what you already know." rows={5} /></label><label className="check-row"><input type="checkbox" name="researchNow" defaultChecked /><span><strong>Research it now</strong><small>Check fresh sources, dates, and claims after saving.</small></span></label><div className="intake-types"><span><FileText size={15} /> Note</span><span><Search size={15} /> Link</span><span><Newspaper size={15} /> News</span><span><Sparkles size={15} /> AI suggestion</span></div><div className="composer-actions"><button type="button" className="secondary-button" onClick={closeComposer}>Cancel</button><button className="new-button" type="submit" disabled={createBusy}><Plus size={16} /> {createBusy ? "Saving…" : "Add to inbox"}</button></div></form></div> : null}
     </div>
   );
 }

@@ -38,13 +38,14 @@ function id(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
-function draftHash(draft: Pick<PlatformDraft, "platform" | "format" | "title" | "caption" | "mediaIds">): string {
+function draftHash(draft: Pick<PlatformDraft, "platform" | "format" | "title" | "caption" | "mediaIds" | "containsSyntheticMedia">): string {
   return createHash("sha256").update(JSON.stringify({
     platform: draft.platform,
     format: draft.format,
     title: draft.title,
     caption: draft.caption,
     mediaIds: draft.mediaIds,
+    ...(draft.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
   })).digest("hex");
 }
 
@@ -324,6 +325,7 @@ export function addDraft(
       draftId: nextDraft.id,
       platform: nextDraft.platform,
       format: nextDraft.format,
+      containsSyntheticMedia: nextDraft.containsSyntheticMedia === true,
     }, now),
   };
 }

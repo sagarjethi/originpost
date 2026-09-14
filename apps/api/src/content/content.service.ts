@@ -141,7 +141,11 @@ export class ContentService implements OnModuleInit {
   }
 
   async addDraft(workspaceId: string, id: string, dto: AddDraftDto, actor: Actor, expectedVersion?: number) {
-    return this.save(addDraft(await this.getForUpdate(workspaceId, id, expectedVersion), addDraftSchema.parse(dto), actor));
+    const item = await this.getForUpdate(workspaceId, id, expectedVersion);
+    const parsed = addDraftSchema.parse(dto);
+    const assets = await Promise.all(parsed.mediaIds.map((mediaId) => this.infrastructure.mediaRepository.get(workspaceId, mediaId)));
+    const containsSyntheticMedia = assets.some((asset) => asset?.syntheticLineage?.kind === "ai-generation");
+    return this.save(addDraft(item, { ...parsed, ...(containsSyntheticMedia ? { containsSyntheticMedia: true } : {}) }, actor));
   }
 
   async agentDraft(workspaceId: string, id: string, dto: AgentDraftDto, actor: Actor, expectedVersion?: number) {
@@ -375,6 +379,12 @@ export class ContentService implements OnModuleInit {
           409,
         );
       }
+    } else if (draft.containsSyntheticMedia === true && dto.disclosure !== "synthetic-media") {
+      throw new DomainError(
+        `Confirm that this ${target.platform} post discloses its generated visual before saving manual publish proof.`,
+        "synthetic_media_disclosure_attestation_required",
+        409,
+      );
     }
     const media = await this.validatePlatformDraft(workspaceId, item, draft, target.platform, target.accountId, target.settings ?? {}, true);
     const mediaSha256 = media.map((entry) => entry.sha256);
@@ -441,7 +451,7 @@ export class ContentService implements OnModuleInit {
     if (operation.externalPostId && operation.externalPostId !== dto.externalPostId) {
       throw new DomainError("The provider post ID does not match the saved publishing operation.", "provider_reconciliation_post_mismatch", 409);
     }
-    const result = confirmProviderPublication(item, targetId, { ...dto, providerOperationId: operation.id, mediaSha256: media.map((entry) => entry.sha256), ...(target.platform === "instagram" ? { instagramAiDisclosureObserved: aiDisclosureVerified } : {}), ...(target.platform === "instagram" && operation.collaboratorInviteProof ? { collaboratorInviteProof: operation.collaboratorInviteProof } : {}) }, actor);
+    const result = confirmProviderPublication(item, targetId, { ...dto, disclosure: target.platform !== "instagram" && draft.containsSyntheticMedia === true ? "synthetic-media" : dto.disclosure, providerOperationId: operation.id, mediaSha256: media.map((entry) => entry.sha256), ...(target.platform === "instagram" ? { instagramAiDisclosureObserved: aiDisclosureVerified } : {}), ...(target.platform === "instagram" && operation.collaboratorInviteProof ? { collaboratorInviteProof: operation.collaboratorInviteProof } : {}) }, actor);
     const updatedOperation: ProviderPublishOperation = { ...operation, status: "published", externalPostId: dto.externalPostId, liveUrl: dto.liveUrl, ...(instagramSettings?.isAiGenerated === true ? { instagramAiDisclosureRequested:true, instagramAiDisclosureVerified:aiDisclosureVerified } : {}), lastError: undefined, updatedAt: new Date().toISOString() };
     const saved = await this.save(result, [], [updatedOperation]);
     await this.queueInitialAnalytics(saved);
@@ -450,12 +460,14 @@ export class ContentService implements OnModuleInit {
 
   async validatePlatformDraft(workspaceId: string, item: ContentItem, draft: PlatformDraft, platform: PlatformDraft["platform"], accountId: string, settings: Record<string, unknown> = {}, manualHandoff = false): Promise<ConnectorMedia[]> {
     const media: ConnectorMedia[] = [];
+    let attachedSyntheticMedia = false;
     for (const mediaId of draft.mediaIds) {
       const asset = await this.infrastructure.mediaRepository.get(workspaceId, mediaId);
       if (!asset || asset.status !== "ready") throw new DomainError("Every attached media file must be ready before scheduling.", "media_not_ready", 409);
       if (asset.malwareScanStatus !== undefined && asset.malwareScanStatus !== "clean" && asset.malwareScanStatus !== "disabled") throw new DomainError("Every attached media file must pass malware scanning before scheduling.", "media_malware_scan_required", 409);
       if (asset.rights !== "owned" && asset.rights !== "cleared") throw new DomainError("Publishing media must be owned or cleared for reuse.", "media_rights_not_cleared", 409);
       if (asset.kind !== "image" && asset.kind !== "video") throw new DomainError("Only image and video files can be sent to a social connector.", "media_kind_not_publishable", 409);
+      if (asset.syntheticLineage?.kind === "ai-generation") attachedSyntheticMedia = true;
       media.push({
         id: asset.id, type: asset.kind, url: `https://media.invalid/${encodeURIComponent(asset.id)}`, mimeType: asset.detectedContentType ?? asset.contentType,
         sha256: asset.sha256, sizeBytes: asset.sizeBytes, inspectionStatus: asset.inspectionStatus, malwareScanStatus: asset.malwareScanStatus, rights: asset.rights,
@@ -465,14 +477,21 @@ export class ContentService implements OnModuleInit {
         ...(asset.altText ? { altText: asset.altText } : {}),
       });
     }
+    if (attachedSyntheticMedia !== (draft.containsSyntheticMedia === true)) {
+      throw new DomainError("The draft's generated-media disclosure no longer matches its immutable Library assets. Create a new draft revision.", "draft_synthetic_media_lineage_mismatch", 409);
+    }
+    let containsSyntheticMedia = attachedSyntheticMedia;
     let coverMedia:ConnectorMedia|undefined;
     const reelCover=platform==="instagram"&&settings&&typeof settings==="object"&&"reelCover" in settings?settings.reelCover as {mode?:unknown;mediaId?:unknown;mediaSha256?:unknown}|undefined:undefined;
     if(reelCover?.mode==="custom_image"){
       if(typeof reelCover.mediaId!=="string"||typeof reelCover.mediaSha256!=="string")throw new DomainError("The approved Reel cover is invalid.","instagram_reel_cover_invalid",409);
       const asset=await this.infrastructure.mediaRepository.get(workspaceId,reelCover.mediaId);
       if(!asset||asset.brandId!==item.brandId||asset.status!=="ready"||asset.kind!=="image"||asset.inspectionStatus!=="ready"||(asset.malwareScanStatus!==undefined&&asset.malwareScanStatus!=="clean"&&asset.malwareScanStatus!=="disabled")||(asset.rights!=="owned"&&asset.rights!=="cleared")||asset.sha256!==reelCover.mediaSha256)throw new DomainError("The approved Reel cover image is unavailable or changed.","instagram_reel_cover_stale",409);
+      if(asset.syntheticLineage?.kind==="ai-generation")containsSyntheticMedia=true;
       coverMedia={id:asset.id,type:"image",url:`https://media.invalid/${encodeURIComponent(asset.id)}`,mimeType:asset.contentType,sha256:asset.sha256,sizeBytes:asset.sizeBytes,inspectionStatus:asset.inspectionStatus,malwareScanStatus:asset.malwareScanStatus,...(asset.widthPixels!==undefined?{widthPixels:asset.widthPixels}:{}),...(asset.heightPixels!==undefined?{heightPixels:asset.heightPixels}:{})};
     }
+    if(containsSyntheticMedia&&platform==="instagram"&&settings.isAiGenerated!==true)throw new DomainError("Generated visuals require Instagram's native AI info label in the approved publish settings.","instagram_ai_disclosure_required",409);
+    if(containsSyntheticMedia&&platform==="youtube"&&settings.containsSyntheticMedia!==true)throw new DomainError("Generated visuals must be marked as altered or synthetic in the approved YouTube settings.","youtube_synthetic_media_disclosure_required",409);
     // A manual Story is posted by a person in Instagram, so it must retain the
     // trusted media/rights/shape contract without requiring an official API
     // credential or Business-account eligibility. All automatic Stories still

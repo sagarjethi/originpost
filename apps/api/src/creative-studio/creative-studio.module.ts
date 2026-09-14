@@ -5,5 +5,5 @@ import { CreativeRenderCoordinator } from "./creative-render.coordinator.js";
 import { CreativeStudioController } from "./creative-studio.controller.js";
 import { CreativeStudioService } from "./creative-studio.service.js";
 
-@Module({ imports: [InfrastructureModule, MediaModule], controllers: [CreativeStudioController], providers: [CreativeStudioService, CreativeRenderCoordinator] })
+@Module({ imports: [InfrastructureModule, MediaModule], controllers: [CreativeStudioController], providers: [CreativeStudioService, CreativeRenderCoordinator], exports: [CreativeStudioService] })
 export class CreativeStudioModule {}

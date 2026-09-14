@@ -67,8 +67,8 @@ export interface GeneratedImageInput {
   bytes: Uint8Array;
   rights: "owned" | "cleared";
   altText?: string;
-  sourceMediaId: string;
-  renderId: string;
+  origin: { type: "creative-render"; sourceMediaId: string; renderId: string } | { type: "ai-generation"; generationId: string };
+  syntheticLineage?: MediaAsset["syntheticLineage"];
 }
 
 @Injectable()
@@ -399,8 +399,9 @@ export class MediaService {
     const createdAt = new Date().toISOString();
     const existing = await this.infrastructure.mediaRepository.get(input.workspaceId, input.id);
     if (existing) {
-      const sameLineage = existing.brandId === input.brandId && existing.contentItemId === input.contentItemId && existing.sha256 === sha256 && existing.kind === "image" && existing.contentType === input.contentType;
-      if (!sameLineage) throw new ConflictException("This generated media ID already belongs to another render.");
+      const sameLineage = existing.brandId === input.brandId && existing.contentItemId === input.contentItemId && existing.sha256 === sha256 && existing.kind === "image" && existing.contentType === input.contentType
+        && JSON.stringify(existing.syntheticLineage ?? null) === JSON.stringify(input.syntheticLineage ?? null);
+      if (!sameLineage) throw new ConflictException("This generated media ID already belongs to another generation operation.");
       if (existing.status === "ready") return publicAsset(existing);
       if (existing.status !== "pending") throw new ConflictException("This generated media record cannot be retried.");
     }
@@ -423,11 +424,12 @@ export class MediaService {
       malwareScanStatus: "pending",
       rights: input.rights,
       ...(input.altText ? { altText: input.altText } : {}),
+      ...(input.syntheticLineage ? { syntheticLineage: input.syntheticLineage } : {}),
       createdBy: actor.id,
       createdAt,
       uploadExpiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
     };
-    if (!existing) await this.infrastructure.mediaRepository.save(pending, audit(pending, actor, "media.generated-pending", { renderId: input.renderId, sourceMediaId: input.sourceMediaId, sha256 }));
+    if (!existing) await this.infrastructure.mediaRepository.save(pending, audit(pending, actor, "media.generated-pending", { origin: input.origin, synthetic: Boolean(input.syntheticLineage), sha256 }));
     let writtenObjectKey: string | undefined;
     let malware: MediaMalwareScanResult | undefined;
     try {
@@ -451,12 +453,12 @@ export class MediaService {
         inspectedAt: inspection.inspectedAt,
         inspector: inspection.inspector,
       };
-      await this.infrastructure.mediaRepository.save(ready, audit(ready, actor, "media.generated-ready", { renderId: input.renderId, sourceMediaId: input.sourceMediaId, sha256, malwareScanStatus: ready.malwareScanStatus, widthPixels: ready.widthPixels, heightPixels: ready.heightPixels }));
+      await this.infrastructure.mediaRepository.save(ready, audit(ready, actor, "media.generated-ready", { origin: input.origin, synthetic: Boolean(input.syntheticLineage), sha256, malwareScanStatus: ready.malwareScanStatus, widthPixels: ready.widthPixels, heightPixels: ready.heightPixels }));
       return publicAsset(ready);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Generated media verification failed.";
       const rejected: MediaAsset = { ...pending, ...(malware ? malwareFields(malware) : {}), version: pending.version + 1, status: "rejected", inspectionStatus: "failed", inspectionErrorCode: malware && !malwareAccepted(malware) ? "malware_scan_blocked" : "generated_media_failed", inspectionErrorSummary: reason.slice(0, 240), lastError: reason.slice(0, 500) };
-      await this.infrastructure.mediaRepository.save(rejected, audit(rejected, actor, malware && !malwareAccepted(malware) ? "media.generated-quarantined" : "media.generated-rejected", { renderId: input.renderId, sourceMediaId: input.sourceMediaId, malwareScanStatus: malware?.status, reason: rejected.lastError }));
+      await this.infrastructure.mediaRepository.save(rejected, audit(rejected, actor, malware && !malwareAccepted(malware) ? "media.generated-quarantined" : "media.generated-rejected", { origin: input.origin, synthetic: Boolean(input.syntheticLineage), malwareScanStatus: malware?.status, reason: rejected.lastError }));
       await Promise.all([pending.objectKey, writtenObjectKey].filter((value): value is string => Boolean(value)).map((objectKey) => this.infrastructure.mediaObjectStore.delete(objectKey).catch(() => undefined)));
       throw new BadRequestException(reason);
     }
@@ -509,6 +511,7 @@ export class MediaService {
     const asset = await this.infrastructure.mediaRepository.get(workspaceId, id);
     if (!asset) throw new NotFoundException("Media asset not found.");
     const references = await this.infrastructure.mediaRepository.references(workspaceId, id);
+    if (await this.infrastructure.agentPostRepository?.referencesAsset(workspaceId, id)) throw new ForbiddenException("This image belongs to a saved post template and must remain available.");
     const retentionDays = Number(this.config.get<string>("MEDIA_TRASH_RETENTION_DAYS") ?? DEFAULT_MEDIA_TRASH_RETENTION_DAYS);
     const trashed = requestMediaTrash({ asset, references, expectedVersion, actorId: actor.id, now: new Date().toISOString(), retentionDays });
     if (trashed === asset) return publicAsset(asset);

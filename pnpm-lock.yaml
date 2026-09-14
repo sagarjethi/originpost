@@ -145,6 +145,12 @@ importers:
       '@fontsource-variable/newsreader':
         specifier: 5.2.8
         version: 5.2.8
+      '@hugeicons/core-free-icons':
+        specifier: ^4.3.2
+        version: 4.3.2
+      '@hugeicons/react':
+        specifier: ^1.1.10
+        version: 1.1.10(react@19.2.8)
       lucide-react:
         specifier: 1.35.0
         version: 1.35.0(react@19.2.8)
@@ -577,6 +583,14 @@ packages:
 
   '@fontsource-variable/newsreader@5.2.8':
     resolution: {integrity: sha512-Ivo7tZPqQZ/erBbjx3mc+PvI0w+TuUhy93zlvIu3dupq2AlSF328sbkAjYyhwE91v8qpiJ88ogQB684hdiPtmw==}
+
+  '@hugeicons/core-free-icons@4.3.2':
+    resolution: {integrity: sha512-31uDdIq71YcVxeltjcS/tsmYFt4VjmgyNTZfG1bY6mbeFmsYL6Nwz9PdDZetGtGPZOAEVg0bHoQFOoPWDC51bg==}
+
+  '@hugeicons/react@1.1.10':
+    resolution: {integrity: sha512-9tAsd92yMVVGP+E+d8cM+wc0VnXuYZHNbWQi7TOe8k2neawmhiaFmVFbzyruejhOMa197/LbgvSED32ayUo3ZA==}
+    peerDependencies:
+      react: '>=16.0.0'
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2399,6 +2413,12 @@ snapshots:
   '@fontsource-variable/manrope@5.2.8': {}
 
   '@fontsource-variable/newsreader@5.2.8': {}
+
+  '@hugeicons/core-free-icons@4.3.2': {}
+
+  '@hugeicons/react@1.1.10(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
 
   '@img/colour@1.1.0': {}
 

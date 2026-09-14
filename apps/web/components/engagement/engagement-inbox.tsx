@@ -214,7 +214,8 @@ function PublicCommentsInbox({ auth, workspaceId, brandId, onUnreadCountChange, 
     setSelectedId(id);
     setMobileThreadOpen(true);
     const url = new URL(window.location.href);
-    url.searchParams.set("module", "Engagement");
+    url.pathname = "/engagement";
+    url.searchParams.delete("module");
     url.searchParams.set("brand", brandId);
     url.searchParams.set("thread", id);
     window.history.replaceState({}, "", `${url.pathname}${url.search}`);

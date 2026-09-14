@@ -1,3 +1,4 @@
+import { AgentPostsModule } from "./agent-posts/agent-posts.module.js";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
@@ -22,6 +23,7 @@ import { SourceSignalsModule } from "./source-signals/source-signals.module.js";
 import { EvergreenModule } from "./evergreen/evergreen.module.js";
 import { AgentRuntimeModule } from "./agent-runtimes/agent-runtime.module.js";
 import { CreativeStudioModule } from "./creative-studio/creative-studio.module.js";
+import { ImageGenerationModule } from "./image-generation/image-generation.module.js";
 import { FirstCommentModule } from "./first-comments/first-comment.module.js";
 import { PostingQueueModule } from "./posting-queues/posting-queue.module.js";
 import { BoardsModule } from "./boards/boards.module.js";
@@ -44,6 +46,7 @@ export function validateConfig(input: Record<string, unknown>) {
   const facebookAnalyticsMode = String(input.FACEBOOK_ANALYTICS_CONNECTOR_MODE ?? "disabled");
   const youtubeMode = String(input.YOUTUBE_CONNECTOR_MODE ?? "mock");
   const privateMessageMode = String(input.PRIVATE_MESSAGE_CONNECTOR_MODE ?? "disabled");
+  const imageGenerationMode = String(input.IMAGE_GENERATION_MODE ?? "disabled");
   const livePublishing = String(input.ALLOW_LIVE_PUBLISH ?? "false") === "true";
   const mediaMalwareScanMode = String(input.MEDIA_MALWARE_SCAN_MODE ?? "disabled");
   if (!["development", "production", "test"].includes(environment)) throw new Error("NODE_ENV must be development, production, or test.");
@@ -54,6 +57,12 @@ export function validateConfig(input: Record<string, unknown>) {
   if (!["mock", "official"].includes(instagramMode) || !["mock", "official"].includes(facebookMode) || !["mock", "official"].includes(youtubeMode)) throw new Error("Connector modes must be mock or official.");
   if (!["disabled", "official"].includes(facebookAnalyticsMode)) throw new Error("FACEBOOK_ANALYTICS_CONNECTOR_MODE must be disabled or official.");
   if (!["disabled", "mock", "official"].includes(privateMessageMode)) throw new Error("PRIVATE_MESSAGE_CONNECTOR_MODE must be disabled, mock, or official.");
+  if (!["disabled", "openai"].includes(imageGenerationMode)) throw new Error("IMAGE_GENERATION_MODE must be disabled or openai.");
+  const imageModel = String(input.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-sunburst").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/u.test(imageModel)) throw new Error("OPENAI_IMAGE_MODEL contains unsupported characters.");
+  const imageCredential = String(input.OPENAI_IMAGE_API_KEY ?? input.OPENAI_API_KEY ?? "").trim();
+  if (imageGenerationMode === "openai" && !imageCredential) throw new Error("OpenAI image generation requires OPENAI_IMAGE_API_KEY or OPENAI_API_KEY.");
+  const imageTimeoutMs = boundedInteger(input, "OPENAI_IMAGE_TIMEOUT_MS", 180_000, 10_000, 300_000);
   if (!["disabled", "clamav"].includes(mediaMalwareScanMode)) throw new Error("MEDIA_MALWARE_SCAN_MODE must be disabled or clamav.");
   if (livePublishing && mediaMalwareScanMode !== "clamav") throw new Error("Live publishing requires MEDIA_MALWARE_SCAN_MODE=clamav so every uploaded file is scanned before use.");
   if (environment === "production" && privateMessageMode === "mock") throw new Error("PRIVATE_MESSAGE_CONNECTOR_MODE=mock is forbidden in production.");
@@ -210,7 +219,7 @@ export function validateConfig(input: Record<string, unknown>) {
     if (!input.DATABASE_URL || !input.REDIS_URL) throw new Error("The Hermes Boards plugin requires DATABASE_URL and REDIS_URL for durable reconciliation.");
     if (Buffer.byteLength(String(input.HERMES_BOARD_SECRET ?? ""), "utf8") < 32) throw new Error("HERMES_BOARD_SECRET must contain at least 32 bytes.");
     if (String(input.HERMES_DASHBOARD_SESSION_TOKEN ?? "").length < 32) throw new Error("HERMES_DASHBOARD_SESSION_TOKEN must contain at least 32 characters.");
-    if (String(input.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1") !== "0.21.1") throw new Error("This OriginPost build supports Hermes 0.21.1 only.");
+    if (String(input.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.2") !== "0.21.2") throw new Error("This OriginPost build supports Hermes 0.21.2 only.");
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(String(input.HERMES_BOARD_PRIMARY_PROVIDER ?? "")) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(String(input.HERMES_BOARD_PRIMARY_MODEL ?? ""))) throw new Error("The Hermes Boards plugin requires an explicit primary provider and model.");
     if (input.HERMES_BOARD_PRIMARY_PROVIDER !== "openai-codex") throw new Error("The Hermes Boards plugin requires HERMES_BOARD_PRIMARY_PROVIDER=openai-codex.");
     for (const key of ["HERMES_DASHBOARD_URL", "HERMES_API_URL"] as const) {
@@ -232,6 +241,7 @@ export function validateConfig(input: Record<string, unknown>) {
     AUTOMATION_DELIVERY_INTERVAL_SECONDS: automationDeliveryIntervalSeconds, AUTOMATION_DELIVERY_ENABLED: automationDeliveryEnabled, AUTOMATION_ALLOW_PRIVATE_WEBHOOKS: automationAllowPrivateWebhooks,
     OPERATIONS_HEALTH_ENABLED: operationsHealthEnabled, OPERATIONS_HEALTH_INTERVAL_MINUTES: operationsHealthIntervalMinutes, OPERATIONS_PUBLISH_STALE_MINUTES: operationsPublishStaleMinutes, OPERATIONS_OUTBOX_STALE_MINUTES: operationsOutboxStaleMinutes,
     AGENT_ALLOW_PRIVATE_ENDPOINTS: agentAllowPrivateEndpoints,
+    IMAGE_GENERATION_MODE: imageGenerationMode, OPENAI_IMAGE_MODEL: imageModel, OPENAI_IMAGE_TIMEOUT_MS: imageTimeoutMs,
     HERMES_BOARD_PLUGIN_ENABLED: hermesBoardPluginEnabled,
     HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS: hermesBoardAllowPrivateEndpoints,
     FACEBOOK_ANALYTICS_CONNECTOR_MODE: facebookAnalyticsMode,
@@ -263,6 +273,8 @@ export function validateConfig(input: Record<string, unknown>) {
     EvergreenModule,
     AgentRuntimeModule,
     CreativeStudioModule,
+    ImageGenerationModule,
+    AgentPostsModule,
     FirstCommentModule,
     PostingQueueModule,
     BoardsModule,

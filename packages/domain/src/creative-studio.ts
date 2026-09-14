@@ -46,6 +46,14 @@ export const creativeSpecSchema = z.object({
   textAlign: z.enum(creativeTextAlignments),
   focalPoint: z.object({ x: z.number().finite().min(0).max(100), y: z.number().finite().min(0).max(100) }).strict(),
   zoom: z.number().finite().min(1).max(2),
+  logo: z.object({
+    mediaId: nonEmptyIdSchema, sha256: sha256Schema,
+    position: z.enum(["top-left", "top-right"]),
+    widthPercent: z.number().min(8).max(25), marginPercent: z.number().min(2).max(6),
+    background: colorSchema.default("#FFFFFF"),
+    crop: z.enum(["full", "top-left", "top-right", "bottom-left", "bottom-right"]).default("full"),
+  }).strict().optional(),
+  disclosure: creativeTextSchema(60).optional(),
   palette: z.tuple([colorSchema, colorSchema, colorSchema, colorSchema, colorSchema]),
 }).strict();
 

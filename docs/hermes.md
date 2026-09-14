@@ -2,6 +2,8 @@
 
 OriginPost connects to Hermes through Hermes Agent's official OpenAI-compatible API server. Hermes remains a separate process and keeps its own skills, memory, gateway, and messaging channels.
 
+For the complete local Codex authentication, Hermes runtime choice, Board-safe setup, canary, and troubleshooting sequence, see [Hermes and local Codex guide](hermes-local-codex.md). The generic sourcing-agent connection described below is separate from the governed per-Board Hermes plugin.
+
 ## Hermes setup
 
 ```bash

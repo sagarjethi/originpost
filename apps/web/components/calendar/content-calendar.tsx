@@ -51,7 +51,7 @@ type CalendarProps = {
   brandName: string;
   items: CalendarContentItem[];
   loading: boolean;
-  dataMode: "api" | "demo" | "loading";
+  dataMode: "api" | "demo" | "loading" | "error";
   onChanged: () => void | Promise<void>;
 };
 
@@ -281,7 +281,7 @@ export function ContentCalendar({ auth, workspaceId, brandId, brandName, items, 
 
   return <section className="calendar-page" aria-labelledby="calendar-title">
     <header className="calendar-hero">
-      <div><p className="eyebrow">PUBLISHING CALENDAR</p><h1 id="calendar-title">Plan the week. See every handoff.</h1><p>Schedules are stored as exact UTC instants. Open a target to see its saved IANA time zone and intended local time.</p></div>
+      <div><p className="eyebrow">PUBLISHING CALENDAR</p><h1 id="calendar-title">Plan the week. See every handoff.</h1><p>Review upcoming posts, their destinations, and the local time each one is scheduled to publish.</p></div>
       <div className="calendar-summary" aria-label="Calendar summary"><span><strong>{queuedCount}</strong><small>Queued</small></span><span className={actionCount ? "attention" : ""}><strong>{actionCount}</strong><small>Need action</small></span></div>
     </header>
 

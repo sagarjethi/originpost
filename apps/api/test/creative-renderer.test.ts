@@ -65,3 +65,13 @@ describe("creative renderer", () => {
     await expect(boundedObjectBytes(body, 8)).rejects.toMatchObject({ code: "source_size_invalid" });
   });
 });
+
+it("places original logo pixels at the selected corner and rejects changed bytes", async () => {
+  const { createHash } = await import("node:crypto");
+  const logo = await sharp({create:{width:80,height:40,channels:3,background:"#FF0000"}}).png().toBuffer();
+  const configured = spec("portrait", {headline:"Library opens",logo:{mediaId:"logo",sha256:createHash("sha256").update(logo).digest("hex"),position:"top-left",widthPercent:15,marginPercent:3,background:"#FFFFFF",crop:"full"}});
+  const rendered = await renderCreativeImage(configured,await source(),logo);
+  const pixel = await sharp(rendered.bytes).extract({left:55,top:55,width:1,height:1}).removeAlpha().raw().toBuffer();
+  expect([...pixel]).toEqual([255,0,0]);
+  await expect(renderCreativeImage(configured,await source(),Buffer.from("changed"))).rejects.toMatchObject({code:"logo_hash_mismatch"});
+});

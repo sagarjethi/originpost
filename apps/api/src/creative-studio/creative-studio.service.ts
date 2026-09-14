@@ -126,6 +126,13 @@ export class CreativeStudioService {
       throw new DomainError("Choose a ready, server-inspected image with owned or cleared rights from this brand's Library.", "creative_source_not_ready", 409);
     }
     if (input.sourceMediaSha256 !== source.sha256) throw new DomainError("The source image changed. Re-select it before saving this revision.", "creative_source_hash_mismatch", 409);
+    if (input.logo) {
+      const logo = input.logo as { mediaId?: string; sha256?: string };
+      const asset = logo.mediaId ? await this.infrastructure.mediaRepository.get(workspaceId, logo.mediaId) : null;
+      if (!asset || asset.brandId !== brandId || asset.kind !== "image" || asset.status !== "ready" || asset.inspectionStatus !== "ready" || !["owned", "cleared"].includes(asset.rights) || asset.sha256 !== logo.sha256 || asset.syntheticLineage) {
+        throw new DomainError("Choose an unchanged, ready, rights-cleared logo from this brand.", "creative_logo_not_ready", 409);
+      }
+    }
     if (input.contentItemId) {
       const item = await this.infrastructure.repository.get(workspaceId, String(input.contentItemId));
       if (!item || item.brandId !== brandId) throw new NotFoundException("Content item not found in this brand.");

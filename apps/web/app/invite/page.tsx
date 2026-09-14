@@ -35,7 +35,7 @@ export default function WorkspaceInvitationPage() {
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "This invitation is unavailable."));
   }, []);
 
-  function finish() { window.location.assign("/?module=organizations"); }
+  function finish() { window.location.assign("/organizations"); }
 
   async function acceptExisting(csrfToken = auth?.csrfToken) {
     if (!token || !csrfToken) return;

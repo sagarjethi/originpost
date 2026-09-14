@@ -179,6 +179,8 @@ export interface PlatformDraft {
   title: string;
   caption: string;
   mediaIds: string[];
+  /** Derived server-side from immutable Library lineage; callers cannot turn it off. */
+  containsSyntheticMedia?: boolean | undefined;
   scheduledFor?: string | undefined;
 }
 
@@ -419,7 +421,7 @@ export interface WorkspaceNotification {
 }
 
 export type CredentialRefreshPlatform = "instagram" | "youtube";
-export type OutboxTopic = "publish.target.requested" | "remote-correction.requested" | "board.plugin.reconcile" | "board.plugin.deactivate" | "board.plugin.decision" | "channel.credential-refresh" | "provider.grant-validation" | "provider.data-deletion";
+export type OutboxTopic = "publish.target.requested" | "remote-correction.requested" | "board.plugin.reconcile" | "board.plugin.deactivate" | "board.plugin.decision" | "board.task.execute" | "channel.credential-refresh" | "provider.grant-validation" | "provider.data-deletion";
 export type OutboxStatus = "pending" | "processing" | "processed" | "failed";
 
 export interface OutboxMessageInput {
@@ -493,6 +495,16 @@ export interface MediaAsset {
   createdAt: string;
   uploadExpiresAt: string;
   readyAt?: string | undefined;
+  syntheticLineage?: {
+    kind: "ai-generation";
+    generationId: string;
+    provider: "openai";
+    model: string;
+    promptSha256: string;
+    generatedAt: string;
+    sourceEvidenceIds: string[];
+    disclosureRequired: true;
+  } | undefined;
   statusBeforeTrash?: Exclude<MediaStatus, "trashed" | "deleted" | "cleanup_failed"> | undefined;
   trashedAt?: string | undefined;
   trashExpiresAt?: string | undefined;

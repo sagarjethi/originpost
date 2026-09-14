@@ -16,7 +16,7 @@ OriginPost is an open-source, self-hosted social content operating system. It br
 - Optional self-hosted multi-user login with HttpOnly sessions, CSRF protection, password hashing, OpenID Connect SSO, one-time Workspace invitations, workspace membership, and last-owner protection
 - Human approval by default
 - A complete Content Studio for immutable draft revisions, rights-cleared media, exact-revision decisions, platform preview, and Instagram, Facebook Page, and YouTube scheduling
-- A deterministic Creative Studio with immutable composition revisions, three structured templates, exact square/portrait PNG and Story JPEG outputs, multilingual bundled fonts, durable render recovery, and safe attachment into the existing draft/approval workflow
+- A deterministic Creative Studio with an internal, opt-in OpenAI GPT Image visual-foundation generator; immutable generation lineage and disclosure propagation; three structured templates; exact square/portrait PNG and Story JPEG outputs; multilingual bundled fonts; durable render recovery; and safe attachment into the existing draft/approval workflow
 - Immutable draft revisions with approvals locked to the exact draft hash
 - Revision-bound review comments with internal, reviewer, and public audience scopes
 - Signed, expiring, revocable reviewer links for one exact draft revision
@@ -41,10 +41,11 @@ OriginPost is an open-source, self-hosted social content operating system. It br
 - Delivery health and recovery status in the Automations workspace
 - Owner/manager operations health for ClamAV signatures, webhook dead letters, media cleanup, uncertain publishing, and durable delivery queues
 - A durable workspace notification center for approval requests, manual handoffs, publish failures, monitor findings/failures, and connection warnings
+- Stable workspace URLs for Home, Boards, Content, Calendar, Help, and every specialist module, with refresh and browser Back/Forward restoration plus compatibility for earlier `?module=` links
 - Workspace-scoped provider grants that group shared Meta/Google access over derived publishing accounts, with HMAC-only subject lookup, version-fenced automatic authorization validation, signed Meta deauthorization/data-deletion callbacks, and recoverable local erasure
 - Optional allow-listed Telegram command adapter
 - Workspace-controlled OpenAI-compatible text runtimes with encrypted BYOK credentials, health testing, brand assignment, multilingual Content Studio drafting, usage ledger, and no silent provider fallback
-- Top-level, brand-owned Boards with a first-party internal Hermes 0.21.1 plugin, one opaque dedicated profile per Board, attested profile-scoped memory and skills, governed pending-write review, durable reconcile/deactivate jobs, rotating capabilities, and stale-result-safe hash-only run history
+- Top-level, Brand-owned Boards with a first-party internal Hermes plugin pinned to 0.21.2 at source commit `939e45c91d751fadd94dcd1b873ac3cb44846213`; each Board has its own opaque Profile, memory, skill policy, and Kanban binding, plus manager release, one-attempt task execution, durable receipts, separate human review, and an explicit provenance-preserving handoff into an unapproved Content Inbox item
 - Instagram Reel cover review with a custom Library image, measured video frame, or Instagram default; exact settings approval and cover proof
 - Approval-bound Instagram native AI disclosure with exact provider placement, read-back verification, and requested-versus-observed publish proof
 - Private S3-compatible media storage with short-lived upload/download URLs, workspace ownership, rights, byte-size/SHA-256 verification, fail-closed ClamAV streaming, and bounded server-measured image/video metadata
@@ -79,7 +80,7 @@ The browser always calls the relative `/v1` or `/public/v1` path on the web orig
 
 Source research starts in safe mock mode. To use a separate Hermes Agent server, set `AGENT_MODE=hermes` plus `HERMES_API_URL`, `HERMES_API_KEY`, and `HERMES_MODEL`. See [docs/hermes.md](docs/hermes.md).
 
-Boards are a separate top-level work area. Their internal Hermes plugin is opt-in and deliberately separate from source research and the discovery-only third-party catalog. See [docs/boards.md](docs/boards.md).
+Boards are a separate top-level work area. Hermes is an opt-in internal capability inside each Board, not a top-level product area and not part of the discovery-only third-party catalog. A manager or owner may release a ready Board-agent task for one durable execution attempt; a successful result returns to human review, while an uncertain result blocks the task for inspection. Hermes cannot approve its own work or publish it. See [docs/boards.md](docs/boards.md) and the end-to-end [Hermes and local Codex guide](docs/hermes-local-codex.md).
 
 The Telegram adapter is optional and stays off until a bot token and trusted chat allow-list are configured. See [docs/telegram.md](docs/telegram.md).
 
@@ -130,6 +131,8 @@ Custom image, selected-frame, and Instagram-default Reel covers are documented i
 Instagram native AI-label approval, provider verification, proof semantics, and production gates are documented in [docs/instagram-ai-disclosure.md](docs/instagram-ai-disclosure.md).
 
 Deterministic visual composition, immutable creative revisions, renderer recovery, and source-rights rules are documented in [docs/creative-studio.md](docs/creative-studio.md).
+
+ChatGPT image creation is an internal Creative Studio capability, not a top-level product area. It is disabled by default. To enable one-shot generation, set `IMAGE_GENERATION_MODE=openai` and provide the server-only `OPENAI_IMAGE_API_KEY`; do not expose this key to the browser.
 
 Open:
 

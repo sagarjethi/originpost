@@ -1,4 +1,4 @@
-"""Killable Hermes 0.21.1 execution worker for one OriginPost Board Profile.
+"""Killable Hermes 0.21.2 execution worker for one OriginPost Board Profile.
 
 The dashboard extension launches this file in a fresh process for every probe
 and run.  The child receives only one profile's environment, enters Hermes'
@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 
-SUPPORTED_VERSION = "0.21.1"
-SUPPORTED_SHA = "2237be355906fbe6065ce1815711eee52b2d646e"
+SUPPORTED_VERSION = "0.21.2"
+SUPPORTED_SHA = "939e45c91d751fadd94dcd1b873ac3cb44846213"
 RUNTIME_TOOLSETS = ("memory", "skills", "no_mcp")
 RUNTIME_TOOLS = frozenset({"memory", "skill_manage", "skill_view", "skills_list"})
 MAX_SCOPE_ENTRIES = 10_000
@@ -31,15 +31,15 @@ RUN_MAX_ITERATIONS = 8
 RUN_MAX_TOKENS = 4_000
 RUN_BUDGET_SECONDS = 180.0
 MAX_RESULT = 100_000
-ESSENTIAL_SKILL_TREE_SHA256 = "2341b692c5dea9fb61e425443b67de6531c0ee0068f23a962770b1d71b2258d1"
-EXPECTED_TOOL_MANIFEST_SHA256 = "56a0ae4360b1ac2c139bd8e176ca7d2ee22e073357e8a96fed0201c9240d505c"
+ESSENTIAL_SKILL_TREE_SHA256 = "a9a7130ca89a9e7c7b003d42341bac45dcef082559c1906083d0995ec2960562"
+EXPECTED_TOOL_MANIFEST_SHA256 = "8d4f839a12bb2f391c2f1514f98c110051106a5a79c5cd97160e3b01aba758f6"
 
 EXPECTED_TOOLS = {
     "memory": {
         "toolset": "memory",
         "module": "tools.memory_tool",
         "schemaSha256": "838bcb453a8686dc2488c632074fc3f3f8510c2d3dc8dd9c28e0b2f9db150620",
-        "handlerFileSha256": "38630aab4d9ef64be4c21a6fa91db5588636bdb9450e0d83ac9ef63b813bbcfc",
+        "handlerFileSha256": "ed9c5db6b3144b88425f7039280239b29a047143aa8ffdfd3b7f47bf7e707143",
         "checkModule": "tools.memory_tool",
         "dynamicModule": "tools.memory_tool",
         "finalSchemaSha256": "896214490c8940931706e9f1441158bfc31aa71977931a79031ff9fa299ded89",

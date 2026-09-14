@@ -4,17 +4,17 @@ import { deriveBoardRuntimeSecrets, HermesBoardPlugin, HermesBoardPluginError, v
 
 const binding = {
   workspaceId: "workspace-a", brandId: "brand-a", boardId: "agent_board_a",
-  profile: "opb_0123456789abcdef01234567", capabilityEpoch: 2,
+  profile: "opb_0123456789abcdef01234567", kanbanBoardRef: "opk_0123456789abcdef01234567", capabilityEpoch: 2,
   ...deriveBoardRuntimeSecrets("x".repeat(32), { workspaceId: "workspace-a", brandId: "brand-a", boardId: "agent_board_a", capabilityEpoch: 2 }),
 };
 
 const purpose = "Mumbai desk.";
-const toolManifestSha256 = "56a0ae4360b1ac2c139bd8e176ca7d2ee22e073357e8a96fed0201c9240d505c";
+const toolManifestSha256 = "8d4f839a12bb2f391c2f1514f98c110051106a5a79c5cd97160e3b01aba758f6";
 const skillManifestSha256 = "b".repeat(64);
 const profileDescription = (enabledSkills: string[] = [], configurationEpoch = 2) => {
-  const policyDigest = createHash("sha256").update(JSON.stringify({ owner: binding.ownershipMarker, memoryScope: binding.memoryScope, capabilityEpoch: 2, configurationEpoch, purpose, enabledSkills, provider: "openai-codex", model: "gpt-5.5", toolsets: ["memory", "skills", "no_mcp"], maxOutputTokens: 4000 })).digest("hex");
+  const policyDigest = createHash("sha256").update(JSON.stringify({ owner: binding.ownershipMarker, memoryScope: binding.memoryScope, kanbanBoardRef: binding.kanbanBoardRef, capabilityEpoch: 2, configurationEpoch, purpose, enabledSkills, provider: "openai-codex", model: "gpt-5.5", toolsets: ["memory", "skills", "no_mcp"], maxOutputTokens: 4000 })).digest("hex");
   const skillsDigest = createHash("sha256").update(enabledSkills.join("\n")).digest("hex");
-  return `OriginPost Board runtime; owner=${binding.ownershipMarker}; memory=${binding.memoryScope}; policy=${policyDigest}; provider=openai-codex; model=gpt-5.5; skills=${skillsDigest}; skill_manifest=${skillManifestSha256}.`;
+  return `OriginPost Board runtime; owner=${binding.ownershipMarker}; memory=${binding.memoryScope}; kanban=${binding.kanbanBoardRef}; policy=${policyDigest}; provider=openai-codex; model=gpt-5.5; skills=${skillsDigest}; skill_manifest=${skillManifestSha256}.`;
 };
 
 const plugin = () => new HermesBoardPlugin({ dashboardBaseUrl: "http://127.0.0.1:9119", dashboardSessionToken: "dashboard-secret".repeat(2), executionBaseUrl: "http://127.0.0.1:8642", approvedSkills: ["news-research"], primaryProvider: "openai-codex", primaryModel: "gpt-5.5" });
@@ -29,7 +29,7 @@ const compliantConfig = {
   platform_toolsets: { api_server: ["memory", "skills", "no_mcp"] },
   plugins: { enabled: [], entries: {} },
 };
-const detailedReadiness = { status: "ok", platform: "hermes-agent", version: "0.21.1", readiness: { status: "ok", checks: { model: { status: "ok" } } } };
+const detailedReadiness = { status: "ok", platform: "hermes-agent", version: "0.21.2", readiness: { status: "ok", checks: { model: { status: "ok" } } } };
 const isolationAttestation = { schemaVersion: 1, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true };
 const runtimeAttestation = { schemaVersion: 2, ready: true, provider: "openai-codex", model: "gpt-5.5", toolManifestSha256, skillManifestSha256 };
 const policy = { configurationEpoch: 2, purpose, enabledSkills: [] as string[] };
@@ -72,7 +72,7 @@ describe("Hermes Board internal plugin", () => {
     let unsafeEnabled = true;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input); calls.push({ url, init });
-      if (url.endsWith("/api/health")) return Response.json({ ok: true, version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ ok: true, version: "0.21.2" });
       if (url.endsWith("/api/profiles")) {
         if (init?.method === "POST") { profileCreated = true; return Response.json({ ok: true, name: binding.profile }); }
         return Response.json({ profiles: profileCreated ? [{ name: binding.profile, description: profileDescription(["news-research"]) }] : [] });
@@ -95,9 +95,10 @@ describe("Hermes Board internal plugin", () => {
       return Response.json({ ok: true });
     });
     const result = await plugin().reconcile(binding, { configurationEpoch: 2, purpose, enabledSkills: ["news-research"] });
-    expect(result).toMatchObject({ configured: true, healthy: true, policyCompliant: true, version: "0.21.1", isolation: { verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false } });
+    expect(result).toMatchObject({ configured: true, healthy: true, policyCompliant: true, version: "0.21.2", isolation: { verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false } });
     const bodies = calls.filter((call) => call.init?.body).map((call) => JSON.parse(String(call.init?.body)) as Record<string, unknown>);
     expect(bodies).toContainEqual(expect.objectContaining({ key: "API_SERVER_KEY", profile: binding.profile }));
+    expect(bodies).toContainEqual(expect.objectContaining({ owner: binding.ownershipMarker, memoryScope: binding.memoryScope, kanbanBoardRef: binding.kanbanBoardRef }));
     expect(bodies).toContainEqual(expect.objectContaining({ name: "shell-anything", enabled: false, profile: binding.profile }));
     expect(JSON.stringify(bodies)).toContain('"write_approval":true');
     expect(JSON.stringify(bodies)).toContain('"api_server":["memory","skills","no_mcp"]');
@@ -126,7 +127,7 @@ describe("Hermes Board internal plugin", () => {
     const mixedPlugin = new HermesBoardPlugin({ dashboardBaseUrl: "http://127.0.0.1:9119", dashboardSessionToken: "dashboard-secret".repeat(2), executionBaseUrl: "http://127.0.0.1:8642", approvedSkills: names, primaryProvider: "openai-codex", primaryModel: "gpt-5.5" });
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles") && init?.method !== "POST") return Response.json({ profiles: [] });
       if (url.includes("/api/tools/toolsets?")) return Response.json([{ name: "memory" }, { name: "skills" }]);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill, ...names.map((name) => ({ name, enabled: true, provenance: "bundled" }))]);
@@ -144,7 +145,7 @@ describe("Hermes Board internal plugin", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input); calls.push({ url, init });
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       return Response.json({ profiles: [{ name: binding.profile, description: "Unrelated Hermes profile" }] });
     });
     await expect(plugin().reconcile(binding, { configurationEpoch: 2, purpose, enabledSkills: [] })).rejects.toMatchObject({ code: "profile_ownership_mismatch" });
@@ -155,7 +156,7 @@ describe("Hermes Board internal plugin", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input); calls.push({ url, init });
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       return Response.json({ profiles: [{ name: binding.profile, description: `Unrelated profile; owner=${binding.ownershipMarker};` }] });
     });
     await expect(plugin().reconcile(binding, policy)).rejects.toMatchObject({ code: "profile_ownership_mismatch" });
@@ -166,7 +167,7 @@ describe("Hermes Board internal plugin", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input); calls.push({ url, init });
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?profile=default")) return Response.json({ gateway: { multiplex_profile_allowlist: ["existing", binding.profile] } });
       return Response.json({ ok: true });
@@ -199,7 +200,7 @@ describe("Hermes Board internal plugin", () => {
   it("runs only through the Board profile route with isolated headers", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -219,14 +220,42 @@ describe("Hermes Board internal plugin", () => {
     const headers = init?.headers as Record<string, string>;
     const parsedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(headers["x-hermes-session-token"]).toBe("dashboard-secret".repeat(2));
-    expect(parsedBody).toMatchObject({ prompt: "Summarize", sessionKey: binding.memoryScope, skillManifestSha256 });
+    expect(parsedBody).toMatchObject({ prompt: "Summarize", sessionKey: binding.memoryScope, kanbanBoard: binding.kanbanBoardRef, skillManifestSha256 });
     expect(headers["x-originpost-signature"]).toMatch(/^[a-f0-9]{64}$/u);
     const bodySha256 = createHash("sha256").update(String(init?.body)).digest("hex");
-    const canonical = ["POST", `/run/${binding.profile}`, bodySha256, headers["x-originpost-timestamp"], headers["x-originpost-nonce"], headers["x-originpost-board-owner"], headers["x-originpost-memory-scope"], headers["x-originpost-policy-sha256"]].join("\n");
+    const canonical = ["POST", `/run/${binding.profile}`, bodySha256, headers["x-originpost-timestamp"], headers["x-originpost-nonce"], headers["x-originpost-board-owner"], headers["x-originpost-memory-scope"], headers["x-originpost-kanban-board"], headers["x-originpost-policy-sha256"]].join("\n");
     expect(headers["x-originpost-signature"]).toBe(createHmac("sha256", binding.apiKey).update(canonical).digest("hex"));
     const swappedRoute = canonical.replace(`/run/${binding.profile}`, "/run/opb_aaaaaaaaaaaaaaaaaaaaaaaa");
     expect(headers["x-originpost-signature"]).not.toBe(createHmac("sha256", binding.apiKey).update(swappedRoute).digest("hex"));
     expect(JSON.parse(String(init?.body))).not.toHaveProperty("store");
+  });
+
+  it("executes a released task once through the narrow server-controlled review route", async () => {
+    const taskId = "agent_board_task_11111111-1111-4111-8111-111111111111";
+    const executionId = "board_task_execution_22222222-2222-4222-8222-222222222222";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
+      if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
+      if (url.includes("/api/config?")) return Response.json(compliantConfig);
+      if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
+      if (url.includes("/isolation/")) return Response.json(isolationAttestation);
+      if (url.includes("/runtime/")) return Response.json(runtimeAttestation);
+      if (url.includes("/health/detailed")) return Response.json(detailedReadiness);
+      if (url.includes("/v1/capabilities")) return Response.json({ object: "hermes.api_server.capabilities", model: "hermes-agent", features: { responses_api: true } });
+      if (url.includes("/v1/toolsets")) return Response.json(effectiveToolsets());
+      if (url.includes("/tasks/run/")) return Response.json({ schemaVersion: 2, id: "opbrun_task_1", taskId, executionId, outcome: "review", replayed: false, model: "gpt-5.5", text: "Draft ready for human review", toolManifestSha256, skillManifestSha256, usage: { inputTokens: 11, outputTokens: 6 } });
+      return Response.json({ ok: true });
+    });
+
+    const result = await plugin().executeTask(binding, { taskId, executionId, title: "Draft Mumbai brief", description: "Prepare the verified briefing.", purpose, configurationEpoch: 2, capabilityEpoch: 2, enabledSkills: [] });
+    expect(result).toMatchObject({ outcome: "review", responseId: "opbrun_task_1", model: "gpt-5.5", text: "Draft ready for human review" });
+    const [url, init] = fetchMock.mock.calls.find(([request]) => String(request).includes("/originpost-board-approvals/tasks/run/"))!;
+    expect(String(url)).toContain(`/tasks/run/${binding.profile}`);
+    const parsedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(parsedBody).toEqual({ taskId, executionId, title: "Draft Mumbai brief", description: "Prepare the verified briefing.", purpose, configurationEpoch: 2, capabilityEpoch: 2, enabledSkills: [], sessionKey: binding.memoryScope, kanbanBoard: binding.kanbanBoardRef, skillManifestSha256 });
+    expect(parsedBody).not.toHaveProperty("instructions");
+    expect(JSON.stringify(parsedBody)).not.toMatch(/publish|approve|done/iu);
   });
 
   it("rejects every mismatched capability epoch before contacting Hermes", async () => {
@@ -238,7 +267,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when the live profile drifts from memory and toolset policy", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription(["news-research"]) }] });
       if (url.includes("/api/config?")) return Response.json({ ...compliantConfig, memory: { ...compliantConfig.memory, write_approval: false }, platform_toolsets: { api_server: ["memory", "skills", "no_mcp", "terminal"] } });
       if (url.includes("/api/skills?")) return Response.json([essentialSkill, { name: "news-research", enabled: true, provenance: "bundled" }]);
@@ -254,7 +283,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when an approved desired skill is missing from the live profile", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription(["news-research"]) }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -270,7 +299,7 @@ describe("Hermes Board internal plugin", () => {
   it("does not confuse a newer reconciliation epoch with the capability epoch", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription([], 3) }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -286,7 +315,7 @@ describe("Hermes Board internal plugin", () => {
   it("rejects malformed live skill entries instead of filtering them out", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       return Response.json([{ name: "news-research", enabled: "yes", provenance: "bundled" }]);
@@ -297,7 +326,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when Hermes implicitly expands an unapproved runtime toolset", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -313,7 +342,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when the constructed execution-plane agent has an injected tool", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -329,7 +358,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when the live Board skill tree drifts from the sealed profile manifest", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -345,7 +374,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed when the Board profile switches to the bypassing Codex app-server runtime", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json({ ...compliantConfig, model: { ...compliantConfig.model, openai_runtime: "codex_app_server" } });
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -363,7 +392,7 @@ describe("Hermes Board internal plugin", () => {
     let attestation = { ...isolationAttestation, skillsScoped: false };
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(config);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -383,7 +412,7 @@ describe("Hermes Board internal plugin", () => {
     const urls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input); urls.push(url);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -401,7 +430,7 @@ describe("Hermes Board internal plugin", () => {
     const urls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input); urls.push(url);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -419,7 +448,7 @@ describe("Hermes Board internal plugin", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input); calls.push({ url, init });
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/tools/toolsets?")) return Response.json([{ name: "memory" }, { name: "skills" }]);
       if (url.includes(`/api/config?profile=${binding.profile}`)) return Response.json(compliantConfig);
@@ -442,7 +471,7 @@ describe("Hermes Board internal plugin", () => {
   it("fails closed if Hermes' required skill is absent or disabled", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([{ ...essentialSkill, enabled: false }]);
@@ -458,7 +487,7 @@ describe("Hermes Board internal plugin", () => {
   it("does not mark a profile ready until Hermes reports a configured primary model", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);
@@ -475,7 +504,7 @@ describe("Hermes Board internal plugin", () => {
     let details: Record<string, unknown> = { ...detailedReadiness, version: "0.22.0" };
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.1" });
+      if (url.endsWith("/api/health")) return Response.json({ version: "0.21.2" });
       if (url.endsWith("/api/profiles")) return Response.json({ profiles: [{ name: binding.profile, description: profileDescription() }] });
       if (url.includes("/api/config?")) return Response.json(compliantConfig);
       if (url.includes("/api/skills?")) return Response.json([essentialSkill]);

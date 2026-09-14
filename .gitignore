@@ -15,3 +15,7 @@ uploads/
 minio-data/
 postgres-data/
 redis-data/
+
+# Local Python test artifacts
+__pycache__/
+*.py[cod]

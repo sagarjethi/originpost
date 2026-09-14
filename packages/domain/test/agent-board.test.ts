@@ -8,6 +8,7 @@ describe("agent boards", () => {
     const created = createAgentBoard({ workspaceId: "workspace", brandId: "brand", name: "Mumbai News", purpose: "Research and prepare verified Mumbai stories.", pluginConfigured: true, actor: owner, now: "2026-09-07T10:00:00.000Z" });
     expect(created.board).toMatchObject({ brandId: "brand", slug: "mumbai-news", status: "provisioning", pluginId: "org.originpost.hermes-boards", memoryIsolation: "hermes-profile", memoryWriteApproval: true, skillWriteApproval: true, configurationEpoch: 1, observedConfigurationEpoch: 0 });
     expect(created.board.hermesProfile).toMatch(/^opb_[a-f0-9]{24}$/u);
+    expect(created.board.hermesBoardRef).toMatch(/^opk_[a-f0-9]{24}$/u);
     expect(created.event.detail).not.toHaveProperty("apiKey");
     const repository = new InMemoryAgentBoardRepository();
     await repository.create(created.board, created.event);
@@ -77,6 +78,7 @@ describe("agent boards", () => {
     const created = createAgentBoard({ workspaceId: "workspace", brandId: "brand", name: "Mumbai", purpose: "Mumbai desk.", pluginConfigured: true, actor: owner });
     await repository.create(created.board, created.event);
     await expect(repository.update({ ...created.board, version: 2, hermesProfile: "opb_aaaaaaaaaaaaaaaaaaaaaaaa" }, 1, created.event)).rejects.toThrow(/identity cannot be changed/iu);
+    await expect(repository.update({ ...created.board, version: 2, hermesBoardRef: "opk_aaaaaaaaaaaaaaaaaaaaaaaa" }, 1, created.event)).rejects.toThrow(/identity cannot be changed/iu);
   });
 
   it("fails closed when the plugin is unavailable and needs optimistic locking", () => {

@@ -70,6 +70,7 @@ import { startPrivateConversationWorkers } from "./private-conversation-worker.j
 import { createEvergreenRuntime } from "./evergreen-worker.js";
 import { processRemoteCorrectionJob, type RemoteCorrectionJob } from "./remote-correction-worker.js";
 import { processBoardPluginDeactivate, processBoardPluginDecision, processBoardPluginReconcile, type BoardPluginDeactivateJob, type BoardPluginDecisionJob, type BoardPluginReconcileJob } from "./board-plugin-worker.js";
+import { processBoardTaskExecution, type BoardTaskExecutionJob } from "./board-task-execution-worker.js";
 import { CredentialRefreshError, processCredentialRefreshJob } from "./credential-refresh-worker.js";
 import { processProviderDataDeletion } from "./provider-data-deletion-worker.js";
 import { processProviderGrantValidation, type ProviderGrantValidationJob } from "./provider-grant-validation-worker.js";
@@ -193,7 +194,7 @@ if (hermesBoardPluginEnabled) {
   if (!process.env.REDIS_URL) throw new Error("The Hermes Boards plugin requires REDIS_URL.");
   if ((process.env.HERMES_BOARD_SECRET ?? "").length < 32) throw new Error("HERMES_BOARD_SECRET must contain at least 32 characters.");
   if ((process.env.HERMES_DASHBOARD_SESSION_TOKEN ?? "").length < 32 || !process.env.HERMES_DASHBOARD_URL || !process.env.HERMES_API_URL) throw new Error("The Hermes Boards plugin requires dashboard/API URLs and a dashboard session token.");
-  if ((process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1") !== "0.21.1") throw new Error("This OriginPost worker supports Hermes 0.21.1 only.");
+  if ((process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.2") !== "0.21.2") throw new Error("This OriginPost worker supports Hermes 0.21.2 only.");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/u.test(process.env.HERMES_BOARD_PRIMARY_PROVIDER ?? "") || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u.test(process.env.HERMES_BOARD_PRIMARY_MODEL ?? "")) throw new Error("The Hermes Boards plugin requires an explicit primary provider and model.");
   if (process.env.HERMES_BOARD_PRIMARY_PROVIDER !== "openai-codex") throw new Error("The Hermes Boards plugin requires HERMES_BOARD_PRIMARY_PROVIDER=openai-codex.");
 }
@@ -201,7 +202,7 @@ if (hermesBoardPluginEnabled) {
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by the worker.");
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-const { repository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
+const { repository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, agentBoardTaskRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
   databaseUrl,
   allowMemoryFallback: false,
   ...(process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY ? { privateMessageEncryptionKey: process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY } : {}),
@@ -214,7 +215,7 @@ const boardRuntime = hermesBoardPluginEnabled ? new HermesBoardPlugin({
   approvedSkills: (process.env.HERMES_BOARD_APPROVED_SKILLS ?? "").split(",").map((value)=>value.trim()).filter(Boolean),
   primaryProvider: process.env.HERMES_BOARD_PRIMARY_PROVIDER!,
   primaryModel: process.env.HERMES_BOARD_PRIMARY_MODEL!,
-  supportedVersion: process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.1",
+  supportedVersion: process.env.HERMES_BOARD_SUPPORTED_VERSION ?? "0.21.2",
   allowPrivateEndpoints: process.env.HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS === "true",
 }) : null;
 const connectors = createSafeConnectorRegistry({ privateConversationMode: privateMessageConnectorMode, nodeEnv: process.env.NODE_ENV ?? "development" });
@@ -355,7 +356,7 @@ const publishQueue = new Queue<PublishJob>("originpost-publish", { connection: r
 const monitorQueue = new Queue<MonitorJob>("originpost-monitor", { connection: redisConnection(redisUrl) });
 const analyticsQueue = new Queue<AnalyticsJob>("originpost-analytics", { connection: redisConnection(redisUrl) });
 const remoteCorrectionQueue = new Queue<RemoteCorrectionJob>("originpost-remote-correction", { connection: redisConnection(redisUrl) });
-const boardPluginQueue = boardRuntime ? new Queue<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob>("originpost-board-plugins", { connection: redisConnection(redisUrl) }) : null;
+const boardPluginQueue = boardRuntime ? new Queue<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob | BoardTaskExecutionJob>("originpost-board-plugins", { connection: redisConnection(redisUrl) }) : null;
 // Reconcile/deactivate both update Hermes' shared default-profile allowlist.
 // BullMQ's global limit serializes that read-modify-write across worker replicas.
 if (boardPluginQueue) await boardPluginQueue.setGlobalConcurrency(1);
@@ -463,6 +464,14 @@ async function dispatchOutbox(): Promise<void> {
           await outboxRepository.complete(message.workspaceId,message.id);
           continue;
         }
+        if (message.topic === "board.task.execute") {
+          if (!boardPluginQueue) throw new Error("The Hermes Boards worker is disabled.");
+          const { workspaceId, brandId, boardId, taskId, executionId, taskVersion, configurationEpoch, capabilityEpoch } = message.payload;
+          if (typeof workspaceId !== "string" || workspaceId !== message.workspaceId || typeof brandId !== "string" || typeof boardId !== "string" || typeof taskId !== "string" || typeof executionId !== "string" || typeof taskVersion !== "number" || !Number.isInteger(taskVersion) || taskVersion < 1 || typeof configurationEpoch !== "number" || !Number.isInteger(configurationEpoch) || configurationEpoch < 1 || typeof capabilityEpoch !== "number" || !Number.isInteger(capabilityEpoch) || capabilityEpoch < 1) throw new Error("Board task execution outbox payload is invalid.");
+          await boardPluginQueue.add("execute-board-task", { workspaceId, brandId, boardId, taskId, executionId, taskVersion, configurationEpoch, capabilityEpoch }, { jobId: `board-task-execution-${executionId}`, attempts: 1, removeOnComplete: 500, removeOnFail: 1000 });
+          await outboxRepository.complete(message.workspaceId, message.id);
+          continue;
+        }
         if (message.topic === "channel.credential-refresh") {
           const { workspaceId, accountId, platform, expectedExpiresAt, expectedCredentialRef } = message.payload;
           if (typeof workspaceId !== "string" || typeof accountId !== "string" || (platform !== "instagram" && platform !== "youtube") || typeof expectedExpiresAt !== "string" || !Number.isFinite(Date.parse(expectedExpiresAt)) || typeof expectedCredentialRef !== "string" || !expectedCredentialRef.startsWith("secret:")) throw new Error("Credential refresh outbox payload is invalid.");
@@ -537,6 +546,8 @@ const recoveredCorrections = await outboxRepository.recoverRemoteCorrections();
 if (recoveredCorrections) console.log(`Recovered ${recoveredCorrections} remote correction(s) into the durable outbox.`);
 const recoveredBoardPlugins = boardRuntime ? await outboxRepository.recoverAgentBoardPlugins() : 0;
 if (recoveredBoardPlugins) console.log(`Recovered ${recoveredBoardPlugins} Board plugin reconciliation(s) into the durable outbox.`);
+const recoveredBoardTaskExecutions = await agentBoardTaskRepository.recoverExpiredExecutions();
+if (recoveredBoardTaskExecutions) console.log(`Fenced ${recoveredBoardTaskExecutions} expired Board task execution(s) as uncertain.`);
 const credentialRefreshPlatforms: CredentialRefreshPlatform[] = [
   ...(instagramConnectorMode === "official" ? ["instagram" as const] : []),
   ...(youtubeConnectorMode === "official" ? ["youtube" as const] : []),
@@ -556,6 +567,7 @@ await dispatchOutbox();
 const dispatcherTimer = setInterval(() => { void dispatchOutbox().catch((error) => console.error("Outbox dispatcher error:", error instanceof Error ? error.message : "Unknown error")); }, 1000);
 const correctionRecoveryTimer = setInterval(() => { void outboxRepository.recoverRemoteCorrections().then(()=>dispatchOutbox()).catch((error)=>console.error("Remote correction recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000);
 const boardPluginRecoveryTimer = boardRuntime ? setInterval(() => { void outboxRepository.recoverAgentBoardPlugins().then(()=>dispatchOutbox()).catch((error)=>console.error("Board plugin recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000) : null;
+const boardTaskExecutionRecoveryTimer = setInterval(() => { void agentBoardTaskRepository.recoverExpiredExecutions().catch((error)=>console.error("Board task execution recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000);
 const credentialRefreshRecoveryTimer = credentialRefreshPlatforms.length ? setInterval(() => { void outboxRepository.recoverCredentialRefreshes(credentialRefreshPlatforms).then(()=>dispatchOutbox()).catch((error)=>console.error("Credential refresh recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000) : null;
 const providerGrantValidationRecoveryTimer = providerGrantValidationProviders.length ? setInterval(() => { void outboxRepository.recoverProviderGrantValidations(providerGrantValidationProviders).then(()=>dispatchOutbox()).catch((error)=>console.error("Provider grant validation recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000) : null;
 const providerDataDeletionRecoveryTimer = setInterval(() => { void outboxRepository.recoverProviderDataDeletions().then(()=>dispatchOutbox()).catch((error)=>console.error("Provider data deletion recovery error:",error instanceof Error?error.message:"Unknown error")); }, 60_000);
@@ -581,11 +593,13 @@ await pollInstagramCollaborators();
 const collaboratorPollTimer=setInterval(()=>{void pollInstagramCollaborators().catch((error)=>console.error("Instagram collaborator polling error:",error instanceof Error?error.message:"Unknown error"));},30_000);
 
 const remoteCorrectionWorker = new Worker<RemoteCorrectionJob>("originpost-remote-correction",async(job)=>processRemoteCorrectionJob(job.data,{repository,corrections:remoteCorrectionRepository,connectors,notifications:notificationRepository}),{connection:redisConnection(redisUrl),concurrency:2,lockDuration:300_000});
-const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin"
+const boardPluginWorker = boardRuntime ? new Worker<BoardPluginReconcileJob | BoardPluginDeactivateJob | BoardPluginDecisionJob | BoardTaskExecutionJob>("originpost-board-plugins", async(job)=>job.name === "deactivate-board-plugin"
   ? processBoardPluginDeactivate(job.data as BoardPluginDeactivateJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!})
   : job.name === "decide-board-plugin-write"
     ? processBoardPluginDecision(job.data as BoardPluginDecisionJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository})
-    : processBoardPluginReconcile(job.data as BoardPluginReconcileJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:1,lockDuration:120_000}) : null;
+    : job.name === "execute-board-task"
+      ? processBoardTaskExecution(job.data as BoardTaskExecutionJob,{boards:agentBoardRepository,tasks:agentBoardTaskRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository})
+      : processBoardPluginReconcile(job.data as BoardPluginReconcileJob,{boards:agentBoardRepository,runtime:boardRuntime,secret:process.env.HERMES_BOARD_SECRET!,organizations:organizationRepository}),{connection:redisConnection(redisUrl),concurrency:1,lockDuration:300_000}) : null;
 const providerGrantValidationWorker = providerGrantValidationQueue ? new Worker<ProviderGrantValidationJob>("originpost-provider-grant-validation", async(job) => {
   if (!credentialEncryptionKey || !providerGrantValidationKeyring) throw new Error("Provider grant validation credentials are unavailable.");
   return processProviderGrantValidation(job.data, {
@@ -1055,7 +1069,7 @@ const publishWorker = new Worker<PublishJob>(
         approvedBy,
         sourceIds: item.sources.map((source) => source.id),
         evidenceMode: connectorIsOfficial ? "official" : "simulation",
-        disclosure: target.platform === "instagram" ? instagramAiObserved ? "ai-assisted" : "none" : proofDisclosureForTarget(target),
+        disclosure: target.platform === "instagram" ? instagramAiObserved ? "ai-assisted" : "none" : proofDisclosureForTarget(target, draft.containsSyntheticMedia === true),
         ...(target.platform === "instagram" && (instagramSettings?.isAiGenerated === true || instagramAiObserved) ? { instagramAiDisclosure: { requested: instagramSettings?.isAiGenerated === true, observed: instagramAiObserved, label: "ai_info" as const } } : {}),
         ...(instagramSettings ? { approvedSettingsSha256: instagramSettings.approvedSettingsSha256 } : {}),
         ...(target.platform === "instagram" && instagramInviteProof ? { collaboratorInviteProof: instagramInviteProof } : {}),
@@ -1391,6 +1405,7 @@ async function shutdown() {
   clearInterval(dispatcherTimer);
   clearInterval(correctionRecoveryTimer);
   if(boardPluginRecoveryTimer)clearInterval(boardPluginRecoveryTimer);
+  clearInterval(boardTaskExecutionRecoveryTimer);
   if(credentialRefreshRecoveryTimer)clearInterval(credentialRefreshRecoveryTimer);
   if(providerGrantValidationRecoveryTimer)clearInterval(providerGrantValidationRecoveryTimer);
   clearInterval(providerDataDeletionRecoveryTimer);

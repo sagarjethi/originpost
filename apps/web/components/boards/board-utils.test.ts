@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { BoardDetailPanel } from "./boards-workspace";
-import { parseBoard, parseBoardHermes, parseBoardRuns, parseBoards } from "./board-utils";
+import { boardTaskHandoffRequestBody, hasActiveBoardTaskExecution, parseBoard, parseBoardHermes, parseBoardRuns, parseBoards, parseBoardTaskComments, parseBoardTaskExecutions, parseBoardTaskHandoff, parseBoardTasks } from "./board-utils";
 
 const verifiedIsolation = { verified: true, profileScoped: true, memoryScoped: true, skillsScoped: true, stateScoped: true, externalSkillsBlocked: true, unsafeToolsBlocked: true, filesystemSandbox: false as const };
 
@@ -39,9 +39,44 @@ describe("board API view parsing", () => {
     expect(runs).toEqual([{ id: "run-1", status: "succeeded", model: "hermes-agent", requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), inputTokens: 12, outputTokens: 4, latencyMs: 250, createdAt: "2026-09-09T10:00:00.000Z" }]);
     expect(JSON.stringify(runs)).not.toMatch(/private prompt|private response|private-workspace/);
   });
+
+  it("parses Board-owned tasks and comments without internal idempotency or actor identifiers", () => {
+    const id = "agent_board_task_11111111-1111-4111-8111-111111111111";
+    const tasks = parseBoardTasks({ tasks: [{ id, boardId: "board-1", version: 2, title: "Verify Mumbai event", description: "Official source", status: "triage", priority: "high", assignee: "board-agent", parentTaskIds: [], createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:00:00.000Z", idempotencyKeySha256: "a".repeat(64), createFingerprint: "b".repeat(64), workspaceId: "private" }] });
+    const comments = parseBoardTaskComments({ comments: [{ id: "comment-1", body: "Source confirmed", authorName: "Editor", authorId: "private-user", createdAt: "2026-09-13T08:10:00.000Z" }] });
+    expect(tasks).toEqual([expect.objectContaining({ id, title: "Verify Mumbai event", status: "triage" })]);
+    expect(comments).toEqual([{ id: "comment-1", body: "Source confirmed", authorName: "Editor", createdAt: "2026-09-13T08:10:00.000Z" }]);
+    expect(JSON.stringify({ tasks, comments })).not.toMatch(/idempotency|fingerprint|private-user|workspaceId/iu);
+  });
+
+  it("parses bounded task execution results without leaking worker internals", () => {
+    const executions = parseBoardTaskExecutions({ executions: [{ id: "execution-1", taskId: "agent_board_task_11111111-1111-4111-8111-111111111111", status: "running", model: "Hermes 0.21", resultText: "Draft result", contentItemId: "content-1", createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:01:00.000Z", workspaceId: "private", requestPayload: "private prompt" }, { id: "bad", taskId: "task", status: "invented", createdAt: "not-a-date", updatedAt: "not-a-date" }] });
+    expect(executions).toEqual([{ id: "execution-1", taskId: "agent_board_task_11111111-1111-4111-8111-111111111111", status: "running", model: "Hermes 0.21", resultText: "Draft result", contentItemId: "content-1", createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:01:00.000Z" }]);
+    expect(hasActiveBoardTaskExecution(executions)).toBe(true);
+    expect(hasActiveBoardTaskExecution([{ ...executions[0]!, status: "succeeded" }])).toBe(false);
+    expect(JSON.stringify(executions)).not.toMatch(/private prompt|workspaceId|requestPayload/iu);
+  });
+
+  it("accepts a handoff only when the response links the expected execution and content item", () => {
+    expect(parseBoardTaskHandoff({ contentItem: { id: "content-1", status: "inbox", privateNotes: "hidden" }, handoff: { executionId: "execution-1", contentItemId: "content-1", internalActorId: "hidden" } }, "execution-1")).toEqual({ executionId: "execution-1", contentItemId: "content-1" });
+    expect(parseBoardTaskHandoff({ contentItem: { id: "content-2" }, handoff: { executionId: "execution-other", contentItemId: "content-2" } }, "execution-1")).toBeNull();
+    expect(parseBoardTaskHandoff({ contentItem: { id: "content-2" }, handoff: { executionId: "execution-1", contentItemId: "different" } }, "execution-1")).toBeNull();
+    expect(boardTaskHandoffRequestBody("workspace-1", "brand-1", "execution-1")).toEqual({ workspaceId: "workspace-1", brandId: "brand-1", executionId: "execution-1" });
+  });
 });
 
 describe("Boards detail UI", () => {
+  it("renders Tasks as a Board-level surface even when Hermes is unavailable", () => {
+    const markup = renderToStaticMarkup(createElement(BoardDetailPanel, { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "setup_required" }, plugin: { configured: false, healthy: false, modelReady: false, memoryEnabled: false, memoryWriteApproval: false, skillWriteApproval: false, isolation: { ...verifiedIsolation, verified: false }, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] }, panel: "tasks", isOwner: true, canManageTasks: true, canApproveTasks: true, busy: "", pendingDetail: null, tasks: [{ id: "agent_board_task_11111111-1111-4111-8111-111111111111", boardId: "board-1", version: 1, title: "Verify Mumbai event", description: "Official source", status: "triage", priority: "high", assignee: "team", parentTaskIds: [], createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:00:00.000Z" }], onPanelChange: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() }));
+    expect(markup).toContain("Board tasks");
+    expect(markup).toContain("Tasks remain usable even when Hermes is unavailable");
+    expect(markup).toContain("Verify Mumbai event");
+    expect(markup).not.toContain("BUILT-IN INTERNAL PLUGIN");
+    expect(markup).not.toContain("Restricted Board runtime");
+    expect(markup).not.toContain("Setup required");
+    expect(markup).not.toContain("Last connection check");
+    expect(markup).toContain("Tasks are stored in this Board and do not require Hermes");
+  });
   it("keeps memory and skills inside the Hermes plugin panel without leaking internals", () => {
     const markup = renderToStaticMarkup(createElement(BoardDetailPanel, { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "ready" }, plugin: { configured: true, healthy: true, modelReady: true, memoryEnabled: true, memoryWriteApproval: true, skillWriteApproval: true, isolation: verifiedIsolation, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [{ id: "secret-provider-id", label: "Event Research", enabled: true, applied: true }] }, panel: "memory", isOwner: true, busy: "", pendingDetail: null, onPanelChange: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() }));
     expect(markup).toContain("BUILT-IN INTERNAL PLUGIN");
@@ -69,5 +104,31 @@ describe("Boards detail UI", () => {
     expect(markup).toContain("Work remains unavailable until the internal check passes");
     expect(markup).toContain("Finish Hermes setup before running this Board");
     expect(markup).toMatch(/<textarea[^>]*disabled=""/u);
+  });
+
+  it("keeps Board-agent release and human approval as separate task actions", () => {
+    const task = { id: "agent_board_task_11111111-1111-4111-8111-111111111111", boardId: "board-1", version: 3, title: "Research Mumbai event", description: "Use official sources", status: "ready" as const, priority: "high" as const, assignee: "board-agent" as const, parentTaskIds: [], createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:10:00.000Z" };
+    const markup = renderToStaticMarkup(createElement(BoardDetailPanel, { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "ready" }, plugin: { configured: true, healthy: true, modelReady: true, memoryEnabled: true, memoryWriteApproval: true, skillWriteApproval: true, isolation: verifiedIsolation, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] }, panel: "tasks", isOwner: false, canManageTasks: true, canApproveTasks: true, busy: "", pendingDetail: null, tasks: [task], selectedTaskId: task.id, taskExecutions: [{ id: "execution-1", taskId: task.id, status: "succeeded", model: "Hermes 0.21", resultText: "Source-backed result", createdAt: "2026-09-13T08:11:00.000Z", updatedAt: "2026-09-13T08:12:00.000Z" }], onPanelChange: vi.fn(), onReleaseTask: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() }));
+    expect(markup).toContain("Release to Hermes");
+    expect(markup).toContain("Ready for review");
+    expect(markup).toContain("Source-backed result");
+    expect(markup).toContain("Human approval is still required");
+    expect(markup).not.toContain(">In progress</option>");
+  });
+
+  it("offers a review-first Content Inbox handoff for the latest successful execution", () => {
+    const task = { id: "agent_board_task_11111111-1111-4111-8111-111111111111", boardId: "board-1", version: 4, title: "Research Mumbai event", description: "Use official sources", status: "review" as const, priority: "high" as const, assignee: "board-agent" as const, parentTaskIds: [], resultSummary: "Source-backed result", createdAt: "2026-09-13T08:00:00.000Z", updatedAt: "2026-09-13T08:12:00.000Z" };
+    const execution = { id: "execution-1", taskId: task.id, status: "succeeded" as const, model: "Hermes 0.21", resultText: "Source-backed result", createdAt: "2026-09-13T08:11:00.000Z", updatedAt: "2026-09-13T08:12:00.000Z" };
+    const props = { board: { id: "board-1", version: 1, name: "Mumbai events", purpose: "City event coverage", status: "ready" as const }, plugin: { configured: true, healthy: true, modelReady: true, memoryEnabled: true, memoryWriteApproval: true, skillWriteApproval: true, isolation: verifiedIsolation, pending: false, decisionPending: false, pendingManagementAvailable: false, pendingWrites: [], skills: [] }, panel: "tasks" as const, isOwner: false, canManageTasks: true, canApproveTasks: true, busy: "", pendingDetail: null, tasks: [task], selectedTaskId: task.id, taskExecutions: [execution], onPanelChange: vi.fn(), onHandoffTask: vi.fn(), onOpenContent: vi.fn(), onTest: vi.fn(), onReconcile: vi.fn(), onToggleSkill: vi.fn(), onReviewPending: vi.fn(), onPendingDecision: vi.fn(), onEdit: vi.fn(), onArchive: vi.fn() };
+    const createMarkup = renderToStaticMarkup(createElement(BoardDetailPanel, props));
+    expect(createMarkup).toContain("Continue in Content Inbox");
+    expect(createMarkup).toContain("Create &amp; open review item");
+    expect(createMarkup).toContain("Create an unapproved Content item");
+    expect(createMarkup).toContain("Nothing is published");
+    expect(createMarkup).toContain('aria-label="Create review Content Inbox item from Research Mumbai event"');
+
+    const openMarkup = renderToStaticMarkup(createElement(BoardDetailPanel, { ...props, taskExecutions: [{ ...execution, contentItemId: "content-1" }] }));
+    expect(openMarkup).toContain("Open Content item");
+    expect(openMarkup).not.toContain("Create &amp; open review item");
   });
 });

@@ -14,8 +14,8 @@ async function outbox(sql: Sql | TransactionSql, value?: OutboxMessageInput) {
 }
 
 async function plugin(sql: Sql | TransactionSql, board: AgentBoard) {
-  await sql`insert into board_hermes_plugins(board_id,workspace_id,brand_id,plugin_id,profile_ref,state,desired_configuration_epoch,observed_configuration_epoch,capability_epoch,memory_isolation,memory_write_approval,skill_write_approval,last_checked_at,last_error_code,updated_at)
-    values(${board.id},${board.workspaceId},${board.brandId},${board.pluginId},${board.hermesProfile},${board.status},${board.configurationEpoch},${board.observedConfigurationEpoch},${board.capabilityEpoch},${board.memoryIsolation},${board.memoryWriteApproval},${board.skillWriteApproval},${board.lastCheckedAt??null},${board.lastError??null},${board.updatedAt})
+  await sql`insert into board_hermes_plugins(board_id,workspace_id,brand_id,plugin_id,profile_ref,kanban_ref,state,desired_configuration_epoch,observed_configuration_epoch,capability_epoch,memory_isolation,memory_write_approval,skill_write_approval,last_checked_at,last_error_code,updated_at)
+    values(${board.id},${board.workspaceId},${board.brandId},${board.pluginId},${board.hermesProfile},${board.hermesBoardRef},${board.status},${board.configurationEpoch},${board.observedConfigurationEpoch},${board.capabilityEpoch},${board.memoryIsolation},${board.memoryWriteApproval},${board.skillWriteApproval},${board.lastCheckedAt??null},${board.lastError??null},${board.updatedAt})
     on conflict(board_id) do update set state=excluded.state,desired_configuration_epoch=excluded.desired_configuration_epoch,observed_configuration_epoch=excluded.observed_configuration_epoch,capability_epoch=excluded.capability_epoch,last_checked_at=excluded.last_checked_at,last_error_code=excluded.last_error_code,updated_at=excluded.updated_at`;
   const names = [...new Set([...board.desiredSkills, ...board.observedSkills])];
   await sql`delete from board_hermes_skill_grants where workspace_id=${board.workspaceId} and board_id=${board.id}`;
@@ -43,7 +43,9 @@ export class PostgresAgentBoardRepository implements AgentBoardRepository {
         await plugin(sql, board); await audit(sql, event); await outbox(sql, message);
       });
     } catch (error) {
-      if ((error as { constraint_name?: string; constraint?: string }).constraint_name === "board_hermes_plugins_profile_ref_unique" || (error as { constraint?: string }).constraint === "board_hermes_plugins_profile_ref_unique") throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+      const constraint = (error as { constraint_name?: string; constraint?: string }).constraint_name ?? (error as { constraint?: string }).constraint;
+      if (constraint === "board_hermes_plugins_profile_ref_unique") throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+      if (constraint === "board_hermes_plugins_kanban_ref_unique") throw new DomainError("This Board Kanban runtime is already assigned.", "agent_board_kanban_exists", 409);
       if ((error as { code?: string }).code === "23505") throw new DomainError("This brand already has a board with that name.", "agent_board_slug_exists", 409);
       throw error;
     }
@@ -55,14 +57,16 @@ export class PostgresAgentBoardRepository implements AgentBoardRepository {
         const rows = await sql<BoardRow[]>`select payload from agent_boards where workspace_id=${board.workspaceId} and id=${board.id} and version=${expectedVersion} for update`;
         if (!rows[0]) return null;
         const current = rows[0].payload;
-        if (board.id !== current.id || board.workspaceId !== current.workspaceId || board.brandId !== current.brandId || board.pluginId !== current.pluginId || board.hermesProfile !== current.hermesProfile) throw new DomainError("A Board's runtime identity cannot be changed.", "agent_board_identity_immutable", 409);
+        if (board.id !== current.id || board.workspaceId !== current.workspaceId || board.brandId !== current.brandId || board.pluginId !== current.pluginId || board.hermesProfile !== current.hermesProfile || board.hermesBoardRef !== current.hermesBoardRef) throw new DomainError("A Board's runtime identity cannot be changed.", "agent_board_identity_immutable", 409);
         const changed = await sql<{ id: string }[]>`update agent_boards set version=${board.version},name=${board.name},purpose=${board.purpose},status=${board.status},payload=${sql.json(board as never)},updated_at=${board.updatedAt} where workspace_id=${board.workspaceId} and id=${board.id} and version=${expectedVersion} returning id`;
         if (!changed[0]) return null;
         await plugin(sql, board); await audit(sql, event); await outbox(sql, message);
         return board;
       });
     } catch (error) {
-      if ((error as { constraint_name?: string; constraint?: string }).constraint_name === "board_hermes_plugins_profile_ref_unique" || (error as { constraint?: string }).constraint === "board_hermes_plugins_profile_ref_unique") throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+      const constraint = (error as { constraint_name?: string; constraint?: string }).constraint_name ?? (error as { constraint?: string }).constraint;
+      if (constraint === "board_hermes_plugins_profile_ref_unique") throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+      if (constraint === "board_hermes_plugins_kanban_ref_unique") throw new DomainError("This Board Kanban runtime is already assigned.", "agent_board_kanban_exists", 409);
       if ((error as { code?: string }).code === "23505") throw new DomainError("This brand already has a board with that name.", "agent_board_slug_exists", 409);
       throw error;
     }

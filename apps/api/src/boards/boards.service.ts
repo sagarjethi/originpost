@@ -1,11 +1,11 @@
 import { ForbiddenException, Inject, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { deriveBoardRuntimeSecrets, HermesBoardPluginError, type BoardRuntimeBinding, type BoardRuntimeObservation } from "@originpost/agents";
-import { agentRunHash, can, createAgentBoard, createOutboxMessage, DomainError, observeAgentBoardPlugin, queueAgentBoardPluginDecision, queueAgentBoardReconcile, reviseAgentBoard, type Actor, type AgentBoard, type AgentBoardRunLedgerEntry, type AuditEvent } from "@originpost/domain";
+import { agentBoardTaskCommentCreateFingerprint, agentBoardTaskCreateFingerprint, agentBoardTaskExecutionFingerprint, agentBoardTaskIdempotencyHash, agentRunHash, can, createAgentBoard, createAgentBoardTask, createAgentBoardTaskComment, createAgentBoardTaskContentHandoff, createOutboxMessage, DomainError, observeAgentBoardPlugin, queueAgentBoardPluginDecision, queueAgentBoardReconcile, releaseAgentBoardTaskToAgent, reviseAgentBoard, reviseAgentBoardTask, type Actor, type AgentBoard, type AgentBoardRunLedgerEntry, type AgentBoardTask, type AgentBoardTaskContentHandoff, type AgentBoardTaskExecution, type AuditEvent } from "@originpost/domain";
 import { randomUUID } from "node:crypto";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
-import type { BoardQueryDto, CreateBoardDto, DecideBoardPendingWriteDto, UpdateBoardDto, UpdateBoardSkillDto } from "./dto/boards.dto.js";
+import type { BoardQueryDto, CreateBoardDto, CreateBoardTaskDto, DecideBoardPendingWriteDto, UpdateBoardDto, UpdateBoardSkillDto, UpdateBoardTaskDto } from "./dto/boards.dto.js";
 
 const publicBoard = (board: AgentBoard) => ({
   id: board.id, workspaceId: board.workspaceId, brandId: board.brandId, version: board.version,
@@ -16,10 +16,43 @@ const publicBoard = (board: AgentBoard) => ({
   createdAt: board.createdAt, updatedAt: board.updatedAt,
 });
 
+const publicTask = (task: AgentBoardTask, contentItemId?: string) => ({
+  id: task.id, brandId: task.brandId, boardId: task.boardId, version: task.version,
+  title: task.title, description: task.description, status: task.status, priority: task.priority, assignee: task.assignee,
+  parentTaskIds: task.parentTaskIds,
+  ...(task.blockedReason ? { blockedReason: task.blockedReason } : {}),
+  ...(task.resultSummary ? { resultSummary: task.resultSummary } : {}),
+  ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+  ...(task.completedAt ? { completedAt: task.completedAt } : {}),
+  ...(contentItemId ? { contentItemId } : {}),
+  createdBy: task.createdBy, createdAt: task.createdAt, updatedAt: task.updatedAt,
+});
+
+const publicTaskComment = (comment: Awaited<ReturnType<OriginPostInfrastructure["agentBoardTaskRepository"]["listComments"]>>[number]) => ({
+  id: comment.id, taskId: comment.taskId, body: comment.body, authorName: comment.authorName, createdAt: comment.createdAt,
+});
+
+const publicTaskExecution = (execution: AgentBoardTaskExecution, contentItemId?: string) => ({
+  id: execution.id, taskId: execution.taskId, status: execution.status,
+  ...(execution.model ? { model: execution.model } : {}),
+  ...(execution.resultText ? { resultText: execution.resultText } : {}),
+  ...(execution.errorSummary ? { errorSummary: execution.errorSummary } : {}),
+  ...(contentItemId ? { contentItemId } : {}),
+  createdAt: execution.createdAt, updatedAt: execution.updatedAt,
+});
+
+const publicContentHandoff = (handoff: AgentBoardTaskContentHandoff) => ({
+  id: handoff.id, taskId: handoff.taskId, executionId: handoff.executionId, contentItemId: handoff.contentItemId,
+  responseSha256: handoff.responseSha256, createdBy: handoff.createdBy, createdAt: handoff.createdAt,
+});
+
 @Injectable()
 export class BoardsService {
   constructor(@Inject(INFRASTRUCTURE) private readonly infrastructure: OriginPostInfrastructure, private readonly config: ConfigService) {}
   private readable(actor: Actor) { if (!can(actor.role, "content:read")) throw new ForbiddenException("You cannot view Boards."); }
+  private taskReadable(actor: Actor) { if ((actor.actorType && actor.actorType !== "human") || !can(actor.role, "content:read")) throw new ForbiddenException("You cannot view Board tasks."); }
+  private taskWritable(actor: Actor) { if ((actor.actorType && actor.actorType !== "human") || !can(actor.role, "content:create")) throw new ForbiddenException("You cannot manage Board tasks."); }
+  private taskApprover(actor: Actor) { if ((actor.actorType && actor.actorType !== "human") || !can(actor.role, "content:approve")) throw new ForbiddenException("A manager or owner must hand Board work into Content."); }
   private owner(actor: Actor) { if ((actor.actorType && actor.actorType !== "human") || !can(actor.role, "workspace:manage")) throw new ForbiddenException("Only a workspace owner can manage Boards."); }
   private audit(workspaceId: string, actor: Actor, action: string, detail: Record<string, unknown>): AuditEvent { return { id: `evt_${randomUUID()}`, workspaceId, actorId: actor.id, actorType: actor.actorType ?? "human", action, detail, createdAt: new Date().toISOString() }; }
   private async board(workspaceId: string, brandId: string, id: string) { const board = await this.infrastructure.agentBoardRepository.get(workspaceId, id); if (!board || board.brandId !== brandId) throw new DomainError("Board not found.", "agent_board_not_found", 404); return board; }
@@ -27,12 +60,218 @@ export class BoardsService {
   private binding(board: AgentBoard): BoardRuntimeBinding {
     const secret = this.config.get<string>("HERMES_BOARD_SECRET") ?? "";
     const derived = deriveBoardRuntimeSecrets(secret, { workspaceId: board.workspaceId, brandId: board.brandId, boardId: board.id, capabilityEpoch: board.capabilityEpoch });
-    return { workspaceId: board.workspaceId, brandId: board.brandId, boardId: board.id, profile: board.hermesProfile, capabilityEpoch: board.capabilityEpoch, ...derived };
+    return { workspaceId: board.workspaceId, brandId: board.brandId, boardId: board.id, profile: board.hermesProfile, kanbanBoardRef: board.hermesBoardRef, capabilityEpoch: board.capabilityEpoch, ...derived };
   }
   private safeCode(error: unknown) { return error instanceof HermesBoardPluginError ? error.code : "runtime_unavailable"; }
 
   async list(workspaceId: string, query: BoardQueryDto, actor: Actor) { this.readable(actor); return { boards: (await this.infrastructure.agentBoardRepository.list(workspaceId, query.brandId, query.includeArchived)).map(publicBoard) }; }
   async get(workspaceId: string, brandId: string, id: string, actor: Actor) { this.readable(actor); return { board: publicBoard(await this.board(workspaceId, brandId, id)) }; }
+
+  private async scopedTask(workspaceId: string, brandId: string, boardId: string, taskId: string) {
+    const task = await this.infrastructure.agentBoardTaskRepository.get(workspaceId, brandId, boardId, taskId);
+    if (!task) throw new DomainError("Board task not found.", "agent_board_task_not_found", 404);
+    return task;
+  }
+
+  private async parentsComplete(workspaceId: string, brandId: string, boardId: string, parentTaskIds: string[]) {
+    let complete = true;
+    for (const parentTaskId of parentTaskIds) {
+      const parent = await this.infrastructure.agentBoardTaskRepository.get(workspaceId, brandId, boardId, parentTaskId);
+      if (!parent) throw new DomainError("A Board task dependency does not exist in this Board.", "agent_board_task_dependencies_invalid", 404);
+      if (!parent.completedAt || !["done", "archived"].includes(parent.status)) complete = false;
+    }
+    return complete;
+  }
+
+  private async taskHandoff(task: AgentBoardTask) {
+    return task.lastExecutionId ? this.infrastructure.agentBoardTaskRepository.getContentHandoffByExecution(task.workspaceId, task.brandId, task.boardId, task.id, task.lastExecutionId) : null;
+  }
+
+  private async handoffResponse(handoff: AgentBoardTaskContentHandoff, task: AgentBoardTask, replayed: boolean) {
+    const contentItem = await this.infrastructure.repository.get(handoff.workspaceId, handoff.contentItemId);
+    if (!contentItem || contentItem.brandId !== handoff.brandId) throw new DomainError("The Board handoff provenance is incomplete.", "agent_board_task_handoff_corrupt", 409);
+    return { task: publicTask(task, handoff.contentItemId), contentItem, handoff: publicContentHandoff(handoff), replayed };
+  }
+
+  async tasks(workspaceId: string, brandId: string, boardId: string, includeArchived: boolean, actor: Actor) {
+    this.taskReadable(actor);
+    await this.board(workspaceId, brandId, boardId);
+    const tasks = await this.infrastructure.agentBoardTaskRepository.list(workspaceId, brandId, boardId, includeArchived);
+    return { tasks: await Promise.all(tasks.map(async (task) => publicTask(task, (await this.taskHandoff(task))?.contentItemId))) };
+  }
+
+  async task(workspaceId: string, brandId: string, boardId: string, taskId: string, actor: Actor) {
+    this.taskReadable(actor);
+    await this.board(workspaceId, brandId, boardId);
+    const task = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    return { task: publicTask(task, (await this.taskHandoff(task))?.contentItemId) };
+  }
+
+  async createTask(workspaceId: string, brandId: string, boardId: string, idempotencyKey: string | undefined, dto: CreateBoardTaskDto, actor: Actor) {
+    this.taskWritable(actor);
+    const board = await this.board(workspaceId, brandId, boardId);
+    if (board.status === "archived") throw new DomainError("Archived Boards are read-only.", "agent_board_archived", 409);
+    await this.requireActiveBrand(workspaceId, brandId);
+    const createValues = {
+      title: dto.title,
+      ...(dto.description === undefined ? {} : { description: dto.description }),
+      ...(dto.priority === undefined ? {} : { priority: dto.priority }),
+      ...(dto.assignee === undefined ? {} : { assignee: dto.assignee }),
+      ...(dto.parentTaskIds === undefined ? {} : { parentTaskIds: dto.parentTaskIds }),
+      ...(dto.dueAt === undefined ? {} : { dueAt: dto.dueAt }),
+    };
+    const fingerprint = agentBoardTaskCreateFingerprint(createValues);
+    const keyHash = agentBoardTaskIdempotencyHash(idempotencyKey ?? "");
+    const replay = await this.infrastructure.agentBoardTaskRepository.getByIdempotencyKey(workspaceId, brandId, boardId, keyHash);
+    if (replay) {
+      if (replay.createFingerprint !== fingerprint) throw new DomainError("This Idempotency-Key was already used with different task details.", "idempotency_key_conflict", 409);
+      return { task: publicTask(replay), replayed: true };
+    }
+    await this.parentsComplete(workspaceId, brandId, boardId, dto.parentTaskIds ?? []);
+    const made = createAgentBoardTask({ workspaceId, brandId, boardId, idempotencyKey: idempotencyKey!, actor, ...createValues });
+    try {
+      await this.infrastructure.agentBoardTaskRepository.create(made.task, made.event);
+      return { task: publicTask(made.task), replayed: false };
+    } catch (error) {
+      if (!(error instanceof DomainError) || error.code !== "idempotency_key_conflict") throw error;
+      const concurrent = await this.infrastructure.agentBoardTaskRepository.getByIdempotencyKey(workspaceId, brandId, boardId, keyHash);
+      if (!concurrent || concurrent.createFingerprint !== fingerprint) throw new DomainError("This Idempotency-Key was already used with different task details.", "idempotency_key_conflict", 409);
+      return { task: publicTask(concurrent), replayed: true };
+    }
+  }
+
+  async updateTask(workspaceId: string, brandId: string, boardId: string, taskId: string, expectedVersion: number | undefined, dto: UpdateBoardTaskDto, actor: Actor) {
+    this.taskWritable(actor);
+    if (!expectedVersion) throw new DomainError("Use If-Match with the current Board task version.", "version_required", 428);
+    const board = await this.board(workspaceId, brandId, boardId);
+    if (board.status === "archived") throw new DomainError("Archived Boards are read-only.", "agent_board_archived", 409);
+    await this.requireActiveBrand(workspaceId, brandId);
+    const current = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    const parentTaskIds = dto.parentTaskIds ?? current.parentTaskIds;
+    const parentsComplete = await this.parentsComplete(workspaceId, brandId, boardId, parentTaskIds);
+    const revised = reviseAgentBoardTask({
+      current, expectedVersion, actor, parentsComplete,
+      ...(dto.title === undefined ? {} : { title: dto.title }),
+      ...(dto.description === undefined ? {} : { description: dto.description }),
+      ...(dto.status === undefined ? {} : { status: dto.status }),
+      ...(dto.priority === undefined ? {} : { priority: dto.priority }),
+      ...(dto.assignee === undefined ? {} : { assignee: dto.assignee }),
+      ...(dto.parentTaskIds === undefined ? {} : { parentTaskIds: dto.parentTaskIds }),
+      ...(dto.blockedReason === undefined ? {} : { blockedReason: dto.blockedReason }),
+      ...(dto.resultSummary === undefined ? {} : { resultSummary: dto.resultSummary }),
+      ...(dto.dueAt === undefined ? {} : { dueAt: dto.dueAt }),
+    });
+    const saved = await this.infrastructure.agentBoardTaskRepository.update(revised.task, expectedVersion, revised.event);
+    if (!saved) throw new DomainError("This Board task changed. Refresh and try again.", "version_conflict", 409);
+    return { task: publicTask(saved) };
+  }
+
+  async releaseTask(workspaceId: string, brandId: string, boardId: string, taskId: string, expectedVersion: number | undefined, idempotencyKey: string | undefined, actor: Actor) {
+    if ((actor.actorType && actor.actorType !== "human") || !can(actor.role, "content:approve")) throw new ForbiddenException("A manager or owner must release Board-agent work.");
+    if (!expectedVersion) throw new DomainError("Use If-Match with the current Board task version.", "version_required", 428);
+    if (!this.infrastructure.boardRuntime) throw new ServiceUnavailableException("The internal Hermes Boards plugin is not configured.");
+    const board = await this.board(workspaceId, brandId, boardId);
+    if (board.status !== "ready" || board.pendingPluginDecision || board.observedConfigurationEpoch !== board.configurationEpoch) throw new DomainError("This Board is not ready. Finish or retry its Hermes setup first.", "agent_board_not_ready", 409);
+    await this.requireActiveBrand(workspaceId, brandId);
+    const task = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    const keyHash = agentBoardTaskIdempotencyHash(idempotencyKey ?? "");
+    const replay = await this.infrastructure.agentBoardTaskRepository.getExecutionByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash);
+    if (replay) {
+      const priorTask = { ...task, version: replay.taskVersion - 1 };
+      const fingerprint = agentBoardTaskExecutionFingerprint({ task: priorTask, configurationEpoch: board.configurationEpoch, capabilityEpoch: board.capabilityEpoch });
+      if (expectedVersion !== replay.taskVersion - 1 || replay.configurationEpoch !== board.configurationEpoch || replay.capabilityEpoch !== board.capabilityEpoch || replay.createFingerprint !== fingerprint) throw new DomainError("This Idempotency-Key was already used for a different Board task release.", "idempotency_key_conflict", 409);
+      return { task: publicTask(task), execution: publicTaskExecution(replay), replayed: true };
+    }
+    const parentsComplete = await this.parentsComplete(workspaceId, brandId, boardId, task.parentTaskIds);
+    const released = releaseAgentBoardTaskToAgent({ current: task, expectedVersion, configurationEpoch: board.configurationEpoch, capabilityEpoch: board.capabilityEpoch, idempotencyKey: idempotencyKey!, parentsComplete, actor });
+    try {
+      const saved = await this.infrastructure.agentBoardTaskRepository.releaseToAgent(released.task, expectedVersion, released.execution, released.event, released.outbox);
+      if (!saved) throw new DomainError("This Board task changed. Refresh and try again.", "version_conflict", 409);
+      return { task: publicTask(saved.task), execution: publicTaskExecution(saved.execution), replayed: false };
+    } catch (error) {
+      if (!(error instanceof DomainError) || error.code !== "idempotency_key_conflict") throw error;
+      const concurrent = await this.infrastructure.agentBoardTaskRepository.getExecutionByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash);
+      if (!concurrent || concurrent.createFingerprint !== released.execution.createFingerprint) throw new DomainError("This Idempotency-Key was already used for a different Board task release.", "idempotency_key_conflict", 409);
+      const current = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+      return { task: publicTask(current), execution: publicTaskExecution(concurrent), replayed: true };
+    }
+  }
+
+  async taskExecutions(workspaceId: string, brandId: string, boardId: string, taskId: string, limit: number, actor: Actor) {
+    this.taskReadable(actor);
+    await this.board(workspaceId, brandId, boardId);
+    await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    const executions = await this.infrastructure.agentBoardTaskRepository.listExecutions(workspaceId, brandId, boardId, taskId, limit);
+    return { executions: await Promise.all(executions.map(async (execution) => publicTaskExecution(execution, (await this.infrastructure.agentBoardTaskRepository.getContentHandoffByExecution(workspaceId, brandId, boardId, taskId, execution.id))?.contentItemId))) };
+  }
+
+  async handoffTask(workspaceId: string, brandId: string, boardId: string, taskId: string, executionId: string, expectedVersion: number | undefined, idempotencyKey: string | undefined, actor: Actor) {
+    this.taskApprover(actor);
+    if (!expectedVersion) throw new DomainError("Use If-Match with the current Board task version.", "version_required", 428);
+    const board = await this.board(workspaceId, brandId, boardId);
+    const keyHash = agentBoardTaskIdempotencyHash(idempotencyKey ?? "");
+    const byKey = await this.infrastructure.agentBoardTaskRepository.getContentHandoffByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash);
+    if (byKey) {
+      if (byKey.executionId !== executionId || byKey.taskVersion !== expectedVersion) throw new DomainError("This Idempotency-Key was already used for a different Board-to-Content handoff.", "idempotency_key_conflict", 409);
+      return this.handoffResponse(byKey, await this.scopedTask(workspaceId, brandId, boardId, taskId), true);
+    }
+    const byExecution = await this.infrastructure.agentBoardTaskRepository.getContentHandoffByExecution(workspaceId, brandId, boardId, taskId, executionId);
+    if (byExecution) {
+      if (byExecution.taskVersion !== expectedVersion) throw new DomainError("This Board execution was already handed into Content from a different task version.", "agent_board_task_execution_handoff_exists", 409);
+      return this.handoffResponse(byExecution, await this.scopedTask(workspaceId, brandId, boardId, taskId), true);
+    }
+    if (board.status === "archived") throw new DomainError("Archived Boards are read-only.", "agent_board_archived", 409);
+    await this.requireActiveBrand(workspaceId, brandId);
+    const task = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    const execution = await this.infrastructure.agentBoardTaskRepository.getExecution(workspaceId, brandId, boardId, taskId, executionId);
+    if (!execution) throw new DomainError("Board task execution not found.", "agent_board_task_execution_not_found", 404);
+    const made = createAgentBoardTaskContentHandoff({ task, execution, expectedTaskVersion: expectedVersion, idempotencyKey: idempotencyKey!, actor });
+    try {
+      const saved = await this.infrastructure.agentBoardTaskRepository.createContentHandoff(task, expectedVersion, execution, made.item, made.handoff, made.event);
+      if (!saved) throw new DomainError("This Board task changed. Refresh and try again.", "version_conflict", 409);
+      return this.handoffResponse(made.handoff, task, false);
+    } catch (error) {
+      if (!(error instanceof DomainError) || !["idempotency_key_conflict", "agent_board_task_execution_handoff_exists"].includes(error.code)) throw error;
+      const concurrent = await this.infrastructure.agentBoardTaskRepository.getContentHandoffByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash)
+        ?? await this.infrastructure.agentBoardTaskRepository.getContentHandoffByExecution(workspaceId, brandId, boardId, taskId, executionId);
+      if (!concurrent || concurrent.executionId !== executionId || concurrent.taskVersion !== expectedVersion || concurrent.createFingerprint !== made.handoff.createFingerprint) throw new DomainError("This Idempotency-Key was already used for a different Board-to-Content handoff.", "idempotency_key_conflict", 409);
+      return this.handoffResponse(concurrent, await this.scopedTask(workspaceId, brandId, boardId, taskId), true);
+    }
+  }
+
+  async taskComments(workspaceId: string, brandId: string, boardId: string, taskId: string, limit: number, actor: Actor) {
+    this.taskReadable(actor);
+    await this.board(workspaceId, brandId, boardId);
+    await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    return { comments: (await this.infrastructure.agentBoardTaskRepository.listComments(workspaceId, brandId, boardId, taskId, limit)).map(publicTaskComment) };
+  }
+
+  async commentTask(workspaceId: string, brandId: string, boardId: string, taskId: string, expectedVersion: number | undefined, idempotencyKey: string | undefined, body: string, actor: Actor) {
+    this.taskWritable(actor);
+    if (!expectedVersion) throw new DomainError("Use If-Match with the current Board task version.", "version_required", 428);
+    const board = await this.board(workspaceId, brandId, boardId);
+    if (board.status === "archived") throw new DomainError("Archived Boards are read-only.", "agent_board_archived", 409);
+    await this.requireActiveBrand(workspaceId, brandId);
+    const task = await this.scopedTask(workspaceId, brandId, boardId, taskId);
+    const keyHash = agentBoardTaskIdempotencyHash(idempotencyKey ?? "");
+    const fingerprint = agentBoardTaskCommentCreateFingerprint({ taskId, body, actorId: actor.id, expectedTaskVersion: expectedVersion });
+    const replay = await this.infrastructure.agentBoardTaskRepository.getCommentByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash);
+    if (replay) {
+      if (replay.createFingerprint !== fingerprint) throw new DomainError("This Idempotency-Key was already used with different comment details.", "idempotency_key_conflict", 409);
+      return { comment: publicTaskComment(replay), replayed: true };
+    }
+    const created = createAgentBoardTaskComment({ task, body, idempotencyKey: idempotencyKey!, expectedTaskVersion: expectedVersion, actor });
+    try {
+      const saved = await this.infrastructure.agentBoardTaskRepository.appendComment(created.comment, expectedVersion, created.event);
+      if (!saved) throw new DomainError("This Board task changed. Refresh and try again.", "version_conflict", 409);
+      return { comment: publicTaskComment(created.comment), replayed: false };
+    } catch (error) {
+      if (!(error instanceof DomainError) || error.code !== "idempotency_key_conflict") throw error;
+      const concurrent = await this.infrastructure.agentBoardTaskRepository.getCommentByIdempotencyKey(workspaceId, brandId, boardId, taskId, keyHash);
+      if (!concurrent || concurrent.createFingerprint !== fingerprint) throw new DomainError("This Idempotency-Key was already used with different comment details.", "idempotency_key_conflict", 409);
+      return { comment: publicTaskComment(concurrent), replayed: true };
+    }
+  }
 
   async create(workspaceId: string, dto: CreateBoardDto, actor: Actor) {
     this.owner(actor);

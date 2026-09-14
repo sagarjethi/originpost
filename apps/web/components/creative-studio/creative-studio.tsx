@@ -16,7 +16,9 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Type,
+  WandSparkles,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { apiFetch, type AuthView } from "../../lib/api-client";
@@ -86,7 +88,32 @@ type CreativeDetail = {
   outputAsset?: CreativeMediaAsset;
 };
 
-type ContentChoice = { id: string; version?: number; title: string; summary?: string; status: string };
+type ContentChoice = { id: string; version?: number; title: string; summary?: string; status: string; sources?: Array<{ id: string }> };
+
+type ImageGenerationCapability = {
+  state: "available" | "setup_required";
+  provider: "openai";
+  model: string;
+  generation: boolean;
+  editing: false;
+  reason?: string;
+};
+
+type ImageGeneration = {
+  id: string;
+  status: "generating" | "ready" | "failed" | "uncertain";
+  model: string;
+  prompt: string;
+  visualIntent: "editorial_graphic" | "illustration" | "product_visual" | "abstract";
+  size: "1024x1024" | "1024x1536" | "1536x1024";
+  quality: "low" | "medium" | "high";
+  altText: string;
+  disclosureRequired: true;
+  outputMediaId?: string;
+  outputSha256?: string;
+  errorSummary?: string;
+  createdAt: string;
+};
 
 type CreativeStudioProps = {
   auth: AuthView;
@@ -118,6 +145,14 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
   const [projects, setProjects] = useState<CreativeProject[]>([]);
   const [assets, setAssets] = useState<CreativeMediaAsset[]>([]);
   const [contentItems, setContentItems] = useState<ContentChoice[]>([]);
+  const [generationCapability, setGenerationCapability] = useState<ImageGenerationCapability | null>(null);
+  const [generations, setGenerations] = useState<ImageGeneration[]>([]);
+  const [generationPrompt, setGenerationPrompt] = useState("");
+  const [generationAltText, setGenerationAltText] = useState("");
+  const [generationIntent, setGenerationIntent] = useState<ImageGeneration["visualIntent"]>("editorial_graphic");
+  const [generationSize, setGenerationSize] = useState<ImageGeneration["size"]>("1024x1536");
+  const [generationQuality, setGenerationQuality] = useState<ImageGeneration["quality"]>("medium");
+  const [generationRequestKey, setGenerationRequestKey] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [detail, setDetail] = useState<CreativeDetail | null>(null);
   const [name, setName] = useState("Untitled visual");
@@ -135,6 +170,7 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
 
   const sources = useMemo(() => assets.filter(isCreativeSource), [assets]);
   const selectedSource = sources.find((asset) => asset.id === spec.sourceMediaId);
+  const selectedGenerationContent = contentItems.find((item) => item.id === spec.contentItemId);
   const dimensions = creativeDimensions[spec.format];
   const renderedFormat = detail?.currentRevision.specSnapshot.format;
 
@@ -165,26 +201,34 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
     setError("");
     try {
       const query = `workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`;
-      const [templateResponse, projectResponse, mediaResponse, contentResponse] = await Promise.all([
+      const [templateResponse, projectResponse, mediaResponse, contentResponse, capabilityResponse, generationResponse] = await Promise.all([
         apiFetch("/v1/creative-studio/templates", { cache: "no-store" }, auth.csrfToken),
         apiFetch(`/v1/creative-studio/projects?${query}`, { cache: "no-store" }, auth.csrfToken),
         apiFetch(`/v1/media-assets?${query}&limit=200`, { cache: "no-store" }, auth.csrfToken),
         apiFetch(`/v1/content-items?${query}`, { cache: "no-store" }, auth.csrfToken),
+        apiFetch(`/v1/image-generations/capability?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }, auth.csrfToken),
+        apiFetch(`/v1/image-generations?${query}&limit=12`, { cache: "no-store" }, auth.csrfToken),
       ]);
       if (!templateResponse.ok) throw await responseError(templateResponse, "Could not load visual templates.");
       if (!projectResponse.ok) throw await responseError(projectResponse, "Could not load visual projects.");
       if (!mediaResponse.ok) throw await responseError(mediaResponse, "Could not load Library images.");
       if (!contentResponse.ok) throw await responseError(contentResponse, "Could not load content items.");
-      const [nextTemplates, nextProjects, nextAssets, nextContentItems] = await Promise.all([
+      if (!capabilityResponse.ok) throw await responseError(capabilityResponse, "Could not inspect image-generation setup.");
+      if (!generationResponse.ok) throw await responseError(generationResponse, "Could not load image-generation history.");
+      const [nextTemplates, nextProjects, nextAssets, nextContentItems, nextCapability, nextGenerations] = await Promise.all([
         templateResponse.json() as Promise<CreativeTemplate[]>,
         projectResponse.json() as Promise<CreativeProject[]>,
         mediaResponse.json() as Promise<CreativeMediaAsset[]>,
         contentResponse.json() as Promise<ContentChoice[]>,
+        capabilityResponse.json() as Promise<ImageGenerationCapability>,
+        generationResponse.json() as Promise<ImageGeneration[]>,
       ]);
       setTemplates(nextTemplates);
       setProjects(nextProjects);
       setAssets(nextAssets);
       setContentItems(nextContentItems);
+      setGenerationCapability(nextCapability);
+      setGenerations(nextGenerations);
       if (initialContentItemId && nextContentItems.some((item) => item.id === initialContentItemId) && !selectedProjectId) {
         const content = nextContentItems.find((item) => item.id === initialContentItemId)!;
         setSpec((current) => ({ ...current, contentItemId: content.id, headline: current.headline || content.title }));
@@ -252,6 +296,70 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
 
   function chooseTemplate(template: CreativeTemplate) {
     updateSpec("layout", template.layout);
+  }
+
+  function changeGenerationInput(action: () => void) {
+    action();
+    setGenerationRequestKey("");
+  }
+
+  async function selectGeneratedOutput(generation: ImageGeneration) {
+    if (!generation.outputMediaId || !generation.outputSha256) return;
+    const query = `workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}&limit=200`;
+    const response = await apiFetch(`/v1/media-assets?${query}`, { cache: "no-store" }, auth.csrfToken);
+    if (!response.ok) throw await responseError(response, "The generated image is ready, but Library could not refresh.");
+    const nextAssets = await response.json() as CreativeMediaAsset[];
+    setAssets(nextAssets);
+    const output = nextAssets.find((asset) => asset.id === generation.outputMediaId);
+    if (!output) throw new Error("The generated image is ready, but its Library asset is not visible yet.");
+    setSpec((current) => ({ ...current, sourceMediaId: output.id, sourceMediaSha256: output.sha256 }));
+    setMessage("Generated visual selected as the source. Add exact copy and branding, then save a revision.");
+  }
+
+  async function generateVisual() {
+    if (!canEdit || generationCapability?.state !== "available") return;
+    if (!generationPrompt.trim()) { setError("Describe the visual you want ChatGPT to create."); return; }
+    if (!generationAltText.trim()) { setError("Add alt text that describes the intended visual."); return; }
+    const requestKey = generationRequestKey || `image-generation-${crypto.randomUUID()}`;
+    setGenerationRequestKey(requestKey);
+    setBusy("generate"); setError(""); setMessage("Creating one visual foundation with ChatGPT…");
+    try {
+      const response = await apiFetch("/v1/image-generations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": requestKey },
+        body: JSON.stringify({
+          workspaceId,
+          brandId,
+          ...(spec.contentItemId ? { contentItemId: spec.contentItemId } : {}),
+          prompt: generationPrompt.trim(),
+          visualIntent: generationIntent,
+          size: generationSize,
+          quality: generationQuality,
+          altText: generationAltText.trim(),
+          sourceEvidenceIds: selectedGenerationContent?.sources?.map((source) => source.id) ?? [],
+        }),
+      }, auth.csrfToken);
+      if (!response.ok) throw await responseError(response, "Could not generate this visual.");
+      let result = await response.json() as ImageGeneration;
+      setGenerations((current) => [result, ...current.filter((entry) => entry.id !== result.id)].slice(0, 12));
+      setGenerationRequestKey("");
+      if (result.status === "generating") {
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const latestResponse = await apiFetch(`/v1/image-generations/${encodeURIComponent(result.id)}?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }, auth.csrfToken);
+          if (!latestResponse.ok) throw await responseError(latestResponse, "Could not check the image-generation result.");
+          result = await latestResponse.json() as ImageGeneration;
+          setGenerations((current) => [result, ...current.filter((entry) => entry.id !== result.id)].slice(0, 12));
+          if (result.status !== "generating") break;
+        }
+      }
+      if (result.status === "ready") await selectGeneratedOutput(result);
+      else if (result.status === "failed") throw new Error(result.errorSummary || "The visual could not be generated.");
+      else if (result.status === "uncertain") setMessage("The provider result is uncertain. OriginPost did not retry the paid request; inspect the generation record before trying again.");
+      else setMessage("Generation is still running. Refresh Creative Studio to check its immutable record.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not generate this visual.");
+    } finally { setBusy(""); }
   }
 
   async function saveRevision(event: FormEvent<HTMLFormElement>) {
@@ -377,14 +485,28 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
         {detailLoading ? <div className={styles.loadingState} role="status"><RefreshCw className={styles.spin} size={22} /> Loading project…</div> : null}
         <form className={styles.editor} onSubmit={saveRevision}>
           <section className={styles.section}>
-            <div className={styles.sectionTitle}><span><Save size={17} /></span><div><h2>{detail ? "New immutable revision" : "Start a visual project"}</h2><p>{detail ? `Editing from revision ${detail.currentRevision.revisionNumber}. Saving creates a new snapshot.` : "The first save creates the project and revision 1."}</p></div></div>
+            <div className={styles.sectionTitle}><span><Save size={17} /></span><div><h2>{detail ? "Save a new version" : "Start a visual project"}</h2><p>{detail ? `Editing from revision ${detail.currentRevision.revisionNumber}. Your earlier version stays available.` : "Save your layout to start this visual project."}</p></div></div>
             <label className={styles.field}>Project name<input value={name} maxLength={160} required disabled={!canEdit} onChange={(event) => setName(event.target.value)} /></label>
             <label className={styles.field}>Connected content item <span>Optional</span><select value={spec.contentItemId ?? ""} disabled={!canEdit} onChange={(event) => updateSpec("contentItemId", event.target.value || undefined)}><option value="">No connected content</option>{contentItems.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
           </section>
 
+          <details className={styles.generator}>
+            <summary><span><WandSparkles size={18} /></span><span><strong>Generate a visual with ChatGPT</strong><small>{generationCapability?.state === "available" ? `${generationCapability.model} · ready` : generationCapability?.reason ?? "Checking server setup…"}</small></span><em>{generationCapability?.state === "available" ? "Available" : "Setup required"}</em></summary>
+            <div className={styles.generationBody}>
+              <div className={styles.generationFlow} aria-label="Image creation journey"><span><i>1</i>Brief</span><b>→</b><span><i>2</i>Generate</span><b>→</b><span><i>3</i>Finish</span><b>→</b><span><i>4</i>Check</span></div>
+              <p className={styles.generationNote}><ShieldCheck size={15} /> ChatGPT creates only the visual foundation. Exact text, logos, credits, and safe-area layout stay in OriginPost, and AI lineage follows the image into approval and publish proof.{selectedGenerationContent ? ` ${selectedGenerationContent.sources?.length ?? 0} saved source${selectedGenerationContent.sources?.length === 1 ? "" : "s"} will be linked from “${selectedGenerationContent.title}”.` : " Connect a Content Item above to bind its saved sources."}</p>
+              {generationCapability?.state === "setup_required" ? <div className={styles.setupNotice}><AlertTriangle size={15} /><span><strong>Server setup required</strong>{generationCapability.reason} The control stays disabled until an owner enables the provider.</span></div> : null}
+              <label className={styles.field}>Creative direction <span>{generationPrompt.length}/8000</span><textarea rows={4} value={generationPrompt} maxLength={8000} disabled={!canEdit || generationCapability?.state !== "available"} placeholder="Example: A clearly illustrative Mumbai skyline at dusk, warm window light, editorial collage, no people posing for camera…" onChange={(event) => changeGenerationInput(() => setGenerationPrompt(event.target.value))} /></label>
+              <label className={styles.field}>Alt text <span>{generationAltText.length}/500</span><input value={generationAltText} maxLength={500} disabled={!canEdit || generationCapability?.state !== "available"} placeholder="Describe the intended visual for someone who cannot see it" onChange={(event) => changeGenerationInput(() => setGenerationAltText(event.target.value))} /></label>
+              <div className={styles.generationOptions}><label className={styles.field}>Intent<select value={generationIntent} disabled={!canEdit || generationCapability?.state !== "available"} onChange={(event) => changeGenerationInput(() => setGenerationIntent(event.target.value as ImageGeneration["visualIntent"]))}><option value="editorial_graphic">Editorial graphic</option><option value="illustration">Illustration</option><option value="product_visual">Product visual</option><option value="abstract">Abstract</option></select></label><label className={styles.field}>Shape<select value={generationSize} disabled={!canEdit || generationCapability?.state !== "available"} onChange={(event) => changeGenerationInput(() => setGenerationSize(event.target.value as ImageGeneration["size"]))}><option value="1024x1536">Portrait</option><option value="1024x1024">Square</option><option value="1536x1024">Landscape</option></select></label><label className={styles.field}>Quality<select value={generationQuality} disabled={!canEdit || generationCapability?.state !== "available"} onChange={(event) => changeGenerationInput(() => setGenerationQuality(event.target.value as ImageGeneration["quality"]))}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label></div>
+              <div className={styles.generateAction}><p>One click creates one paid, idempotent provider request. Ambiguous results are never retried automatically.</p><button className="new-button" type="button" onClick={() => void generateVisual()} disabled={!canEdit || generationCapability?.state !== "available" || busy === "generate"}>{busy === "generate" ? <RefreshCw className={styles.spin} size={15} /> : <Sparkles size={15} />}{busy === "generate" ? "Generating…" : "Generate one image"}</button></div>
+              {generations.length ? <div className={styles.generationHistory}><strong>Recent generations</strong>{generations.slice(0, 4).map((generation) => <button type="button" key={generation.id} disabled={generation.status !== "ready" || !generation.outputMediaId} onClick={() => void selectGeneratedOutput(generation)}><span className={styles[generation.status]}>{generation.status}</span><span>{generation.altText}</span><small>{new Date(generation.createdAt).toLocaleString()}</small></button>)}</div> : null}
+            </div>
+          </details>
+
           <section className={styles.section}>
             <div className={styles.sectionTitle}><span><FileImage size={17} /></span><div><h2>Source image</h2><p>Only ready, inspected images with owned or cleared rights are available.</p></div></div>
-            {sources.length ? <div className={styles.sourceGrid}>{sources.map((asset) => <label className={spec.sourceMediaId === asset.id ? styles.selectedSource : ""} key={asset.id}><input type="radio" name="source" value={asset.id} checked={spec.sourceMediaId === asset.id} disabled={!canEdit} onChange={() => chooseSource(asset.id)} /><span><ImageIcon size={17} /></span><div><strong>{asset.fileName}</strong><small>{asset.widthPixels && asset.heightPixels ? `${asset.widthPixels}×${asset.heightPixels} · ` : ""}{asset.rights} · {formatAssetBytes(asset.sizeBytes)}</small></div></label>)}</div> : !loading ? <div className={styles.empty}><FileImage size={22} /><strong>No eligible images</strong><p>Add an image in Library, complete inspection, and mark its rights owned or cleared.</p></div> : null}
+            {sources.length ? <div className={styles.sourceGrid}>{sources.map((asset) => <label className={spec.sourceMediaId === asset.id ? styles.selectedSource : ""} key={asset.id}><input type="radio" name="source" value={asset.id} checked={spec.sourceMediaId === asset.id} disabled={!canEdit} onChange={() => chooseSource(asset.id)} /><span><ImageIcon size={17} /></span><div><strong>{asset.fileName}</strong><small>{asset.widthPixels && asset.heightPixels ? `${asset.widthPixels}×${asset.heightPixels} · ` : ""}{asset.rights} · {formatAssetBytes(asset.sizeBytes)}{asset.syntheticLineage ? " · AI-generated" : ""}</small></div></label>)}</div> : !loading ? <div className={styles.empty}><FileImage size={22} /><strong>No eligible images</strong><p>Generate a visual above, or add an owned or cleared image in Library.</p></div> : null}
           </section>
 
           <section className={styles.section}>

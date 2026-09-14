@@ -39,6 +39,7 @@ export type CreativeMediaAsset = {
   widthPixels?: number;
   heightPixels?: number;
   altText?: string;
+  syntheticLineage?: { kind: "ai-generation"; generationId: string; provider: "openai"; model: string; promptSha256: string; generatedAt: string; sourceEvidenceIds: string[]; disclosureRequired: true };
 };
 
 export const defaultCreativeSpec: CreativeSpec = {

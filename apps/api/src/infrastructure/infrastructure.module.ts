@@ -115,7 +115,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
         const redisUrl = config.get<string>("REDIS_URL");
         const privateMessageEncryptionKey = config.get<string>("PRIVATE_MESSAGE_ENCRYPTION_KEY")?.trim();
         const privateMessageHashKey = config.get<string>("PRIVATE_MESSAGE_HASH_KEY")?.trim();
-        const { repository, postingQueueRepository, analyticsRepository, analyticsReportRepository, automationRepository, batchPlanRepository, creativeStudioRepository, shareCaptureRepository, sourceSignalRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentRuntimeRepository, agentBoardRepository, authRepository, organizationRepository, oauthRepository, connectedAccountRepository, providerLifecycleRepository, mediaRepository, mediaOrganizationRepository, monitorRepository, notificationRepository, operationalIncidentRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository, privateConversationRepository, mode } = await createContentRepository({
+        const { repository, postingQueueRepository, analyticsRepository, analyticsReportRepository, automationRepository, batchPlanRepository, creativeStudioRepository, imageGenerationRepository, agentPostRepository, shareCaptureRepository, sourceSignalRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentRuntimeRepository, agentBoardRepository, agentBoardTaskRepository, authRepository, organizationRepository, oauthRepository, connectedAccountRepository, providerLifecycleRepository, mediaRepository, mediaOrganizationRepository, monitorRepository, notificationRepository, operationalIncidentRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository, privateConversationRepository, mode } = await createContentRepository({
           ...(databaseUrl ? { databaseUrl } : {}),
           ...(privateMessageEncryptionKey ? { privateMessageEncryptionKey } : {}),
           ...(privateMessageHashKey ? { privateMessageHashKey } : {}),
@@ -132,7 +132,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           approvedSkills: String(config.get<string>("HERMES_BOARD_APPROVED_SKILLS") ?? "").split(",").map((value)=>value.trim()).filter(Boolean),
           primaryProvider: config.get<string>("HERMES_BOARD_PRIMARY_PROVIDER")!,
           primaryModel: config.get<string>("HERMES_BOARD_PRIMARY_MODEL")!,
-          supportedVersion: config.get<string>("HERMES_BOARD_SUPPORTED_VERSION") ?? "0.21.1",
+          supportedVersion: config.get<string>("HERMES_BOARD_SUPPORTED_VERSION") ?? "0.21.2",
           allowPrivateEndpoints: config.get<boolean>("HERMES_BOARD_ALLOW_PRIVATE_ENDPOINTS") === true,
         }) : null;
         const queue = (name: string) => redisUrl ? new Queue(name, { connection: redisConnection(redisUrl) }) : null;
@@ -151,6 +151,8 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           automationRepository,
           batchPlanRepository,
           creativeStudioRepository,
+          imageGenerationRepository,
+          agentPostRepository,
           shareCaptureRepository,
           sourceSignalRepository,
           engagementRepository,
@@ -158,6 +160,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           evergreenRepository,
           agentRuntimeRepository,
           agentBoardRepository,
+          agentBoardTaskRepository,
           authRepository,
           organizationRepository,
           oauthRepository,

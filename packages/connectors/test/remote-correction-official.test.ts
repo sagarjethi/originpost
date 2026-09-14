@@ -86,6 +86,8 @@ describe("official remote correction adapters", () => {
   });
 
   it("uses Facebook bearer auth plus appsecret proof and verifies an allowlisted deletion", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-30T06:00:00.000Z"));
     const pageTasksSha256=canonicalSha256({schemaVersion:"originpost.facebook-page-tasks.v1",tasks:["CREATE_CONTENT"]});
     const transport = vi.fn()
       .mockResolvedValueOnce(response({ id: "page-1_42", from: { id: "page-1" }, is_published: true }))
@@ -97,13 +99,17 @@ describe("official remote correction adapters", () => {
       pageDeleteContractProbe: { apiVersion: "v26.0", verifiedAt: "2026-08-29T06:00:00.000Z",expiresAt:"2026-09-10T06:00:00.000Z",environment:"test",appId:"app-1",accountId:"account-facebook",externalPageId:"page-1",credentialVersion:"credential-v1",accountVersion:"account-v1",pageTasksSha256,task:"page_post_delete" },
       resolveCredential: async () => ({ externalAccountId: "page-1", accessToken: "page-token", scope: "pages_manage_posts pages_read_engagement",pageTasks:["CREATE_CONTENT"],credentialVersion:"credential-v1",accountVersion:"account-v1" }),
     });
-    const request = await correction(connector, proof("facebook", "page-1_42"), { action: "delete_remote" });
-    await expect(connector.executeCorrection(request)).resolves.toMatchObject({ kind: "provider_confirmed", after: { state: "not_found" } });
-    const deleteUrl = new URL(String(transport.mock.calls[2]?.[0]));
-    expect(deleteUrl.searchParams.has("appsecret_proof")).toBe(true);
-    expect(deleteUrl.searchParams.has("appsecret_time")).toBe(true);
-    expect(deleteUrl.searchParams.has("access_token")).toBe(false);
-    expect(transport.mock.calls[2]?.[1]).toMatchObject({ method: "DELETE", headers: { authorization: "Bearer page-token" } });
+    try {
+      const request = await correction(connector, proof("facebook", "page-1_42"), { action: "delete_remote" });
+      await expect(connector.executeCorrection(request)).resolves.toMatchObject({ kind: "provider_confirmed", after: { state: "not_found" } });
+      const deleteUrl = new URL(String(transport.mock.calls[2]?.[0]));
+      expect(deleteUrl.searchParams.has("appsecret_proof")).toBe(true);
+      expect(deleteUrl.searchParams.has("appsecret_time")).toBe(true);
+      expect(deleteUrl.searchParams.has("access_token")).toBe(false);
+      expect(transport.mock.calls[2]?.[1]).toMatchObject({ method: "DELETE", headers: { authorization: "Bearer page-token" } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails the Facebook delete probe closed after a Page rebind", async () => {

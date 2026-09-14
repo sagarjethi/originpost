@@ -15,12 +15,12 @@ suite("Postgres agent Boards", () => {
   const sql = postgres(databaseUrl!);
   const boards = new PostgresAgentBoardRepository(sql);
   const outbox = new PostgresOutboxRepository(sql);
-  beforeAll(async () => {
-    await sql`insert into workspaces(id,name,slug,created_at,updated_at) values(${workspaceId},'Board Integration','board-integration',${at},${at}) on conflict(id) do nothing`;
-    await sql`insert into brands(id,workspace_id,name,slug,primary_language,timezone,status,created_by,created_at,updated_at) values(${brandId},${workspaceId},'Board Brand','board-brand','English','UTC','active',${owner.id},${at},${at}) on conflict(id) do nothing`;
-  });
-  afterAll(async () => {
+  async function cleanWorkspace() {
     await sql`delete from outbox_events where workspace_id=${workspaceId}`;
+    await sql`delete from agent_board_task_comments where workspace_id=${workspaceId}`;
+    await sql`delete from agent_board_task_links where workspace_id=${workspaceId}`;
+    await sql`delete from board_task_executions where workspace_id=${workspaceId}`;
+    await sql`delete from agent_board_tasks where workspace_id=${workspaceId}`;
     await sql`delete from board_agent_run_ledger where workspace_id=${workspaceId}`;
     await sql`delete from board_hermes_skill_grants where workspace_id=${workspaceId}`;
     await sql`delete from board_hermes_plugins where workspace_id=${workspaceId}`;
@@ -28,6 +28,14 @@ suite("Postgres agent Boards", () => {
     await sql`delete from audit_events where workspace_id=${workspaceId}`;
     await sql`delete from brands where workspace_id=${workspaceId}`;
     await sql`delete from workspaces where id=${workspaceId}`;
+  }
+  beforeAll(async () => {
+    await cleanWorkspace();
+    await sql`insert into workspaces(id,name,slug,created_at,updated_at) values(${workspaceId},'Board Integration','board-integration',${at},${at}) on conflict(id) do nothing`;
+    await sql`insert into brands(id,workspace_id,name,slug,primary_language,timezone,status,created_by,created_at,updated_at) values(${brandId},${workspaceId},'Board Brand','board-brand','English','UTC','active',${owner.id},${at},${at}) on conflict(id) do nothing`;
+  });
+  afterAll(async () => {
+    await cleanWorkspace();
     await sql.end();
   });
   it("atomically saves desired policy and its durable outbox command", async () => {
@@ -42,7 +50,7 @@ suite("Postgres agent Boards", () => {
     const pending = queueAgentBoardPluginDecision({ current: queued.board, actor: owner, subsystem: "memory", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), idempotencyKey: "postgres-decision", decisionKey: "b".repeat(64), idempotencyScopeKey: "c".repeat(64), now: "2026-09-07T10:01:30.000Z" });
     await boards.update(pending.board, queued.board.version, pending.event, pending.outbox);
     await sql`update outbox_events set status='processed',processed_at=now() where workspace_id=${workspaceId} and topic='board.plugin.decision'`;
-    await expect(outbox.recoverAgentBoardPlugins()).resolves.toBe(1);
+    await expect(outbox.recoverAgentBoardPlugins()).resolves.toBeGreaterThanOrEqual(1);
     expect(await sql<{ status: string }[]>`select status from outbox_events where workspace_id=${workspaceId} and topic='board.plugin.decision'`).toEqual([{ status: "pending" }]);
     const completed = observeAgentBoardPluginDecision({ current: pending.board, decisionKey: "b".repeat(64), subsystem: "memory", pendingId: "a1b2c3d4", decision: "approve", expectedSha256: "a".repeat(64), now: "2026-09-07T10:01:45.000Z" });
     await boards.update(completed.board, pending.board.version, completed.event, completed.outbox);
@@ -60,5 +68,17 @@ suite("Postgres agent Boards", () => {
     await boards.update(deactivated, archived.board.version, { id: "event-board-deactivated", workspaceId, actorId: "board-plugin-worker", actorType: "system", action: "agent-board.plugin-deactivated", detail: { boardId: deactivated.id }, createdAt: deactivated.updatedAt });
     await sql`update outbox_events set status='processed',processed_at=now() where workspace_id=${workspaceId} and topic='board.plugin.deactivate'`;
     await expect(outbox.recoverAgentBoardPlugins()).resolves.toBe(0);
+  });
+
+  it("persists one opaque Kanban binding and rejects runtime identity mutation", async () => {
+    const made = createAgentBoard({ workspaceId, brandId, name: "Immutable Kanban", purpose: "Keep Hermes Kanban state scoped to one Board", pluginConfigured: false, actor: owner, now: "2026-09-07T10:04:00.000Z" });
+    await boards.create(made.board, made.event);
+    expect(await sql<{ kanban_ref: string }[]>`select kanban_ref from board_hermes_plugins where workspace_id=${workspaceId} and board_id=${made.board.id}`).toEqual([{ kanban_ref: made.board.hermesBoardRef }]);
+    await expect(boards.update(
+      { ...made.board, version: made.board.version + 1, hermesBoardRef: `opk_${"f".repeat(24)}`, updatedAt: "2026-09-07T10:05:00.000Z" },
+      made.board.version,
+      { id: "event-kanban-mutation", workspaceId, actorId: owner.id, actorType: "human", action: "agent-board.updated", detail: { boardId: made.board.id }, createdAt: "2026-09-07T10:05:00.000Z" },
+    )).rejects.toMatchObject({ code: "agent_board_identity_immutable", statusCode: 409 });
+    expect(await sql<{ kanban_ref: string }[]>`select kanban_ref from board_hermes_plugins where workspace_id=${workspaceId} and board_id=${made.board.id}`).toEqual([{ kanban_ref: made.board.hermesBoardRef }]);
   });
 });

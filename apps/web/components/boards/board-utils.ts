@@ -68,6 +68,57 @@ export type BoardRunView = {
   createdAt: string;
 };
 
+export const BOARD_TASK_STATUSES = ["triage", "todo", "ready", "running", "blocked", "review", "done", "archived"] as const;
+export type BoardTaskStatus = typeof BOARD_TASK_STATUSES[number];
+
+export type BoardTaskView = {
+  id: string;
+  boardId: string;
+  version: number;
+  title: string;
+  description: string;
+  status: BoardTaskStatus;
+  priority: "low" | "normal" | "high" | "urgent";
+  assignee: "team" | "board-agent";
+  parentTaskIds: string[];
+  blockedReason?: string;
+  resultSummary?: string;
+  dueAt?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BoardTaskCommentView = {
+  id: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+};
+
+export type BoardTaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "uncertain";
+
+export type BoardTaskExecutionView = {
+  id: string;
+  taskId: string;
+  status: BoardTaskExecutionStatus;
+  model?: string;
+  resultText?: string;
+  errorSummary?: string;
+  contentItemId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BoardTaskHandoffView = {
+  executionId: string;
+  contentItemId: string;
+};
+
+export function boardTaskHandoffRequestBody(workspaceId: string, brandId: string, executionId: string) {
+  return { workspaceId, brandId, executionId };
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -79,6 +130,113 @@ function safeDate(value: unknown): string | undefined {
 
 function safeStatus(value: unknown): BoardStatus {
   return value === "provisioning" || value === "setup_required" || value === "ready" || value === "attention" || value === "archived" ? value : "setup_required";
+}
+
+function safeTaskStatus(value: unknown): BoardTaskStatus | null {
+  return BOARD_TASK_STATUSES.includes(value as BoardTaskStatus) ? value as BoardTaskStatus : null;
+}
+
+export function parseBoardTask(value: unknown): BoardTaskView | null {
+  const row = record(value);
+  const status = safeTaskStatus(row?.status);
+  const createdAt = safeDate(row?.createdAt);
+  const updatedAt = safeDate(row?.updatedAt);
+  if (!row || typeof row.id !== "string" || typeof row.boardId !== "string" || typeof row.title !== "string" || !status || !createdAt || !updatedAt) return null;
+  const title = row.title.trim().slice(0, 180);
+  if (!title) return null;
+  const priority = row.priority === "low" || row.priority === "high" || row.priority === "urgent" ? row.priority : "normal";
+  const assignee = row.assignee === "board-agent" ? "board-agent" : "team";
+  const parentTaskIds = (Array.isArray(row.parentTaskIds) ? row.parentTaskIds : []).filter((id): id is string => typeof id === "string" && /^agent_board_task_[a-f0-9-]{36}$/u.test(id)).slice(0, 20);
+  const blockedReason = typeof row.blockedReason === "string" ? row.blockedReason.trim().slice(0, 2_000) : "";
+  const resultSummary = typeof row.resultSummary === "string" ? row.resultSummary.trim().slice(0, 4_000) : "";
+  const dueAt = safeDate(row.dueAt);
+  const completedAt = safeDate(row.completedAt);
+  return {
+    id: row.id,
+    boardId: row.boardId,
+    version: typeof row.version === "number" && Number.isInteger(row.version) && row.version > 0 ? row.version : 1,
+    title,
+    description: typeof row.description === "string" ? row.description.trim().slice(0, 8_000) : "",
+    status,
+    priority,
+    assignee,
+    parentTaskIds,
+    ...(blockedReason ? { blockedReason } : {}),
+    ...(resultSummary ? { resultSummary } : {}),
+    ...(dueAt ? { dueAt } : {}),
+    ...(completedAt ? { completedAt } : {}),
+    createdAt,
+    updatedAt,
+  };
+}
+
+export function parseBoardTasks(value: unknown): BoardTaskView[] {
+  const root = record(value);
+  const rows = Array.isArray(value) ? value : Array.isArray(root?.tasks) ? root.tasks : [];
+  return rows.map(parseBoardTask).filter((task): task is BoardTaskView => Boolean(task));
+}
+
+export function parseBoardTaskComments(value: unknown): BoardTaskCommentView[] {
+  const root = record(value);
+  const rows = Array.isArray(value) ? value : Array.isArray(root?.comments) ? root.comments : [];
+  return rows.flatMap((value): BoardTaskCommentView[] => {
+    const row = record(value);
+    const createdAt = safeDate(row?.createdAt);
+    if (!row || typeof row.id !== "string" || typeof row.body !== "string" || typeof row.authorName !== "string" || !createdAt) return [];
+    const body = row.body.trim().slice(0, 4_000);
+    const authorName = row.authorName.trim().slice(0, 160);
+    return body && authorName ? [{ id: row.id, body, authorName, createdAt }] : [];
+  });
+}
+
+export function parseBoardTaskExecutions(value: unknown): BoardTaskExecutionView[] {
+  const root = record(value);
+  const rows = Array.isArray(value) ? value : Array.isArray(root?.executions) ? root.executions : [];
+  return rows.flatMap((value): BoardTaskExecutionView[] => {
+    const row = record(value);
+    const createdAt = safeDate(row?.createdAt);
+    const updatedAt = safeDate(row?.updatedAt);
+    const status = row?.status;
+    if (!row || typeof row.id !== "string" || typeof row.taskId !== "string" || !createdAt || !updatedAt || (status !== "queued" && status !== "running" && status !== "succeeded" && status !== "failed" && status !== "uncertain")) return [];
+    const id = row.id.trim().slice(0, 200);
+    const taskId = row.taskId.trim().slice(0, 200);
+    if (!id || !taskId) return [];
+    const model = typeof row.model === "string" ? row.model.trim().slice(0, 200) : "";
+    const resultText = typeof row.resultText === "string" ? row.resultText.trim().slice(0, 100_000) : "";
+    const errorSummary = typeof row.errorSummary === "string" ? row.errorSummary.trim().slice(0, 2_000) : "";
+    const contentItemId = typeof row.contentItemId === "string" ? row.contentItemId.trim().slice(0, 200) : "";
+    return [{ id, taskId, status, ...(model ? { model } : {}), ...(resultText ? { resultText } : {}), ...(errorSummary ? { errorSummary } : {}), ...(contentItemId ? { contentItemId } : {}), createdAt, updatedAt }];
+  });
+}
+
+export function hasActiveBoardTaskExecution(executions: BoardTaskExecutionView[]): boolean {
+  return executions.some((execution) => execution.status === "queued" || execution.status === "running");
+}
+
+export function parseBoardTaskHandoff(value: unknown, expectedExecutionId: string): BoardTaskHandoffView | null {
+  const root = record(value);
+  const handoff = record(root?.handoff);
+  const contentItem = record(root?.contentItem);
+  const contentItemId = typeof contentItem?.id === "string" ? contentItem.id.trim().slice(0, 200) : "";
+  const responseExecutionId = typeof handoff?.executionId === "string" ? handoff.executionId.trim().slice(0, 200) : expectedExecutionId;
+  if (!root || !handoff || !contentItemId || !expectedExecutionId || responseExecutionId !== expectedExecutionId) return null;
+  if (typeof handoff.contentItemId === "string" && handoff.contentItemId !== contentItemId) return null;
+  return { executionId: expectedExecutionId, contentItemId };
+}
+
+const taskTransitions: Record<BoardTaskStatus, BoardTaskStatus[]> = {
+  triage: ["todo", "archived"],
+  todo: ["triage", "ready", "blocked", "archived"],
+  ready: ["todo", "running", "blocked", "archived"],
+  running: ["blocked", "review"],
+  blocked: ["todo", "archived"],
+  review: ["running", "blocked", "done"],
+  done: ["archived"],
+  archived: [],
+};
+
+export function boardTaskNextStatuses(status: BoardTaskStatus): BoardTaskStatus[] {
+  return taskTransitions[status];
 }
 
 export function parseBoard(value: unknown): BoardView | null {

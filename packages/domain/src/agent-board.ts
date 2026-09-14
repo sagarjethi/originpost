@@ -31,6 +31,8 @@ export interface AgentBoard {
   /** First-party internal module. It is not an entry in the untrusted plugin catalog. */
   pluginId: "org.originpost.hermes-boards";
   hermesProfile: string;
+  /** Opaque hard queue boundary. Profiles isolate memory/config; this separately pins Hermes Kanban work. */
+  hermesBoardRef: string;
   status: AgentBoardStatus;
   memoryIsolation: "hermes-profile";
   memoryWriteApproval: true;
@@ -130,6 +132,7 @@ export function createAgentBoard(input: { workspaceId: string; brandId: string; 
     purpose: clean(input.purpose, 600, "Board purpose"),
     pluginId: "org.originpost.hermes-boards",
     hermesProfile: `opb_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+    hermesBoardRef: `opk_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
     status: input.pluginConfigured ? "provisioning" : "setup_required",
     memoryIsolation: "hermes-profile",
     memoryWriteApproval: true,
@@ -424,7 +427,7 @@ export class InMemoryAgentBoardRepository implements AgentBoardRepository {
 
   async create(board: AgentBoard, eventValue: AuditEvent, outbox?: OutboxMessageInput) {
     if ([...this.boards.values()].some((entry) => entry.workspaceId === board.workspaceId && entry.brandId === board.brandId && entry.slug === board.slug && entry.status !== "archived")) throw new DomainError("This brand already has a board with that name.", "agent_board_slug_exists", 409);
-    if ([...this.boards.values()].some((entry) => entry.hermesProfile === board.hermesProfile)) throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+    if ([...this.boards.values()].some((entry) => entry.hermesProfile === board.hermesProfile || entry.hermesBoardRef === board.hermesBoardRef)) throw new DomainError("This Board runtime identity is already assigned.", "agent_board_profile_exists", 409);
     this.boards.set(board.id, structuredClone(board));
     this.events.push(structuredClone(eventValue));
     if (outbox) { this.outbox.push(structuredClone(outbox)); this.appendOutbox?.([structuredClone(outbox)]); }
@@ -433,9 +436,9 @@ export class InMemoryAgentBoardRepository implements AgentBoardRepository {
   async update(board: AgentBoard, expectedVersion: number, eventValue: AuditEvent, outbox?: OutboxMessageInput) {
     const current = this.boards.get(board.id);
     if (!current || current.workspaceId !== board.workspaceId || current.version !== expectedVersion) return null;
-    if (board.hermesProfile !== current.hermesProfile || board.pluginId !== current.pluginId || board.workspaceId !== current.workspaceId || board.brandId !== current.brandId || board.id !== current.id) throw new DomainError("A Board's runtime identity cannot be changed.", "agent_board_identity_immutable", 409);
+    if (board.hermesProfile !== current.hermesProfile || board.hermesBoardRef !== current.hermesBoardRef || board.pluginId !== current.pluginId || board.workspaceId !== current.workspaceId || board.brandId !== current.brandId || board.id !== current.id) throw new DomainError("A Board's runtime identity cannot be changed.", "agent_board_identity_immutable", 409);
     if ([...this.boards.values()].some((entry) => entry.id !== board.id && entry.workspaceId === board.workspaceId && entry.brandId === board.brandId && entry.slug === board.slug && entry.status !== "archived")) throw new DomainError("This brand already has a board with that name.", "agent_board_slug_exists", 409);
-    if ([...this.boards.values()].some((entry) => entry.id !== board.id && entry.hermesProfile === board.hermesProfile)) throw new DomainError("This Board runtime profile is already assigned.", "agent_board_profile_exists", 409);
+    if ([...this.boards.values()].some((entry) => entry.id !== board.id && (entry.hermesProfile === board.hermesProfile || entry.hermesBoardRef === board.hermesBoardRef))) throw new DomainError("This Board runtime identity is already assigned.", "agent_board_profile_exists", 409);
     this.boards.set(board.id, structuredClone(board));
     this.events.push(structuredClone(eventValue));
     if (outbox) { this.outbox.push(structuredClone(outbox)); this.appendOutbox?.([structuredClone(outbox)]); }

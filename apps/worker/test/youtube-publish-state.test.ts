@@ -82,6 +82,7 @@ describe("YouTube durable publish state", () => {
   it("derives immutable proof disclosure from the approved YouTube declaration", () => {
     expect(proofDisclosureForTarget(target(true))).toBe("synthetic-media");
     expect(proofDisclosureForTarget(target(false))).toBe("none");
+    expect(proofDisclosureForTarget({ ...target(false), platform: "facebook", settings: undefined }, true)).toBe("synthetic-media");
     expect(proofDisclosureForTarget({ ...target(false), platform: "instagram", settings: undefined })).toBe("none");
     expect(proofDisclosureForTarget({ ...target(false), platform: "instagram", settings: { collaborators: [], shareToFeed: true, isAiGenerated: true, approvedSettingsSha256: "a".repeat(64) } })).toBe("ai-assisted");
   });

@@ -39,6 +39,7 @@ class PluginSecurityTests(unittest.TestCase):
     profile = "opb_" + "1" * 24
     owner = "opb_owner_" + "2" * 40
     memory = "opb_mem_" + "3" * 40
+    kanban = "opk_" + "8" * 24
     policy = "4" * 64
     enabled = "5" * 64
     sealed = "6" * 64
@@ -49,7 +50,7 @@ class PluginSecurityTests(unittest.TestCase):
         home.mkdir()
         description = (
             f"OriginPost Board runtime; owner={self.owner}; memory={self.memory}; "
-            f"policy={self.policy}; provider=openai-codex; model=gpt-5.5; "
+            f"kanban={self.kanban}; policy={self.policy}; provider=openai-codex; model=gpt-5.5; "
             f"skills={self.enabled}; skill_manifest={self.sealed}."
         )
         (home / "profile.yaml").write_text(json.dumps({"description": description}), encoding="utf-8")
@@ -57,12 +58,12 @@ class PluginSecurityTests(unittest.TestCase):
         (home / ".env").write_text(f"API_SERVER_KEY={self.api_key}\n", encoding="utf-8")
         return home
 
-    def signed(self, route: str, body: object, *, nonce: str = "7" * 32) -> object:
+    def signed(self, route: str, body: object, *, method: str = "GET", nonce: str = "7" * 32) -> object:
         timestamp = str(int(time.time()))
         body_sha = hashlib.sha256(plugin._canonical_json(body).encode("utf-8")).hexdigest()
-        canonical = "\n".join(("GET", route, body_sha, timestamp, nonce, self.owner, self.memory, self.policy))
+        canonical = "\n".join((method, route, body_sha, timestamp, nonce, self.owner, self.memory, self.kanban, self.policy))
         signature = hmac.new(self.api_key.encode(), canonical.encode(), hashlib.sha256).hexdigest()
-        return plugin.SignedHeaders(timestamp, nonce, signature, self.owner, self.memory, self.policy)
+        return plugin.SignedHeaders(timestamp, nonce, signature, self.owner, self.memory, self.kanban, self.policy)
 
     def profile_patches(self, root: Path):
         return (
@@ -141,8 +142,8 @@ class PluginSecurityTests(unittest.TestCase):
             timestamp = str(int(time.time()))
             nonce = "9" * 32
             body_sha = hashlib.sha256(plugin._canonical_json(body).encode()).hexdigest()
-            canonical = "\n".join(("POST", route, body_sha, timestamp, nonce, self.owner, self.memory, self.policy))
-            signed = plugin.SignedHeaders(timestamp, nonce, hmac.new(self.api_key.encode(), canonical.encode(), hashlib.sha256).hexdigest(), self.owner, self.memory, self.policy)
+            canonical = "\n".join(("POST", route, body_sha, timestamp, nonce, self.owner, self.memory, self.kanban, self.policy))
+            signed = plugin.SignedHeaders(timestamp, nonce, hmac.new(self.api_key.encode(), canonical.encode(), hashlib.sha256).hexdigest(), self.owner, self.memory, self.kanban, self.policy)
             first_patch, second_patch, third_patch = self.profile_patches(root)
             with first_patch, second_patch, third_patch:
                 with self.assertRaises(HTTPException) as blocked:
@@ -205,6 +206,113 @@ class PluginSecurityTests(unittest.TestCase):
                 plugin._run_worker(self.profile, Path(temporary), "probe", {"provider": "openai-codex", "model": "gpt-5.5", "enabledSkillsSha256": self.enabled, "skillManifestSha256": self.sealed})
         self.assertEqual(rejected.exception.status_code, 504)
         terminate.assert_called_once_with(process)
+
+    def task_contract(self, body: object) -> dict[str, str]:
+        seed = {
+            "owner": self.owner,
+            "memoryScope": self.memory,
+            "kanbanBoardRef": self.kanban,
+            "policySha256": "",
+            "provider": "openai-codex",
+            "model": "gpt-5.5",
+            "enabledSkillsSha256": self.enabled,
+            "skillManifestSha256": self.sealed,
+        }
+        seed["policySha256"] = plugin._task_policy_sha256(seed, body)
+        return seed
+
+    def test_task_route_is_profile_scoped_idempotent_and_review_only(self):
+        task_id = "agent_board_task_11111111-1111-4111-8111-111111111111"
+        execution_id = "board_task_execution_22222222-2222-4222-8222-222222222222"
+        body = plugin.TaskRunBody(
+            taskId=task_id,
+            executionId=execution_id,
+            title="Draft Mumbai brief",
+            description="Prepare the verified briefing.",
+            purpose="Mumbai desk.",
+            configurationEpoch=2,
+            capabilityEpoch=2,
+            enabledSkills=[],
+            sessionKey=self.memory,
+            kanbanBoard=self.kanban,
+            skillManifestSha256=self.sealed,
+        )
+        contract = self.task_contract(body)
+        self.assertEqual(contract["policySha256"], "73b602abe619a9d8b94baba417ce5dee0609e46ed64d601d5ba720be3587c0cd")
+        observed = {
+            "schemaVersion": 2,
+            "id": "opbrun_task_1",
+            "model": "gpt-5.5",
+            "text": "Draft ready for human review",
+            "toolManifestSha256": plugin._EXPECTED_TOOL_MANIFEST_SHA256,
+            "skillManifestSha256": self.sealed,
+            "usage": {"inputTokens": 11, "outputTokens": 6},
+        }
+        signed = plugin.SignedHeaders(str(int(time.time())), "7" * 32, "9" * 64, self.owner, self.memory, self.kanban, contract["policySha256"])
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            with patch.object(plugin, "_require_supported_version"), patch.object(plugin, "_authorize_board", return_value=(home, contract)), patch.object(plugin, "_isolation_state", return_value={"profileScoped": True, "memoryScoped": True, "skillsScoped": True, "stateScoped": True}), patch.object(plugin, "_run_worker", return_value=observed) as execute:
+                first = plugin.run_task(self.profile, body, signed)
+                replay = plugin.run_task(self.profile, body, signed)
+        self.assertFalse(first["replayed"])
+        self.assertTrue(replay["replayed"])
+        self.assertEqual(first["outcome"], "review")
+        self.assertEqual(first["taskId"], task_id)
+        self.assertEqual(first["executionId"], execution_id)
+        execute.assert_called_once()
+        extras = execute.call_args.args[4]
+        self.assertIn("return a working result for human review", extras["instructions"])
+        self.assertIn("Never publish", extras["instructions"])
+        self.assertEqual(set(worker.RUNTIME_TOOLS), {"memory", "skill_manage", "skill_view", "skills_list"})
+
+    def test_task_route_rejects_stale_epoch_before_execution(self):
+        body = plugin.TaskRunBody(
+            taskId="agent_board_task_11111111-1111-4111-8111-111111111111",
+            executionId="board_task_execution_22222222-2222-4222-8222-222222222222",
+            title="Draft Mumbai brief",
+            description="Prepare the verified briefing.",
+            purpose="Mumbai desk.",
+            configurationEpoch=2,
+            capabilityEpoch=2,
+            enabledSkills=[],
+            sessionKey=self.memory,
+            kanbanBoard=self.kanban,
+            skillManifestSha256=self.sealed,
+        )
+        contract = self.task_contract(body)
+        stale = body.model_copy(update={"capabilityEpoch": 3})
+        signed = plugin.SignedHeaders(str(int(time.time())), "7" * 32, "9" * 64, self.owner, self.memory, self.kanban, contract["policySha256"])
+        with tempfile.TemporaryDirectory() as temporary, patch.object(plugin, "_require_supported_version"), patch.object(plugin, "_authorize_board", return_value=(Path(temporary), contract)), patch.object(plugin, "_run_worker") as execute:
+            with self.assertRaises(HTTPException) as rejected:
+                plugin.run_task(self.profile, stale, signed)
+        self.assertEqual(rejected.exception.status_code, 409)
+        execute.assert_not_called()
+
+    def test_task_route_never_reexecutes_an_uncertain_receipt(self):
+        body = plugin.TaskRunBody(
+            taskId="agent_board_task_11111111-1111-4111-8111-111111111111",
+            executionId="board_task_execution_22222222-2222-4222-8222-222222222222",
+            title="Draft Mumbai brief",
+            description="Prepare the verified briefing.",
+            purpose="Mumbai desk.",
+            configurationEpoch=2,
+            capabilityEpoch=2,
+            enabledSkills=[],
+            sessionKey=self.memory,
+            kanbanBoard=self.kanban,
+            skillManifestSha256=self.sealed,
+        )
+        contract = self.task_contract(body)
+        signed = plugin.SignedHeaders(str(int(time.time())), "7" * 32, "9" * 64, self.owner, self.memory, self.kanban, contract["policySha256"])
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(plugin, "_require_supported_version"), patch.object(plugin, "_authorize_board", return_value=(Path(temporary), contract)), patch.object(plugin, "_isolation_state", return_value={"profileScoped": True, "memoryScoped": True, "skillsScoped": True, "stateScoped": True}), patch.object(plugin, "_run_worker", side_effect=HTTPException(status_code=503, detail="worker failed")) as execute:
+                with self.assertRaises(HTTPException) as first:
+                    plugin.run_task(self.profile, body, signed)
+                with self.assertRaises(HTTPException) as replay:
+                    plugin.run_task(self.profile, body, signed)
+        self.assertEqual(first.exception.status_code, 503)
+        self.assertEqual(replay.exception.status_code, 409)
+        execute.assert_called_once()
 
     def test_runtime_rejects_dirty_exact_source(self):
         identity = {"version": worker.SUPPORTED_VERSION, "sha": worker.SUPPORTED_SHA, "source": "git"}

@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { creativeDimensions, type CreativeSpec } from "@originpost/domain";
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 
 export const CREATIVE_TEMPLATE_VERSION = "originpost-templates-v1";
 export const CREATIVE_FONT_VERSION = "noto-latin-gujarati-devanagari-v1";
 // Output encoding is part of immutable render identity. Bump whenever the
 // renderer changes bytes or MIME so an older ready asset cannot satisfy a new
 // render request (Story images changed from PNG to provider-safe JPEG in v3).
-export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v3-story-jpeg`;
+export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v4-logo-plate`;
 
 export class CreativeRenderFailure extends Error {
   constructor(readonly code: string, message: string, readonly field?: string) {
@@ -116,7 +116,7 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${panels}${kicker}${headline}${subtitle}${footer}</svg>`;
 }
 
-export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8Array): Promise<RenderedCreativeImage> {
+export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8Array, logoBytes?: Uint8Array): Promise<RenderedCreativeImage> {
   if (sourceBytes.byteLength < 1 || sourceBytes.byteLength > 64 * 1024 * 1024) throw new CreativeRenderFailure("source_size_invalid", "The source image must be between 1 byte and 64 MB.", "sourceMediaId");
   const { width, height } = creativeDimensions[spec.format];
   let normalized: Buffer;
@@ -135,12 +135,32 @@ export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8
   const overlay = Buffer.from(textLayer(spec, width, height), "utf8");
   let bytes: Buffer;
   try {
-    const composed = sharp(background).composite([{ input: overlay, top: 0, left: 0 }]);
+    const layers: OverlayOptions[] = [{ input: overlay, top: 0, left: 0 }];
+    if (spec.logo) {
+      if (!logoBytes || logoBytes.byteLength > 16 * 1024 * 1024 || createHash("sha256").update(logoBytes).digest("hex") !== spec.logo.sha256) throw new CreativeRenderFailure("logo_hash_mismatch", "The exact approved logo is unavailable.", "logo");
+      const decoded = await sharp(logoBytes, { limitInputPixels: 25_000_000 }).rotate().png().toBuffer({ resolveWithObject: true });
+      let logoImage = sharp(decoded.data);
+      if (spec.logo.crop !== "full") {
+        const w = Math.floor(decoded.info.width / 2), h = Math.floor(decoded.info.height / 2);
+        logoImage = logoImage.extract({ left: spec.logo.crop.endsWith("right") ? w : 0, top: spec.logo.crop.startsWith("bottom") ? h : 0, width: w, height: h });
+      }
+      const fitted = await logoImage.resize({ width: Math.round(width * spec.logo.widthPercent / 100), height: Math.round(height * .09), fit: "inside" }).png().toBuffer({ resolveWithObject: true });
+      const inset = Math.round(width * spec.logo.marginPercent / 100), padding = 12;
+      const plateWidth = fitted.info.width + padding * 2, plateHeight = fitted.info.height + padding * 2;
+      const plate = await sharp({ create: { width: plateWidth, height: plateHeight, channels: 4, background: spec.logo.background } }).composite([{ input: fitted.data, left: padding, top: padding }]).png().toBuffer();
+      layers.push({ input: plate, left: spec.logo.position === "top-left" ? inset : width - inset - plateWidth, top: inset });
+    }
+    if (spec.disclosure) {
+      const labelX = spec.logo?.position === "top-right" ? 50 : width - 295;
+      const label = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${labelX}" y="50" width="245" height="40" rx="8" fill="#111111"/><text x="${labelX + 20}" y="77" font-size="20" font-family="sans-serif" fill="#ffffff">${xml(spec.disclosure)}</text></svg>`);
+      layers.push({ input: label, top: 0, left: 0 });
+    }
+    const composed = sharp(background).composite(layers);
     bytes = spec.format === "story"
       ? await composed.jpeg({ quality: 95, chromaSubsampling: "4:4:4", optimiseCoding: true }).toBuffer()
       : await composed.png({ compressionLevel: 9, adaptiveFiltering: false, palette: false }).toBuffer();
   }
-  catch { throw new CreativeRenderFailure("text_render_failed", "The text layers could not be rendered with the bundled fonts.", "headline") }
+  catch (error) { if (error instanceof CreativeRenderFailure) throw error; throw new CreativeRenderFailure("text_render_failed", "The text layers could not be rendered with the bundled fonts.", "headline") }
   return {
     bytes,
     width,

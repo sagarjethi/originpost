@@ -1,6 +1,6 @@
 import type { BoardRuntimePort, HermesAgentProvider } from "@originpost/agents";
 import type { ConnectorRegistry } from "@originpost/connectors";
-import type { AgentBoardRepository, AgentRuntimeRepository, AnalyticsRepository, AnalyticsReportRepository, AutomationRepository, BatchPlanRepository, AuthRepository, ConnectedAccountRepository, ContentItemRepository, CreativeStudioRepository, EngagementRepository, EvergreenRepository, FirstCommentRepository, InstagramCollaboratorRepository, MediaOrganizationRepository, MediaRepository, MonitorRepository, NotificationRepository, OAuthRepository, OperationalIncidentRepository, OrganizationRepository, OutboxRepository, PostingQueueRepository, PrivateConversationRepository, ProviderLifecycleRepository, ProviderPublishOperationRepository, RemoteCorrectionRepository, ShareCaptureRepository, SourceSignalRepository } from "@originpost/domain";
+import type { AgentBoardRepository, AgentBoardTaskRepository, AgentRuntimeRepository, AnalyticsRepository, AnalyticsReportRepository, AutomationRepository, BatchPlanRepository, AuthRepository, ConnectedAccountRepository, ContentItemRepository, CreativeStudioRepository, EngagementRepository, EvergreenRepository, FirstCommentRepository, ImageGenerationRepository, InstagramCollaboratorRepository, MediaOrganizationRepository, MediaRepository, MonitorRepository, NotificationRepository, OAuthRepository, OperationalIncidentRepository, OrganizationRepository, OutboxRepository, PostingQueueRepository, PrivateConversationRepository, ProviderLifecycleRepository, ProviderPublishOperationRepository, RemoteCorrectionRepository, ShareCaptureRepository, SourceSignalRepository } from "@originpost/domain";
 import type { Queue } from "bullmq";
 import type { MediaObjectStore } from "../media/media-object-store.js";
 
@@ -12,6 +12,8 @@ export interface OriginPostInfrastructure {
   automationRepository: AutomationRepository;
   batchPlanRepository: BatchPlanRepository;
   creativeStudioRepository: CreativeStudioRepository;
+  imageGenerationRepository: ImageGenerationRepository;
+  agentPostRepository: import("@originpost/domain").AgentPostRepository;
   shareCaptureRepository: ShareCaptureRepository;
   sourceSignalRepository: SourceSignalRepository;
   engagementRepository: EngagementRepository;
@@ -19,6 +21,7 @@ export interface OriginPostInfrastructure {
   evergreenRepository: EvergreenRepository;
   agentRuntimeRepository: AgentRuntimeRepository;
   agentBoardRepository: AgentBoardRepository;
+  agentBoardTaskRepository: AgentBoardTaskRepository;
   authRepository: AuthRepository;
   organizationRepository: OrganizationRepository;
   oauthRepository: OAuthRepository;

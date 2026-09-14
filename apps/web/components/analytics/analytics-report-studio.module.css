@@ -36,8 +36,8 @@
 .shareLedger h3 { margin: 0 0 2px; font-size: 12px; }
 .shareLedger > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: white; }
 .shareLedger span { display: grid; gap: 3px; }
-.shareLedger strong { font-size: 10px; }
-.shareLedger small { color: var(--muted); font-size: 9px; }
+.shareLedger strong { font-size: 11px; }
+.shareLedger small { color: var(--muted); font-size: 11px; }
 .shareLedger button { border: 1px solid #dfb9b2; border-radius: 8px; padding: 7px 9px; background: #fff7f5; color: #8d302a; font-weight: 700; cursor: pointer; }
 .snapshots { display: grid; gap: 8px; margin: 16px 0; }
 .snapshot { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: white; }

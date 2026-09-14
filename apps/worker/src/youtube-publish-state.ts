@@ -49,8 +49,9 @@ export function youtubePrivacyMatches(target: PublishTarget, actualPrivacyStatus
   return actualPrivacyStatus === expected;
 }
 
-export function proofDisclosureForTarget(target: PublishTarget): PublishProof["disclosure"] {
+export function proofDisclosureForTarget(target: PublishTarget, containsSyntheticMedia = false): PublishProof["disclosure"] {
   if (target.platform === "youtube" && target.settings?.containsSyntheticMedia === true) return "synthetic-media";
   if (target.platform === "instagram" && target.settings?.isAiGenerated === true) return "ai-assisted";
+  if (containsSyntheticMedia) return "synthetic-media";
   return "none";
 }
