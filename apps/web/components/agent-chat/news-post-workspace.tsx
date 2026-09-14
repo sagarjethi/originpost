@@ -57,6 +57,11 @@ type Run = {
   imageMode?: "server" | "codex-upload";
   projectId?: string;
   copy?: { headline: string; caption: string };
+  copyReview?: {
+    status: "passed" | "needs-changes";
+    reviewedAt: string;
+    checks: { category: string; verdict: string; explanation: string }[];
+  };
   error?: string;
 };
 type Asset = {
@@ -80,6 +85,7 @@ type Capability = {
 const stages = [
   { id: "researching", label: "Research sources" },
   { id: "writing", label: "Write the post" },
+  { id: "reviewing-copy", label: "Check the copy again" },
   { id: "generating", label: "Create the image" },
   { id: "composing", label: "Apply your template" },
   { id: "drafting", label: "Prepare for review" },
@@ -930,6 +936,39 @@ export function NewsPostWorkspace({
                   </div>
                 </section>
               )}
+              {selectedRun.copyReview && (
+                <section
+                  className={styles.copy}
+                  aria-label="Second copy review"
+                >
+                  <h3>
+                    {selectedRun.copyReview.status === "passed"
+                      ? "Second copy check passed"
+                      : "Copy needs changes"}
+                  </h3>
+                  <ul>
+                    {selectedRun.copyReview.checks.map((check) => (
+                      <li key={check.category}>
+                        <strong>
+                          {check.category === "visual-direction"
+                            ? "Image direction (text only)"
+                            : check.category}
+                          :{" "}
+                          {check.verdict === "pass"
+                            ? "Passed"
+                            : "Needs changes"}
+                          .
+                        </strong>{" "}
+                        {check.explanation}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    AI review against the saved evidence. An editor still needs
+                    to check the actual image and approve publication.
+                  </p>
+                </section>
+              )}
               {selectedRun.copy && (
                 <section className={styles.package}>
                   <div className={styles.image}>
@@ -1136,8 +1175,8 @@ export function NewsPostWorkspace({
                 ? "Creates a separate version from the original story. "
                 : ""}
               {activeImageMode === "codex-upload"
-                ? "Research and writing prepare your brief. Generate the image in Codex, upload it here, then review the finished draft."
-                : "Each request researches sources and generates one paid image. Review the draft before publishing."}
+                ? "Research, writing and a second copy check prepare your brief using your configured services. Generate the image in Codex, upload it here, then review the finished draft."
+                : "Each request uses research, two text passes and one paid image if the copy checks pass. Review the draft before publishing."}
             </p>
           </form>
         )}

@@ -9,7 +9,7 @@ type RuntimePreset = "openai" | "openrouter" | "ollama" | "custom";
 type RuntimeStatus = "unverified" | "healthy" | "error" | "disabled";
 type RuntimeProfile = { id:string; version:number; name:string; preset:RuntimePreset; baseUrl:string; textModel:string; credentialConfigured:boolean; status:RuntimeStatus; lastCheckedAt?:string; lastError?:string; updatedAt:string };
 type RuntimeAssignment = { workspaceId:string; brandId:string; profileId:string; assignedAt:string };
-type RuntimeRun = { id:string; profileId:string; contentItemId?:string; feature:"draft_assist"; model:string; status:"succeeded"|"failed"; inputTokens?:number; outputTokens?:number; latencyMs:number; errorCode?:string; createdAt:string };
+type RuntimeRun = { id:string; profileId:string; contentItemId?:string; feature:"draft_assist"|"copy_review"; model:string; status:"succeeded"|"failed"; inputTokens?:number; outputTokens?:number; latencyMs:number; errorCode?:string; createdAt:string };
 type RuntimeView = { profiles:RuntimeProfile[]; assignment:RuntimeAssignment|null; runs:RuntimeRun[]; serverHermes:{configured:boolean;fallbackOnlyWhenUnassigned:boolean} };
 
 const emptyView:RuntimeView={profiles:[],assignment:null,runs:[],serverHermes:{configured:false,fallbackOnlyWhenUnassigned:true}};

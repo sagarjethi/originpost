@@ -31,6 +31,8 @@ The collector reads your configured sources; it cannot promise every story from 
 
 [How sourcing works](docs/source-signal-desk.md) · [Checked source catalog and critical verification rules](docs/research/2026-09-15-news-source-catalog.md)
 
+Before creating an image, a second AI pass checks the written post against its saved sources. If it finds a problem, creation stops and shows the reasons. An editor still checks the real image and approves the post before publishing.
+
 ## Set up your brand once
 
 ![Illustrative template showing original logo, visual, headline, source credit, and social handle](docs/images/template-guide.svg)

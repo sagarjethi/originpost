@@ -86,10 +86,44 @@ export const agentPostCopySchema = z
   })
   .strict();
 export type AgentPostCopy = z.infer<typeof agentPostCopySchema>;
+export const agentPostCopyReviewSchema = z
+  .object({
+    checks: z
+      .array(
+        z
+          .object({
+            category: z.enum([
+              "facts",
+              "attribution",
+              "language",
+              "visual-direction",
+            ]),
+            verdict: z.enum(["pass", "needs-changes"]),
+            explanation: z.string().trim().min(1).max(1000),
+          })
+          .strict(),
+      )
+      .length(4),
+  })
+  .strict()
+  .refine(
+    (value) => new Set(value.checks.map((check) => check.category)).size === 4,
+    "Every review category must appear exactly once.",
+  );
+export type AgentPostCopyReview = z.infer<typeof agentPostCopyReviewSchema> & {
+  status: "passed" | "needs-changes";
+  inputHash: string;
+  evidenceHash: string;
+  copyHash: string;
+  reviewedAt: string;
+  model: string;
+  provider: string;
+};
 export const agentPostStages = [
   "queued",
   "researching",
   "writing",
+  "reviewing-copy",
   "generating",
   "awaiting-image",
   "composing",
@@ -129,6 +163,7 @@ export type AgentPostRun = {
   outputMediaId?: string;
   draftId?: string;
   copy?: AgentPostCopy;
+  copyReview?: AgentPostCopyReview;
   evidenceHash?: string;
   error?: string;
   inFlightUntil?: string;

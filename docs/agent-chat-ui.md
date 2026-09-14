@@ -7,7 +7,7 @@ The `/agent` route now runs a news-to-image workflow inside OriginPost. It repla
 1. Open **Project templates**. Upload the original logo and up to three rights-cleared style reference images, or select images already in the active brand’s Library.
 2. Choose language, square/portrait/Story format, text layout, colors, footer, logo corner, width, margin, background plate, and optional quarter of a four-logo board. The placement preview shows the selected crop and corner.
 3. Save an immutable template version. Paste a news URL or news text and optionally add direction for this post.
-4. **Research & create** starts source research, then copy, one paid image request, deterministic text/logo composition, and a domain draft. The UI polls every four seconds and displays copy and the final image as they become available.
+4. **Research & create** starts source research, then copy, a separate text review against the frozen evidence, one paid image request, deterministic text/logo composition, and a domain draft. The UI polls every four seconds and displays copy and the final image as they become available.
 5. Open **Sources & review** to inspect evidence and approve the exact draft through the existing workflow. Nothing is automatically published.
 
 Templates and runs are scoped to Workspace and Brand. A run freezes its template, logo/reference hashes, and verified evidence hash. Changing a saved template does not change an existing run. New versions create a new run and paid request; they do not silently overwrite a prior draft.
@@ -53,4 +53,10 @@ Completed runs accept revision messages in the same saved conversation. A revisi
 
 The setup drawer reads actual brand account and generation capability status, distinguishes test connections, and links to channel, runtime, and Board configuration. Instagram, Facebook, and YouTube use the existing connector setup; publishing checks and approval still apply. Private output previews refresh while open.
 
-The crawler, new viral-news card discovery, arbitrary social connectors, and expanded one-click publishing remain deferred until the UI checkpoint can be pushed. No Git remote is configured locally. Live image/text runtimes still require configuration; no real post was generated or published in this UI pass.
+The UI checkpoint and public website collector have been pushed to origin/main. Arbitrary social connectors and expanded one-click publishing remain incomplete. Live image/text runtimes still require configuration; no real post was generated or published in this UI pass.
+
+## Second copy review
+
+New runs persist `reviewing-copy` after writing and before image creation or Codex upload handoff. A fresh runtime session receives only the frozen evidence, finished copy and language. It checks factual support, attribution, language, and the proposed visual direction. It can use the same configured model as the writer; this is a separate pass, not independent reporting or a different-model guarantee. It does not fetch new sources or inspect image pixels.
+
+All four categories must appear exactly once and pass. Findings, model/provider, time and input/evidence/copy hashes remain on the run. Rejected reviews block creation; invalid or uncertain responses never trigger image generation. Review calls use the `copy_review` runtime ledger feature for assigned profiles. Existing human approvals remain separate. Existing runs already past writing are not retroactively marked reviewed.

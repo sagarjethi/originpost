@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ConfigService } from "@nestjs/config";
 import request from "supertest";
+import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { startE2eApp } from "./test-app.js";
@@ -21,6 +22,9 @@ describe("workspace AI runtime",()=>{
     const item=await request(app.getHttpServer()).post("/v1/content-items").send({workspaceId:"default",brandId:"brand_default",title:"Runtime draft test",summary:"Only these supplied facts may be used."}).expect(201);
     const drafted=await request(app.getHttpServer()).post(`/v1/content-items/${item.body.id}/agent-draft?workspaceId=default`).set("If-Match",String(item.body.version)).send({platform:"instagram",format:"image",language:"English"}).expect(201);expect(drafted.body.drafts.at(-1)).toMatchObject({caption:"A clear tested caption"});
     const view=await request(app.getHttpServer()).get("/v1/agent-runtimes?workspaceId=default&brandId=brand_default").expect(200);expect(view.body.assignment).toMatchObject({profileId:created.body.id,brandId:"brand_default"});expect(view.body.runs[0]).toMatchObject({profileId:created.body.id,status:"succeeded",inputTokens:20,outputTokens:5});expect(view.body.runs[0]).not.toHaveProperty("prompt");expect(view.body.runs[0]).not.toHaveProperty("response");expect(JSON.stringify(view.body)).not.toContain("runtime-secret");
+    await app.get(AgentRuntimeService).runCopyReview({workspaceId:"default",brandId:"brand_default",contentItemId:item.body.id,actor:{id:"runtime-owner",name:"Runtime Owner",role:"owner"},messages:[{role:"user",content:"Review frozen copy"}]});
+    const reviewed=await request(app.getHttpServer()).get("/v1/agent-runtimes?workspaceId=default&brandId=brand_default").expect(200);
+    expect(reviewed.body.runs[0]).toMatchObject({feature:"copy_review",contentItemId:item.body.id,status:"succeeded"});
     expect(calls).toEqual(expect.arrayContaining([expect.objectContaining({url:"https://openrouter.ai/api/v1/models",authorization:"Bearer runtime-secret"}),expect.objectContaining({url:"https://openrouter.ai/api/v1/chat/completions",authorization:"Bearer runtime-secret"})]));
   });
   it("does not silently fall back after an assigned provider fails, and lets the owner return to the server default",async()=>{

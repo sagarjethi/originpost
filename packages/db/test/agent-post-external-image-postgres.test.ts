@@ -12,9 +12,11 @@ const url = process.env.TEST_DATABASE_URL;
   beforeAll(async () => {
     await sql.unsafe(`create schema ${schema}`);
     await sql.unsafe(`set search_path to ${schema}`);
+    await sql`create table agent_run_ledger (feature text not null check (feature='draft_assist'))`;
     for (const name of [
       "066_agent_post_runs.sql",
       "067_agent_post_external_images.sql",
+      "068_agent_post_copy_review.sql",
     ])
       await sql.unsafe(
         await readFile(
@@ -90,5 +92,16 @@ const url = process.env.TEST_DATABASE_URL;
     expect(await repo.referencesAsset("w", "image")).toBe(true);
     expect(await repo.referencesAsset("other", "image")).toBe(false);
     expect(await repo.get("other", "post")).toBeNull();
+    const reviewing = {
+      ...next,
+      status: "reviewing-copy" as const,
+      version: 3,
+    };
+    expect(await repo.replace(reviewing, 2)).toBe(true);
+    expect((await repo.pending())[0]?.status).toBe("reviewing-copy");
+    await sql`insert into agent_run_ledger (feature) values ('copy_review')`;
+    expect((await sql`select feature from agent_run_ledger`)[0]?.feature).toBe(
+      "copy_review",
+    );
   });
 });

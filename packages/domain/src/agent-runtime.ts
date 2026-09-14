@@ -45,7 +45,7 @@ export interface AgentRunLedgerEntry {
   brandId: string;
   profileId: string;
   contentItemId?: string;
-  feature: "draft_assist";
+  feature: "draft_assist" | "copy_review";
   model: string;
   status: "succeeded" | "failed";
   requestSha256: string;

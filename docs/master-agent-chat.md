@@ -512,3 +512,7 @@ This checkpoint does not implement automatic `@Codex` command routing, automatic
 ### Browser source collection checkpoint — 15 September 2026
 
 Publisher pages now use isolated desktop Chrome/Chromium capture, private screenshot storage and scoped source-desk viewing. Local Chrome and a sandboxed Docker worker were both verified against NASA's public news listing. Feed and website collections share section/freshness filters and URL-based deduplication. Browser evidence remains unverified, and exact publication timestamps are never inferred from capture time. Automatic mention routing, independent automated text/image verification and live publishing acceptance remain outstanding.
+
+### Copy review checkpoint
+
+New post runs perform a second text-only review in a fresh runtime session before image creation. The exact saved claims, sources and finished copy are bound by hashes to the stored findings. Four required checks cover facts, attribution, language and proposed visual direction; any failed check blocks the run. This is separate inference against existing evidence, not independent source collection or pixel-level image verification. Automated visual verification, structured mentions and live publishing acceptance remain outstanding.

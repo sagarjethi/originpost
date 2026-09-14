@@ -44,6 +44,19 @@ describe("news post workflow with external providers substituted", () => {
         "Clearly illustrated books and a library, no words or logos.",
     }),
   }));
+  const review = vi.fn(async () => ({
+    provider: "test-review",
+    model: "test-model",
+    text: JSON.stringify({
+      checks: ["facts", "attribution", "language", "visual-direction"].map(
+        (category) => ({
+          category,
+          verdict: "pass",
+          explanation: "Fixture review passed.",
+        }),
+      ),
+    }),
+  }));
   beforeAll(async () => {
     Object.assign(process.env, {
       NODE_ENV: "test",
@@ -67,7 +80,7 @@ describe("news post workflow with external providers substituted", () => {
         generate,
       })
       .overrideProvider(AgentRuntimeService)
-      .useValue({ runDraft: text })
+      .useValue({ runDraft: text, runCopyReview: review })
       .compile();
     app = fixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter({ logger: false }),
@@ -201,6 +214,13 @@ describe("news post workflow with external providers substituted", () => {
       status: "ready",
       outputMediaId: expect.any(String),
       draftId: expect.any(String),
+      copyReview: {
+        status: "passed",
+        evidenceHash: run.evidenceHash,
+        copyHash: createHash("sha256")
+          .update(JSON.stringify(run.copy))
+          .digest("hex"),
+      },
     });
     expect(generate).toHaveBeenCalledTimes(1);
     const item = (await infrastructure.repository.get(
@@ -238,6 +258,8 @@ describe("news post workflow with external providers substituted", () => {
       .expect(201);
     await research(started.body.id);
     let run = await advance(started.body.id);
+    run = await advance(run.id);
+    expect(run.status).toBe("reviewing-copy");
     run = await advance(run.id);
     expect(run.status).toBe("awaiting-image");
     expect(
@@ -526,6 +548,73 @@ describe("news post workflow with external providers substituted", () => {
       .send({ ...body, parentRunId: "missing" })
       .expect(404);
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it("keeps review separate from writing and blocks a failed check before paid image creation", async () => {
+    const before = generate.mock.calls.length;
+    const started = await start("copy-review-rejected");
+    await research(started.body.id);
+    let run = await advance(started.body.id);
+    run = await advance(run.id);
+    expect(run.status).toBe("reviewing-copy");
+    review.mockResolvedValueOnce({
+      provider: "test-review",
+      model: "test-model",
+      text: JSON.stringify({
+        checks: ["facts", "attribution", "language", "visual-direction"].map(
+          (category) => ({
+            category,
+            verdict: category === "facts" ? "needs-changes" : "pass",
+            explanation: "The relative date needs a verified reference.",
+          }),
+        ),
+      }),
+    });
+    run = await advance(run.id);
+    expect(run.status).toBe("blocked");
+    expect(run.copyReview).toMatchObject({
+      status: "needs-changes",
+      evidenceHash: run.evidenceHash,
+      model: "test-model",
+    });
+    expect(generate.mock.calls.length).toBe(before);
+    const call = review.mock.calls.at(-1) as unknown as [
+      { messages: { role: string; content: string }[] },
+    ];
+    expect(call[0].messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+    ]);
+    const packet = JSON.parse(call[0].messages[1].content);
+    expect(packet.copy).toEqual(run.copy);
+    const item = (await infrastructure.repository.get(
+      "default",
+      run.contentItemId,
+    ))!;
+    expect(packet.claims).toEqual(item.claims);
+    expect(packet.sources).toEqual(item.sources);
+    expect(item.approvals).toHaveLength(0);
+  });
+  it("rejects repeated review categories instead of accepting four apparent passes", async () => {
+    const before = generate.mock.calls.length;
+    const started = await start("copy-review-malformed");
+    await research(started.body.id);
+    let run = await advance(started.body.id);
+    run = await advance(run.id);
+    review.mockResolvedValueOnce({
+      provider: "test-review",
+      model: "test-model",
+      text: JSON.stringify({
+        checks: Array.from({ length: 4 }, () => ({
+          category: "facts",
+          verdict: "pass",
+          explanation: "Untrustworthy duplicate.",
+        })),
+      }),
+    });
+    run = await advance(run.id);
+    expect(run.status).toBe("blocked");
+    expect(run.copyReview).toBeUndefined();
+    expect(generate.mock.calls.length).toBe(before);
   });
   it("applies selected writing skills and treats example captions as style only", () => {
     const call = text.mock.calls[0] as unknown as [
