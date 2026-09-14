@@ -10,16 +10,22 @@ import {
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 import { actorFrom, workspaceFrom } from "../common/request-context.js";
+import { AgentPostPublishingService } from "./agent-post-publishing.service.js";
 import { AgentPostsService } from "./agent-posts.service.js";
 import {
   AgentPostQueryDto,
+  AgentPostPublishDto,
+  AgentPostPublishPreviewDto,
   AgentPostTemplateDto,
   CreateAgentPostDto,
   ImportAgentPostImageDto,
 } from "./agent-posts.dto.js";
 @Controller({ path: "agent-posts", version: "1" })
 export class AgentPostsController {
-  constructor(private readonly posts: AgentPostsService) {}
+  constructor(
+    private readonly posts: AgentPostsService,
+    private readonly publishing: AgentPostPublishingService,
+  ) {}
   @Get("capability") capability(
     @Req() r: FastifyRequest,
     @Query() q: AgentPostQueryDto,
@@ -87,6 +93,42 @@ export class AgentPostsController {
     @Param("id") id: string,
   ) {
     return this.posts.importImage(
+      workspaceFrom(r, d.workspaceId),
+      id,
+      d,
+      actorFrom(r),
+    );
+  }
+  @Get(":id/publication") publication(
+    @Req() r: FastifyRequest,
+    @Query() q: AgentPostQueryDto,
+    @Param("id") id: string,
+  ) {
+    return this.publishing.detail(
+      workspaceFrom(r, q.workspaceId),
+      q.brandId,
+      id,
+      actorFrom(r),
+    );
+  }
+  @Post(":id/publication-preview") publicationPreview(
+    @Req() r: FastifyRequest,
+    @Body() d: AgentPostPublishPreviewDto,
+    @Param("id") id: string,
+  ) {
+    return this.publishing.preview(
+      workspaceFrom(r, d.workspaceId),
+      id,
+      d,
+      actorFrom(r),
+    );
+  }
+  @Post(":id/publication") publish(
+    @Req() r: FastifyRequest,
+    @Body() d: AgentPostPublishDto,
+    @Param("id") id: string,
+  ) {
+    return this.publishing.publish(
       workspaceFrom(r, d.workspaceId),
       id,
       d,

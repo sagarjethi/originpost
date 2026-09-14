@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
 import { agentPostSkills } from "@originpost/domain";
+import { AgentPostPublishing } from "./agent-post-publishing";
 import { AgentConnections } from "./agent-connections";
 import styles from "./news-post-workspace.module.css";
 
@@ -1008,6 +1009,15 @@ export function NewsPostWorkspace({
                     )}
                   </div>
                 </section>
+              )}
+              {selectedRun.status === "ready" && (
+                <AgentPostPublishing
+                  key={`${workspaceId}:${brandId}:${selectedRun.id}`}
+                  auth={auth}
+                  workspaceId={workspaceId}
+                  brandId={brandId}
+                  runId={selectedRun.id}
+                />
               )}
               <div className={styles.resultActions}>
                 <a

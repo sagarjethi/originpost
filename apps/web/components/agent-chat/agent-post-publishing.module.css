@@ -1,0 +1,116 @@
+.panel {
+  margin: 20px 0;
+  border: 1px solid #dce2dc;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  color: #283c31;
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 18px 22px;
+  border: 0;
+  background: #f3f6f0;
+  color: #284633;
+  text-align: left;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.trigger span {
+  font-size: 13px;
+  font-weight: 400;
+}
+.body {
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+}
+.body h3,
+.body h4,
+.body p {
+  margin: 0;
+}
+.body p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.body a {
+  color: #345942;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.body form,
+.review,
+.preview {
+  display: grid;
+  gap: 14px;
+}
+.review,
+.preview {
+  padding: 18px;
+  border: 1px solid #dde5dc;
+  border-radius: 12px;
+  background: #fafbf8;
+}
+.body label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.body select,
+.body input[type="datetime-local"] {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #bac9bd;
+  border-radius: 8px;
+  font: inherit;
+  background: white;
+  color: inherit;
+}
+.body button {
+  justify-self: start;
+  padding: 11px 16px;
+  border: 1px solid #365641;
+  border-radius: 8px;
+  background: #365641;
+  color: white;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.body button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.body button:focus-visible,
+.trigger:focus-visible,
+.body input:focus-visible,
+.body select:focus-visible {
+  outline: 3px solid #8aaa82;
+  outline-offset: 3px;
+}
+.error {
+  color: #9d3535;
+  background: #fff2ef;
+  border-radius: 8px;
+  padding: 12px;
+}
+.caption {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.body .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.body ul {
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}

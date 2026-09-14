@@ -516,3 +516,7 @@ Publisher pages now use isolated desktop Chrome/Chromium capture, private screen
 ### Copy review checkpoint
 
 New post runs perform a second text-only review in a fresh runtime session before image creation. The exact saved claims, sources and finished copy are bound by hashes to the stored findings. Four required checks cover facts, attribution, language and proposed visual direction; any failed check blocks the run. This is separate inference against existing evidence, not independent source collection or pixel-level image verification. Automated visual verification, structured mentions and live publishing acceptance remain outstanding.
+
+### Chat publishing checkpoint
+
+Finished agent posts expose a bounded `@Publisher` action. An editor can approve the exact draft and native Instagram AI label within chat, prepare a version-bound account/time preview, and submit it through the existing content scheduler and outbox. Duplicate retries return the same target. This does not implement general participant mentions, independent image-pixel verification or a verified live social publication. No approval is inferred from prose or from the text reviewer.

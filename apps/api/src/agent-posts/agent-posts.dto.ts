@@ -1,5 +1,6 @@
 import {
   IsObject,
+  IsISO8601,
   IsIn,
   IsInt,
   Min,
@@ -30,4 +31,18 @@ export class ImportAgentPostImageDto extends AgentPostQueryDto {
   @IsInt() @Min(1) expectedVersion!: number;
   @IsString() @Length(1, 200) mediaId!: string;
   @IsString() @Matches(/^[a-f0-9]{64}$/) briefHash!: string;
+}
+
+export class AgentPostPublishPreviewDto extends AgentPostQueryDto {
+  @IsIn(["originpost.publisher"]) recipientId!: "originpost.publisher";
+  @IsString() @Length(1, 200) accountId!: string;
+  @IsISO8601() scheduledFor!: string;
+}
+export class AgentPostPublishDto extends AgentPostPublishPreviewDto {
+  @IsInt() @Min(1) contentVersion!: number;
+  @IsString() @Matches(/^[a-f0-9]{64}$/) previewHash!: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  conflictAcknowledgementSha256?: string;
 }

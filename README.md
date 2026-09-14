@@ -14,6 +14,8 @@ OriginPost is a shared workspace for publishers, creators, and social-media team
 4. **Review the result.** Read the caption and text inside the image. Check image rights, authenticity, and any AI disclosure. Ask for changes in the same project chat.
 5. **Publish and keep the receipt.** Use a connected Instagram, Facebook Page, or YouTube account. The final draft must pass review and the platform's checks. YouTube requires a video.
 
+For a finished agent image post, open **@Publisher** in the chat. Review and approve the exact draft, choose a live account, check the time and required AI label, then confirm the publishing preview. Its publishing record stays in the chat. The generated package currently starts with an Instagram draft; Facebook adaptations and YouTube videos use the full content editor.
+
 ## Your daily news desk
 
 Create sections such as **Gujarat, India, World, Business, or Science**, then add publisher-provided RSS/Atom feeds or public newsroom pages. Choose checks every 10 minutes, 30 minutes, 2 hours, or daily.

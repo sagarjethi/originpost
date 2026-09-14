@@ -5,6 +5,7 @@ import { ContentModule } from "../content/content.module.js";
 import { ImageGenerationModule } from "../image-generation/image-generation.module.js";
 import { CreativeStudioModule } from "../creative-studio/creative-studio.module.js";
 import { AgentRuntimeModule } from "../agent-runtimes/agent-runtime.module.js";
+import { AgentPostPublishingService } from "./agent-post-publishing.service.js";
 import { AgentPostsService } from "./agent-posts.service.js";
 import { AgentPostsController } from "./agent-posts.controller.js";
 @Module({
@@ -16,7 +17,7 @@ import { AgentPostsController } from "./agent-posts.controller.js";
     CreativeStudioModule,
     AgentRuntimeModule,
   ],
-  providers: [AgentPostsService],
+  providers: [AgentPostsService, AgentPostPublishingService],
   controllers: [AgentPostsController],
 })
 export class AgentPostsModule {}

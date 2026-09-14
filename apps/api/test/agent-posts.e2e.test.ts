@@ -15,6 +15,7 @@ import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { INFRASTRUCTURE } from "../src/common/tokens.js";
 import type { OriginPostInfrastructure } from "../src/infrastructure/infrastructure.types.js";
+import { AgentPostPublishingService } from "../src/agent-posts/agent-post-publishing.service.js";
 import { AgentPostsService } from "../src/agent-posts/agent-posts.service.js";
 import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
 import { ImageGenerationService } from "../src/image-generation/image-generation.service.js";
@@ -26,6 +27,7 @@ describe("news post workflow with external providers substituted", () => {
     infrastructure: OriginPostInfrastructure,
     service: AgentPostsService;
   let templateId: string;
+  let publishRunId: string;
   const generate = vi.fn(async () => ({
     bytes: await sharp({
       create: { width: 1024, height: 1536, channels: 3, background: "#445566" },
@@ -205,6 +207,7 @@ describe("news post workflow with external providers substituted", () => {
   }
   it("reaches an exact rendered image and unapproved draft, reusing duplicate requests", async () => {
     const first = await start("success");
+    publishRunId = first.body.id;
     expect((await start("success")).body.id).toBe(first.body.id);
     await research(first.body.id);
     let run = await advance(first.body.id);
@@ -615,6 +618,229 @@ describe("news post workflow with external providers substituted", () => {
     expect(run.status).toBe("blocked");
     expect(run.copyReview).toBeUndefined();
     expect(generate.mock.calls.length).toBe(before);
+  });
+
+  it("binds chat publication to approval, native disclosure and one durable target", async () => {
+    const run = (await infrastructure.agentPostRepository.get(
+      "default",
+      publishRunId,
+    ))!;
+    const now = new Date().toISOString();
+    const accountId = "agent-publish-test-account";
+    await infrastructure.connectedAccountRepository.save(
+      {
+        id: accountId,
+        workspaceId: "default",
+        brandId: "brand_default",
+        platform: "instagram",
+        displayName: "originpost_test",
+        externalAccountId: "ig-test",
+        capabilities: [],
+        status: "healthy",
+        createdBy: "post-owner",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "test-account-event",
+        workspaceId: "default",
+        actorId: "post-owner",
+        actorType: "human",
+        action: "test.account",
+        detail: {},
+        createdAt: now,
+      },
+    );
+    const path = `/v1/agent-posts/${run.id}`;
+    const input = {
+      workspaceId: "default",
+      brandId: "brand_default",
+      recipientId: "originpost.publisher",
+      accountId,
+      scheduledFor: new Date(Date.now() + 30 * 60_000).toISOString(),
+    };
+    await request(app.getHttpServer())
+      .get(`${path}/publication?brandId=brand_default`)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({ draftId: run.draftId, targets: [] }),
+      );
+    await request(app.getHttpServer())
+      .post(`${path}/publication-preview`)
+      .send({ ...input, recipientId: "arbitrary-agent" })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${path}/publication-preview`)
+      .send({ ...input, brandId: "other" })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${path}/publication-preview`)
+      .send(input)
+      .expect(409)
+      .expect(({ body }) => expect(body.message).toMatch(/test connection/i));
+    const connector = infrastructure.connectors.get("instagram");
+    const originalMode = connector.manifest.apiMode;
+    const validate = vi.spyOn(connector, "validate");
+    try {
+      connector.manifest.apiMode = "official";
+      await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(409)
+        .expect(({ body }) =>
+          expect(body.message).toMatch(/Approve this exact draft/),
+        );
+      const item = (await infrastructure.repository.get(
+        "default",
+        run.contentItemId,
+      ))!;
+      await request(app.getHttpServer())
+        .post(`/v1/content-items/${item.id}/approvals`)
+        .set("If-Match", String(item.version))
+        .send({ decision: "approved", draftId: run.draftId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(409)
+        .expect(({ body }) =>
+          expect(body.message).toMatch(/native AI info label/),
+        );
+      connector.manifest.apiMode = "mock";
+      const candidate = await request(app.getHttpServer())
+        .post(`/v1/content-items/${item.id}/instagram-collaborators/candidates`)
+        .send({
+          draftId: run.draftId,
+          accountId,
+          collaborators: [],
+          isAiGenerated: true,
+        })
+        .expect(201);
+      connector.manifest.apiMode = "official";
+      await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(409)
+        .expect(({ body }) =>
+          expect(body.message).toMatch(/latest Instagram publishing options/),
+        );
+      connector.manifest.apiMode = "mock";
+      await request(app.getHttpServer())
+        .post(
+          `/v1/content-items/${item.id}/instagram-collaborators/candidates/${candidate.body.id}/approve`,
+        )
+        .send({})
+        .expect(201);
+      connector.manifest.apiMode = "official";
+      const preview = await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(201);
+      expect(preview.body).toMatchObject({
+        mode: "official",
+        nativeAiLabel: true,
+      });
+      const command = {
+        ...input,
+        previewHash: preview.body.previewHash,
+        contentVersion: preview.body.contentVersion,
+      };
+      await request(app.getHttpServer())
+        .post(`${path}/publication`)
+        .send({ ...command, previewHash: "a".repeat(64) })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/v1/content-items/${item.id}/review-comments`)
+        .set("If-Match", String(preview.body.contentVersion))
+        .send({
+          draftId: run.draftId,
+          audience: "internal",
+          body: "Check the new editorial note before publishing.",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`${path}/publication`)
+        .send(command)
+        .expect(409);
+      const refreshed = await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/v1/content-items/${item.id}/schedule`)
+        .set("If-Match", String(refreshed.body.contentVersion))
+        .send({
+          ...refreshed.body.schedule,
+          targetId: "target_existing_editor_request",
+        })
+        .expect(201);
+      const withConflict = await request(app.getHttpServer())
+        .post(`${path}/publication-preview`)
+        .send(input)
+        .expect(201);
+      expect(withConflict.body.conflicts.requiresConfirmation).toBe(true);
+      const fresh = {
+        ...input,
+        previewHash: withConflict.body.previewHash,
+        contentVersion: withConflict.body.contentVersion,
+        conflictAcknowledgementSha256:
+          withConflict.body.conflicts.acknowledgementSha256,
+      };
+      await request(app.getHttpServer())
+        .post(`${path}/publication`)
+        .send({ ...fresh, conflictAcknowledgementSha256: undefined })
+        .expect(409);
+
+      const results = await Promise.all([
+        request(app.getHttpServer()).post(`${path}/publication`).send(fresh),
+        request(app.getHttpServer()).post(`${path}/publication`).send(fresh),
+      ]);
+      expect(
+        results.filter((result) => result.status === 201).length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        results.every(
+          (result) => result.status === 201 || result.status === 409,
+        ),
+      ).toBe(true);
+      const replay = await request(app.getHttpServer())
+        .post(`${path}/publication`)
+        .send(fresh)
+        .expect(201);
+      expect(replay.body).toMatchObject({
+        replayed: true,
+        target: { status: "queued", accountId, draftId: run.draftId },
+      });
+      const stored = (await infrastructure.repository.get("default", item.id))!;
+      expect(
+        stored.targets.filter((t) => t.id === replay.body.target.id),
+      ).toHaveLength(1);
+      const outbox = await infrastructure.outboxRepository.list("default");
+      expect(
+        outbox.filter(
+          (message) =>
+            message.dedupeKey === `publish-target:${replay.body.target.id}`,
+        ),
+      ).toHaveLength(1);
+      await request(app.getHttpServer())
+        .post(`${path}/publication`)
+        .send({
+          ...fresh,
+          scheduledFor: new Date(Date.now() + 60 * 60_000).toISOString(),
+        })
+        .expect(409);
+      await expect(
+        app.get(AgentPostPublishingService).publish("default", run.id, fresh, {
+          id: "agent",
+          name: "Agent",
+          role: "owner",
+          actorType: "agent",
+        }),
+      ).rejects.toMatchObject({ code: "permission_denied" });
+    } finally {
+      connector.manifest.apiMode = originalMode;
+      validate.mockRestore();
+    }
   });
   it("applies selected writing skills and treats example captions as style only", () => {
     const call = text.mock.calls[0] as unknown as [
