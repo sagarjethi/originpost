@@ -55,3 +55,15 @@ This order prevents two editors from creating duplicate content. If the process 
 - `POST /v1/signals/:id/restore`
 
 Signals are always scoped to the authenticated workspace and brand.
+
+## Daily news collections and critical sourcing
+
+Create a named section with explicit RSS/Atom feeds in the News & Source Desk. The dedicated public-feed collector reads RSS 2.0 and Atom, keeps original article links, strips markup from excerpts, and marks claims unverified. It never downloads feed images or treats them as licensed media. Feed provenance permits article URLs outside the feed path only when supplied by the dedicated collector. Repeated URLs retain their signal identity when headlines change.
+
+The worker supports feed-only and mixed Luma/feed collections without falling through to a mock researcher. Collection continues when a source fails; partial failures appear as degraded monitor health. Complete failure remains a failed run. Each feed has a 2 MB response limit, 15-second request deadline, up to three redirects with public-address validation, and no credentials. XML document entities are rejected. At most 500 entries per feed and 500 entries per collection are processed; the desk pages through 100 matches at a time. This is bounded discovery, not exhaustive web coverage.
+
+Newest published uses a source publication timestamp with an explicit clock and timezone. Missing, day-only, or timezone-free timestamps remain unknown. Newly found uses first observation, never the latest repeat. The 2-hour, 24-hour and 7-day windows filter by publication before the result limit and exclude unknown dates. Sections filter by monitor; all queries remain workspace/brand scoped.
+
+Save & research preserves the selected report and original evidence, then queues the existing research workflow. It does not claim the research completed, and a replay does not queue duplicate research. If queuing cannot be confirmed, the saved item remains accessible. Critical claims must be checked against independent reporting origins, then the final caption and rendered image compared with the evidence before approval.
+
+[Checked source catalog](research/2026-09-15-news-source-catalog.md) documents endpoint tests, date limitations, rights, and text/image review requirements. Chrome was also used locally to inspect the rendered PIB page. Scheduled website screenshot capture and a direct Codex image handoff remain unfinished; the current collector supports feeds and the dedicated Luma page, not arbitrary site crawling.

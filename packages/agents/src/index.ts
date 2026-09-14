@@ -4,3 +4,4 @@ export * from "./luma.js";
 export * from "./openai-compatible.js";
 export * from "./research.js";
 export * from "./types.js";
+export * from "./feed.js";

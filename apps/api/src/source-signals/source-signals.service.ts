@@ -11,7 +11,7 @@ export class SourceSignalsService {
 
   async list(workspaceId: string, query: SourceSignalQueryDto, actor: Actor) {
     if (!can(actor.role, "content:read")) throw new ForbiddenException("You cannot view source signals.");
-    return this.infrastructure.sourceSignalRepository.list({ workspaceId, ...(query.brandId ? { brandId: query.brandId } : {}), ...(query.state ? { state: query.state } : {}), ...(query.monitorId ? { monitorId: query.monitorId } : {}), ...(query.search ? { search: query.search } : {}), limit: query.limit });
+    return this.infrastructure.sourceSignalRepository.list({ workspaceId, ...(query.brandId ? { brandId: query.brandId } : {}), ...(query.state ? { state: query.state } : {}), ...(query.monitorId ? { monitorId: query.monitorId } : {}), ...(query.search ? { search: query.search } : {}), offset: query.offset, sort: query.sort, ...(query.recentHours ? { publishedAfter: new Date(Date.now() - query.recentHours * 3600000).toISOString(), publishedBefore: new Date().toISOString() } : {}), limit: query.limit });
   }
 
   async summary(workspaceId: string, brandId: string | undefined, actor: Actor) {

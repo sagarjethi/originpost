@@ -9,3 +9,14 @@
 @media(max-width:900px){.signal{grid-template-columns:54px minmax(0,1fr)}.actions{grid-column:2;flex-direction:row}.actions button{flex:1}.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.page{padding:14px 14px 36px}.hero{min-height:0;align-items:flex-start;flex-direction:column;padding:25px 21px}.hero h1{font-size:32px}.hero button{width:100%}.lumaCard{grid-template-columns:110px minmax(0,1fr)}.lumaVisual{height:100%}.lumaCard>button{grid-column:1/-1;width:100%}.toolbar{align-items:stretch;flex-direction:column}.toolbar>div{display:grid;grid-template-columns:repeat(4,1fr);width:100%}.toolbar input{width:100%;border-top:1px solid var(--line);border-left:0}.signal{grid-template-columns:46px minmax(0,1fr);gap:11px;padding:14px}.score{width:44px;height:44px}.score strong{font-size:16px}.sources{display:grid}.sources a{min-width:0}.actions{grid-column:1/-1}.signalHead{align-items:flex-start;flex-direction:column}.copy h2{font-size:18px}}
 @media(max-width:390px){.stats{grid-template-columns:1fr 1fr}.toolbar>div{grid-template-columns:1fr 1fr}.actions{flex-direction:column}}
+
+.feedSetup { margin: 20px 0; padding: 20px; border: 1px solid #dce5d2; border-radius: 14px; background: #fff; }
+.feedSetup summary { cursor: pointer; font-size: 16px; font-weight: 650; }
+.feedSetup p { color: #66745e; font-size: 13px; line-height: 1.65; }
+.feedSetup form { display: grid; gap: 12px; max-width: 740px; }
+.feedSetup label, .toolbar label { display: grid; gap: 6px; font-size: 12px; color: #506147; }
+.feedSetup input, .feedSetup textarea, .feedSetup select, .toolbar select { border: 1px solid #d5dfcf; padding: 10px 12px; border-radius: 8px; background: #fff; font: inherit; color: #2f4128; }
+.feedSetup button { justify-self: start; padding: 12px 18px; border: 0; border-radius: 8px; background: #455f39; color: white; }
+.toolbar { flex-wrap: wrap; align-items: end; }
+.verification { font-size: 12px !important; color: #806644 !important; }
+@media (max-width: 760px) { .toolbar label { flex: 1; min-width: 140px; } .toolbar select, .feedSetup input, .feedSetup textarea, .feedSetup select { min-height: 44px; font-size: 16px; max-width: 100%; } }

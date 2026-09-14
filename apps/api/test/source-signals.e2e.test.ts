@@ -72,4 +72,13 @@ describe("Source Signal Desk", () => {
     const replay = await request(app.getHttpServer()).post(`/v1/signals/${first.id}/save?workspaceId=default`).set("if-match", "3").expect(201);
     expect(replay.body).toMatchObject({ signal: { state: "saved" }, contentItem: { id: saved.body.contentItem.id }, idempotentReplay: true });
   });
+  it("applies publication windows before limiting and validates filter inputs", async () => {
+    const recent = eventSignal("run-recent", "recent-release", "Recent release");
+    await infrastructure.sourceSignalRepository.ingest([{...recent,publishedAt:new Date(Date.now()-3600000).toISOString(),score:40}]);
+    const response = await request(app.getHttpServer()).get("/v1/signals?workspaceId=default&brandId=brand_default&sort=newest&recentHours=2&limit=1").expect(200);
+    expect(response.body.map((signal: {id:string}) => signal.id)).toEqual([recent.id]);
+    await request(app.getHttpServer()).get("/v1/signals?workspaceId=default&sort=invalid").expect(400);
+    await request(app.getHttpServer()).get("/v1/signals?workspaceId=default&recentHours=0").expect(400);
+  });
+
 });

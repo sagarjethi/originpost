@@ -1300,7 +1300,8 @@ const monitorWorker = new Worker<MonitorJob>(
         const completedAt = new Date().toISOString();
         const ranked = rankSourceSignals(monitor, { monitorRunId: run.id, provider: result.provider, model: result.model, ...(result.responseId ? { responseId: result.responseId } : {}), toolsUsed: result.toolsUsed, suggestions: result.suggestions, sources: result.sources, claims: result.claims }, completedAt);
         const ingested = await sourceSignalRepository.ingest(ranked);
-        const completed: MonitorRun = { ...run, status: "completed", provider: result.provider, ...(result.responseId ? { responseId: result.responseId } : {}), discoveredCount: result.sources.length, newCount: ingested.newCount, completedAt };
+        const sourceFailures = result.toolsUsed.filter(tool => tool.startsWith("feed_failed:") || tool.startsWith("collector_failed:"));
+        const completed: MonitorRun = { ...run, status: "completed", provider: result.provider, ...(result.responseId ? { responseId: result.responseId } : {}), ...(sourceFailures.length ? { reason: `Partial source failure: ${sourceFailures.map(value => value.split(":").slice(1).join(":")).join(", ").slice(0, 600)}` } : {}), discoveredCount: result.sources.length, newCount: ingested.newCount, completedAt };
         await monitorRepository.finishRun(completed, []);
         if (ingested.newCount > 0) {
           await notify({ workspaceId: monitor.workspaceId, kind: "monitor_new_findings", severity: ingested.signals.some((signal) => signal.urgency === "high" && signal.state === "new") ? "warning" : "info", title: `${ingested.newCount} new source ${ingested.newCount === 1 ? "signal" : "signals"}`, body: `${monitor.name} found ranked public-source updates. Review them in Signals before anything enters the Content Inbox.`, dedupeKey: `monitor:${monitor.id}:run:${run.id}:signals`, monitorId: monitor.id, actionUrl: "/?module=signals" });

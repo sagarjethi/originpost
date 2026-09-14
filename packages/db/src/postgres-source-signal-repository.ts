@@ -1,4 +1,4 @@
-import type { SourceSignal, SourceSignalRepository, SourceSignalState } from "@originpost/domain";
+import type { SourceSignal, SourceSignalRepository, SourceSignalState, SourceSignalListQuery } from "@originpost/domain";
 import type { Sql } from "postgres";
 
 type Row = { payload: SourceSignal };
@@ -39,14 +39,18 @@ export class PostgresSourceSignalRepository implements SourceSignalRepository {
     });
   }
 
-  async list(input: { workspaceId: string; brandId?: string; state?: SourceSignalState; monitorId?: string; search?: string; limit?: number }): Promise<SourceSignal[]> {
+  async list(input: SourceSignalListQuery): Promise<SourceSignal[]> {
     const limit = Math.max(1, Math.min(200, input.limit ?? 100)); const search = input.search?.trim() ? `%${input.search.trim()}%` : undefined;
     const rows = await this.sql<Row[]>`select payload from source_signals where workspace_id=${input.workspaceId}
       and (${input.brandId ?? null}::text is null or brand_id=${input.brandId ?? null})
       and (${input.state ?? null}::text is null or state=${input.state ?? null})
       and (${input.monitorId ?? null}::text is null or monitor_id=${input.monitorId ?? null})
       and (${search ?? null}::text is null or title ilike ${search ?? null} or payload::text ilike ${search ?? null})
-      order by score desc,last_seen_at desc limit ${limit}`;
+      and (${input.publishedAfter ?? null}::text is null or payload->>'publishedAt' >= ${input.publishedAfter ?? null})
+      and (${input.publishedBefore ?? null}::text is null or payload->>'publishedAt' is null or payload->>'publishedAt' <= ${input.publishedBefore ?? null})
+      order by case when ${input.sort ?? "priority"}='newest' then payload->>'publishedAt' end desc nulls last,
+      case when ${input.sort ?? "priority"}='discovered' then first_seen_at end desc nulls last,
+      case when ${input.sort ?? "priority"}='priority' then score end desc nulls last, first_seen_at desc,id asc limit ${limit} offset ${input.offset ?? 0}`;
     return rows.map((row) => row.payload);
   }
 

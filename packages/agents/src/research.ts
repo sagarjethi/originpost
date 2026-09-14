@@ -23,6 +23,8 @@ export interface SourcingResult {
     publishedAt?: string | undefined;
     excerpt?: string | undefined;
     confidence: number;
+    feedUrl?: string | undefined;
+    stableId?: string | undefined;
   }>;
   claims: Array<{
     text: string;

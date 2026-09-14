@@ -29,7 +29,7 @@ type Monitor = {
   languages: string[];
   region?: string;
   enabled: boolean;
-  health?: "paused" | "waiting" | "healthy" | "running" | "failed" | "stale" | "coalesced";
+  health?: "paused" | "waiting" | "healthy" | "degraded" | "running" | "failed" | "stale" | "coalesced";
   nextExpectedAt?: string | null;
   lastRun?: MonitorRun | null;
   runs?: MonitorRun[];
@@ -575,7 +575,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
         <div className="module-list-head"><div><h2>Monitoring schedule</h2><p>Global schedule for this workspace.</p></div><span>{loading ? "Loading…" : `${monitors.length} configured`}</span></div>
         {monitors.map((monitor) => <div className="monitor-block" key={monitor.id}>
           <article className="monitor-row">
-            <span className={`module-state ${monitor.health === "healthy" ? "online" : monitor.health === "failed" || monitor.health === "stale" ? "unhealthy" : ""}`}><Zap size={16} /></span>
+            <span className={`module-state ${monitor.health === "healthy" ? "online" : monitor.health === "failed" || monitor.health === "stale" || monitor.health === "degraded" ? "unhealthy" : ""}`}><Zap size={16} /></span>
             <div><strong>{monitor.name}</strong><p>{monitor.query}</p><small>{monitor.languages.join(" · ")}{monitor.region ? ` · ${monitor.region}` : ""}</small></div>
             <div className="monitor-time"><strong>Every {monitor.intervalMinutes}m</strong><small className={`monitor-health ${monitor.health ?? "waiting"}`}>{(monitor.health ?? "waiting").replace("coalesced", "overlap skipped")}</small><button onClick={() => void runMonitor(monitor)} disabled={!monitor.enabled}><RefreshCw size={12} /> Run now</button></div>
           </article>

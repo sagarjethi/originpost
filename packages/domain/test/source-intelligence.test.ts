@@ -74,3 +74,23 @@ describe("source intelligence", () => {
     expect(signal?.rankReasons).not.toContain("Strong source confidence");
   });
 });
+
+describe("feed provenance and freshness", () => {
+ const feedMonitor = { ...monitor, sourceIntelligence: prepareSourceIntelligenceConfig({sources:[{label:"Feed",url:"https://feed.example/rss.xml",kind:"rss_atom",priority:"trusted",enabled:true}],minimumScore:35}) };
+ const feedDiscovery = { monitorRunId:"feed-run",provider:"public-feeds",model:"rss-atom-v1",toolsUsed:["public_rss_atom"], sources:[{title:"Report",url:"https://publisher.example/article",feedUrl:"https://feed.example/rss.xml",publishedAt:"2026-09-01T01:00:00.000Z",confidence:50}], suggestions:[{title:"Report",summary:"A report",sourceUrls:["https://publisher.example/article"]}],claims:[{text:"Claim",status:"unverified" as const,sourceUrls:["https://publisher.example/article"]}] };
+ it("uses collector-attested feed provenance, and keeps the same identity when a headline changes", () => {
+  const first = rankSourceSignals(feedMonitor,feedDiscovery,"2026-09-01T02:00:00.000Z")[0]!;
+  expect(first.sources[0]?.url).toBe("https://publisher.example/article"); expect(first.claims[0]?.status).toBe("unverified");
+  expect(rankSourceSignals(feedMonitor,{...feedDiscovery,suggestions:[{...feedDiscovery.suggestions[0]!,title:"Corrected report"}]},"2026-09-01T02:00:00.000Z")[0]?.id).toBe(first.id);
+  expect(rankSourceSignals(feedMonitor,{...feedDiscovery,provider:"hermes"},"2026-09-01T02:00:00.000Z")).toEqual([]);
+ });
+ it("filters publication time before limiting, sorts newest, and never confuses repeat observation with publication", async () => {
+  const repository = new InMemorySourceSignalRepository();
+  const first = rankSourceSignals(feedMonitor,feedDiscovery,"2026-09-01T02:00:00.000Z")[0]!;
+  await repository.ingest([{...first,id:"old",publishedAt:"2026-08-01T00:00:00.000Z",score:100,lastSeenAt:"2026-09-02T00:00:00.000Z"},{...first,id:"new",score:40},{...first,id:"unknown",publishedAt:undefined,score:90}]);
+  const recent = await repository.list({workspaceId:"workspace-1",brandId:"brand-1",sort:"newest",publishedAfter:"2026-09-01T00:00:00.000Z",limit:1});
+  expect(recent.map(signal=>signal.id)).toEqual(["new"]);
+  expect((await repository.list({workspaceId:"workspace-1",sort:"newest"})).map(signal=>signal.id)).toEqual(["new","old","unknown"]);
+  expect(await repository.list({workspaceId:"other"})).toEqual([]);
+ });
+});

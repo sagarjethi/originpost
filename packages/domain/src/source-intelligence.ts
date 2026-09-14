@@ -54,6 +54,7 @@ export interface SourceSignal {
   claims: Array<{ id: string; text: string; status: "unverified" | "supported" | "disputed" | "rejected"; sourceIds: string[] }>;
   discovery: { query: string; provider: string; model: string; responseId?: string | undefined; toolsUsed: string[] };
   occurrenceCount: number;
+  publishedAt?: string | undefined;
   firstSeenAt: string;
   lastSeenAt: string;
   contentItemId?: string | undefined;
@@ -67,9 +68,15 @@ export interface SourceSignal {
   saveLeaseExpiresAt?: string | undefined;
 }
 
+export interface SourceSignalListQuery {
+  workspaceId: string; brandId?: string | undefined; state?: SourceSignalState | undefined;
+  monitorId?: string | undefined; search?: string | undefined; limit?: number | undefined; offset?: number | undefined;
+  publishedAfter?: string | undefined; publishedBefore?: string | undefined; sort?: "priority" | "newest" | "discovered" | undefined;
+}
+
 export interface SourceSignalRepository {
   ingest(signals: SourceSignal[]): Promise<{ signals: SourceSignal[]; newCount: number; updatedCount: number }>;
-  list(input: { workspaceId: string; brandId?: string | undefined; state?: SourceSignalState | undefined; monitorId?: string | undefined; search?: string | undefined; limit?: number | undefined }): Promise<SourceSignal[]>;
+  list(input: SourceSignalListQuery): Promise<SourceSignal[]>;
   get(workspaceId: string, id: string): Promise<SourceSignal | null>;
   claimSave(input: { workspaceId: string; id: string; expectedVersion: number; actorId: string; at: string; claimId: string; leaseExpiresAt: string; contentItemId: string }): Promise<SourceSignal | null>;
   finishSave(input: { workspaceId: string; id: string; expectedVersion: number; actorId: string; at: string; claimId: string; contentItemId: string }): Promise<SourceSignal | null>;
@@ -84,7 +91,7 @@ export interface SourceIntelligenceDiscovery {
   responseId?: string | undefined;
   toolsUsed: string[];
   suggestions: Array<{ title: string; summary: string; sourceUrls: string[] }>;
-  sources: Array<{ title: string; url: string; publisher?: string | undefined; publishedAt?: string | undefined; excerpt?: string | undefined; confidence: number; stableId?: string | undefined }>;
+  sources: Array<{ title: string; url: string; publisher?: string | undefined; publishedAt?: string | undefined; excerpt?: string | undefined; confidence: number; stableId?: string | undefined; feedUrl?: string | undefined }>;
   claims: Array<{ text: string; status: "unverified" | "supported" | "disputed" | "rejected"; sourceUrls: string[] }>;
 }
 
@@ -152,8 +159,10 @@ export function rankSourceSignals(monitor: MonitorRule, discovery: SourceIntelli
   const config = monitor.sourceIntelligence;
   if (!config || config.mode !== "tracked_sources") return [];
   const candidates: SourceSignal[] = [];
-  for (const suggestion of discovery.suggestions.slice(0, 20)) {
-    const selected = discovery.sources.filter((source) => suggestion.sourceUrls.includes(source.url)).filter((source) => config.sources.some((tracked) => tracked.enabled && urlWithinSource(source.url, tracked))).slice(0, 20);
+  const matchesTracked = (source: SourceIntelligenceDiscovery["sources"][number], tracked: TrackedPublicSource) =>
+    tracked.enabled && ((["public-feeds", "public-tracked"].includes(discovery.provider) && tracked.kind === "rss_atom" && source.feedUrl === tracked.url) || urlWithinSource(source.url, tracked));
+  for (const suggestion of discovery.suggestions.slice(0, 500)) {
+    const selected = discovery.sources.filter((source) => suggestion.sourceUrls.includes(source.url)).filter((source) => config.sources.some((tracked) => matchesTracked(source, tracked))).slice(0, 20);
     if (!selected.length) continue;
     const combined = [suggestion.title, suggestion.summary, ...selected.map((source) => `${source.title} ${source.excerpt ?? ""}`)].join(" ").normalize("NFC").toLocaleLowerCase("en-US");
     if (config.excludeTerms.some((term) => combined.includes(term))) continue;
@@ -164,19 +173,21 @@ export function rankSourceSignals(monitor: MonitorRule, discovery: SourceIntelli
       const published = source.publishedAt ? Date.parse(source.publishedAt) : Number.NaN;
       return Number.isFinite(published) && published <= nowTime && nowTime - published <= monitor.freshnessHours * 3_600_000;
     });
-    const selectedTrackedSources = config.sources.filter((tracked) => tracked.enabled && selected.some((source) => urlWithinSource(source.url, tracked)));
+    const selectedTrackedSources = config.sources.filter((tracked) => selected.some((source) => matchesTracked(source, tracked)));
     const sourcePriority = selectedTrackedSources.some((source) => source.priority === "primary") ? "primary" : selectedTrackedSources.some((source) => source.priority === "trusted") ? "trusted" : "context";
     const priorityScore = sourcePriority === "primary" ? 10 : sourcePriority === "trusted" ? 5 : 0;
     let score = 35 + priorityScore + Math.min(30, matchedTerms.length * 10) + (selected.length >= 2 && publisherCount >= 2 ? 15 : 0) + (fresh ? 10 : 0);
     score = Math.min(100, score); if (score < config.minimumScore) continue;
     const eventReferences = selected.map((source) => source.stableId?.trim() || canonicalPublicUrl(source.url)).sort();
     const normalizedTitle = suggestion.title.normalize("NFC").trim().toLocaleLowerCase("en-US").replace(/\s+/gu, " ");
-    const eventFingerprint = signalSha256({ schemaVersion: "originpost.source-event.v1", title: normalizedTitle, references: eventReferences });
+    const feedEntry = selected.some(source => source.feedUrl) && ["public-feeds", "public-tracked"].includes(discovery.provider);
+    const eventFingerprint = signalSha256(feedEntry ? { schemaVersion: "originpost.feed-event.v1", references: selected.map(source => canonicalPublicUrl(source.url)).sort() } : { schemaVersion: "originpost.source-event.v1", title: normalizedTitle, references: eventReferences });
+    const publishedAt = selected.map(source => source.publishedAt).filter((value): value is string => Boolean(value) && Number.isFinite(Date.parse(value!)) && Date.parse(value!) <= nowTime).sort().at(-1);
     const sourceIds = new Map<string, string>();
     const sources: SourceEvidence[] = selected.map((source) => { const id = `source_${signalSha256(canonicalPublicUrl(source.url)).slice(0, 24)}`; sourceIds.set(source.url, id); return { id, kind: "url", title: source.title.slice(0, 300), url: source.url, ...(source.publisher ? { publisher: source.publisher } : {}), ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}), confidence: Math.max(0, Math.min(100, Math.round(source.confidence))), rights: "reference-only", capturedAt: now, ...(source.excerpt ? { notes: source.excerpt.slice(0, 1500) } : {}) }; });
     const claims = discovery.claims.filter((claim) => claim.sourceUrls.some((url) => sourceIds.has(url))).slice(0, 50).map((claim) => ({ id: `claim_${signalSha256([claim.text, ...claim.sourceUrls]).slice(0, 24)}`, text: claim.text.slice(0, 1000), status: claim.status, sourceIds: [...new Set(claim.sourceUrls.map((url) => sourceIds.get(url)).filter((id): id is string => Boolean(id)))] }));
     const rankReasons = ["Tracked source", ...(sourcePriority === "primary" ? ["Primary source"] : sourcePriority === "trusted" ? ["Trusted source"] : []), ...(matchedTerms.length ? [`Matched ${matchedTerms.slice(0, 3).join(", ")}`] : []), ...(selected.length >= 2 && publisherCount >= 2 ? ["Multiple publishers"] : []), ...(fresh ? ["Fresh result"] : [])];
-    candidates.push({ id: `signal_${signalSha256([monitor.workspaceId, monitor.id, eventFingerprint]).slice(0, 32)}`, workspaceId: monitor.workspaceId, brandId: monitor.brandId, monitorId: monitor.id, monitorRunId: discovery.monitorRunId, version: 1, state: "new", urgency: score >= 80 ? "high" : score >= 60 ? "normal" : "low", score, rankReasons, eventFingerprint, title: suggestion.title.trim().slice(0, 300), summary: suggestion.summary.trim().slice(0, 2000), sources, claims, discovery: { query: monitor.query, provider: discovery.provider, model: discovery.model, ...(discovery.responseId ? { responseId: discovery.responseId } : {}), toolsUsed: [...new Set(discovery.toolsUsed)].slice(0, 30) }, occurrenceCount: 1, firstSeenAt: now, lastSeenAt: now });
+    candidates.push({ id: `signal_${signalSha256([monitor.workspaceId, monitor.id, eventFingerprint]).slice(0, 32)}`, workspaceId: monitor.workspaceId, brandId: monitor.brandId, monitorId: monitor.id, monitorRunId: discovery.monitorRunId, version: 1, state: "new", urgency: score >= 80 ? "high" : score >= 60 ? "normal" : "low", score, rankReasons, eventFingerprint, title: suggestion.title.trim().slice(0, 300), summary: suggestion.summary.trim().slice(0, 2000), sources, claims, discovery: { query: monitor.query, provider: discovery.provider, model: discovery.model, ...(discovery.responseId ? { responseId: discovery.responseId } : {}), toolsUsed: [...new Set(discovery.toolsUsed)].slice(0, 30) }, occurrenceCount: 1, ...(publishedAt ? {publishedAt} : {}), firstSeenAt: now, lastSeenAt: now });
   }
   return candidates.sort((a, b) => b.score - a.score || b.lastSeenAt.localeCompare(a.lastSeenAt));
 }
@@ -192,7 +203,7 @@ export function signalToContentItem(signal: SourceSignal, actor: Actor, now = ne
 export class InMemorySourceSignalRepository implements SourceSignalRepository {
   private readonly records = new Map<string, SourceSignal>();
   async ingest(signals: SourceSignal[]) { let newCount = 0; let updatedCount = 0; const stored: SourceSignal[] = []; for (const signal of signals) { const existing = this.records.get(signal.id); if (!existing) { this.records.set(signal.id, structuredClone(signal)); stored.push(structuredClone(signal)); newCount += 1; continue; } const next = { ...signal, version: existing.version + 1, state: existing.state, occurrenceCount: existing.occurrenceCount + 1, firstSeenAt: existing.firstSeenAt, ...(existing.contentItemId ? { contentItemId: existing.contentItemId, savedBy: existing.savedBy, savedAt: existing.savedAt } : {}), ...(existing.dismissedBy ? { dismissedBy: existing.dismissedBy, dismissedAt: existing.dismissedAt, dismissReason: existing.dismissReason } : {}), ...(existing.state === "saving" ? { pendingContentItemId: existing.pendingContentItemId, saveClaimId: existing.saveClaimId, saveLeaseExpiresAt: existing.saveLeaseExpiresAt } : {}) }; this.records.set(signal.id, structuredClone(next)); stored.push(structuredClone(next)); updatedCount += 1; } return { signals: stored, newCount, updatedCount }; }
-  async list(input: { workspaceId: string; brandId?: string; state?: SourceSignalState; monitorId?: string; search?: string; limit?: number }) { const search = input.search?.trim().toLocaleLowerCase("en-US"); return [...this.records.values()].filter((signal) => signal.workspaceId === input.workspaceId && (!input.brandId || signal.brandId === input.brandId) && (!input.state || signal.state === input.state) && (!input.monitorId || signal.monitorId === input.monitorId) && (!search || `${signal.title} ${signal.summary} ${signal.sources.map((source) => source.publisher ?? source.title).join(" ")}`.toLocaleLowerCase("en-US").includes(search))).sort((a, b) => b.score - a.score || b.lastSeenAt.localeCompare(a.lastSeenAt)).slice(0, Math.min(200, input.limit ?? 100)).map((signal) => structuredClone(signal)); }
+  async list(input: SourceSignalListQuery) { const search = input.search?.trim().toLocaleLowerCase("en-US"); return [...this.records.values()].filter((signal) => signal.workspaceId === input.workspaceId && (!input.brandId || signal.brandId === input.brandId) && (!input.state || signal.state === input.state) && (!input.monitorId || signal.monitorId === input.monitorId) && (!input.publishedAfter || Boolean(signal.publishedAt && signal.publishedAt >= input.publishedAfter)) && (!input.publishedBefore || !signal.publishedAt || signal.publishedAt <= input.publishedBefore) && (!search || `${signal.title} ${signal.summary} ${signal.sources.map((source) => source.publisher ?? source.title).join(" ")}`.toLocaleLowerCase("en-US").includes(search))).sort((a, b) => (input.sort === "newest" ? (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "") : input.sort === "discovered" ? b.firstSeenAt.localeCompare(a.firstSeenAt) : b.score - a.score) || b.firstSeenAt.localeCompare(a.firstSeenAt) || a.id.localeCompare(b.id)).slice(input.offset ?? 0, (input.offset ?? 0) + Math.min(200, input.limit ?? 100)).map((signal) => structuredClone(signal)); }
   async get(workspaceId: string, id: string) { const signal = this.records.get(id); return signal?.workspaceId === workspaceId ? structuredClone(signal) : null; }
   async claimSave(input: { workspaceId: string; id: string; expectedVersion: number; actorId: string; at: string; claimId: string; leaseExpiresAt: string; contentItemId: string }) { const current = this.records.get(input.id); if (!current || current.workspaceId !== input.workspaceId || current.version !== input.expectedVersion) return null; if (current.state !== "new" && !(current.state === "saving" && Date.parse(current.saveLeaseExpiresAt ?? "") <= Date.parse(input.at))) return null; const next: SourceSignal = { ...current, version: current.version + 1, state: "saving", pendingContentItemId: input.contentItemId, saveClaimId: input.claimId, saveLeaseExpiresAt: input.leaseExpiresAt }; this.records.set(input.id, structuredClone(next)); return structuredClone(next); }
   async finishSave(input: { workspaceId: string; id: string; expectedVersion: number; actorId: string; at: string; claimId: string; contentItemId: string }) { const current = this.records.get(input.id); if (!current || current.workspaceId !== input.workspaceId || current.version !== input.expectedVersion || current.state !== "saving" || current.saveClaimId !== input.claimId || current.pendingContentItemId !== input.contentItemId) return null; const next: SourceSignal = { ...current, version: current.version + 1, state: "saved", contentItemId: input.contentItemId, savedBy: input.actorId, savedAt: input.at }; delete next.pendingContentItemId; delete next.saveClaimId; delete next.saveLeaseExpiresAt; this.records.set(input.id, structuredClone(next)); return structuredClone(next); }

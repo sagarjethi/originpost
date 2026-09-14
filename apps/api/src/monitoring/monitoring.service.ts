@@ -23,12 +23,12 @@ export class MonitoringService {
       const now = Date.now();
       const lateAfterMs = monitor.intervalMinutes * 2 * 60_000 + 5 * 60_000;
       const anchor = lastRun?.startedAt ?? monitor.createdAt;
-      let health: "paused" | "waiting" | "healthy" | "running" | "failed" | "stale" | "coalesced" = "waiting";
+      let health: "paused" | "waiting" | "healthy" | "running" | "failed" | "stale" | "coalesced" | "degraded" = "waiting";
       if (!monitor.enabled) health = "paused";
       else if (lastRun?.status === "failed") health = "failed";
       else if (lastRun?.status === "running") health = now - new Date(lastRun.startedAt).getTime() > lateAfterMs ? "stale" : "running";
       else if (lastRun?.status === "skipped") health = "coalesced";
-      else if (lastRun?.status === "completed") health = now - new Date(lastRun.startedAt).getTime() > lateAfterMs ? "stale" : "healthy";
+      else if (lastRun?.status === "completed") health = now - new Date(lastRun.startedAt).getTime() > lateAfterMs ? "stale" : lastRun.reason?.startsWith("Partial source failure:") ? "degraded" : "healthy";
       else if (now - new Date(monitor.createdAt).getTime() > lateAfterMs) health = "stale";
       return {
         monitor,

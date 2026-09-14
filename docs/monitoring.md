@@ -15,7 +15,7 @@ OriginPost source monitors turn a saved topic into sourced inbox suggestions. A 
 - Each suggestion, its completed research record, source links, claim links, and deduplication fingerprints are committed together. A crash cannot save the suggestion while forgetting its deduplication record.
 - A monitor may create several content items in one run. The run keeps the first `contentItemId` for compatibility and all IDs in `contentItemIds`.
 - Monitor suggestions are tagged `multi-source` or `single-source`. The inbox shows a plain cross-check summary based on independent publishers and supported claims.
-- A monitor whose enabled tracked sources are exclusively `luma_city` uses the built-in read-only Mumbai adapter instead of the configured general research provider. Mixed-source monitors remain on the configured provider so OriginPost never pretends one city-page read checked unrelated sources.
+- A monitor whose enabled tracked sources are exclusively `luma_city` uses the built-in read-only Mumbai adapter instead of the configured general research provider. Feed-only monitors use the public RSS/Atom collector; mixed Luma/feed monitors invoke each applicable collector explicitly. Partial failure is reported as degraded health.
 
 ## Operator view
 
@@ -27,6 +27,7 @@ Health meanings:
 - `waiting` — enabled, but no run has completed yet.
 - `healthy` — the latest run completed inside the expected time window.
 - `running` — a check is active.
+- `degraded` — some configured sources failed while others completed; inspect the run reason.
 - `failed` — the latest run failed and shows its error.
 - `stale` — no recent run arrived within two intervals plus five minutes.
 - `coalesced` — an overlapping job was skipped because another run already held the lock.
