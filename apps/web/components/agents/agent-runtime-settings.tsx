@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, type AuthView } from "../../lib/api-client";
 import styles from "./agent-runtime-settings.module.css";
 
-type RuntimePreset = "openai" | "openrouter" | "ollama" | "custom";
+type RuntimePreset = "openai" | "openrouter" | "ollama" | "custom" | "codex-local";
 type RuntimeStatus = "unverified" | "healthy" | "error" | "disabled";
 type RuntimeProfile = { id:string; version:number; name:string; preset:RuntimePreset; baseUrl:string; textModel:string; visionModel?:string; credentialConfigured:boolean; status:RuntimeStatus; lastCheckedAt?:string; lastError?:string; updatedAt:string };
 type RuntimeAssignment = { workspaceId:string; brandId:string; profileId:string; assignedAt:string };
@@ -14,6 +14,7 @@ type RuntimeView = { profiles:RuntimeProfile[]; assignment:RuntimeAssignment|nul
 
 const emptyView:RuntimeView={profiles:[],assignment:null,runs:[],serverHermes:{configured:false,fallbackOnlyWhenUnassigned:true}};
 const presetCopy:Record<RuntimePreset,{label:string;hint:string;baseUrl:string;modelPlaceholder:string}>={
+  "codex-local":{label:"Local Codex",hint:"Writing and image review through your signed-in local Codex bridge",baseUrl:"Server-configured local bridge",modelPlaceholder:"Exact model configured on the bridge"},
   openai:{label:"OpenAI",hint:"OpenAI-hosted text models",baseUrl:"https://api.openai.com/v1",modelPlaceholder:"Your approved OpenAI model"},
   openrouter:{label:"OpenRouter",hint:"Use one key across supported model providers",baseUrl:"https://openrouter.ai/api/v1",modelPlaceholder:"provider/model-name"},
   ollama:{label:"Ollama",hint:"A trusted local OpenAI-compatible server",baseUrl:"http://host.docker.internal:11434/v1",modelPlaceholder:"Your installed Ollama model"},
@@ -56,7 +57,7 @@ export function AgentRuntimeSettings({auth,workspaceId,brandId}:{auth:AuthView;w
       <label>Text model<input name="textModel" required maxLength={160} placeholder={presetCopy[preset].modelPlaceholder}/></label>
       <label>Vision model for image review<input name="visionModel" maxLength={160} placeholder="Exact model ID that accepts image input"/></label>
       <p>News-post creation needs a tested vision model. Testing sends a small generated color sample and uses your provider’s image-input allowance. This checks the connection, not editorial accuracy.</p>
-      <label>Provider key <span>{preset==="ollama"?"Optional":"Required for hosted providers"}</span><input name="apiKey" type="password" autoComplete="new-password" maxLength={1000} required={preset==="openai"||preset==="openrouter"} placeholder="Saved encrypted; never shown again"/></label>
+      <label>{preset==="codex-local"?"Local bridge token":"Provider key"} <span>{preset==="ollama"?"Optional":"Required for hosted providers"}</span><input name="apiKey" type="password" autoComplete="new-password" maxLength={1000} required={preset==="openai"||preset==="openrouter"||preset==="codex-local"} placeholder="Saved encrypted; never shown again"/></label>
       <div className={styles.formFoot}><p><KeyRound size={14}/>Saving does not test or assign the provider.</p><button className={styles.primary} disabled={busy==="create"}>{busy==="create"?<Loader2 className={styles.spin} size={14}/>:<PlugZap size={14}/>}Save runtime</button></div>
     </form>:null}
     <div className={styles.cards}>{view.profiles.map((profile)=><article key={profile.id} className={`${styles.card} ${styles[profile.status]}`}>

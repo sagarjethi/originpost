@@ -5,7 +5,7 @@ export class AgentRuntimeQueryDto { @IsOptional() @IsString() @MaxLength(100) wo
 export class CreateAgentRuntimeDto {
   @IsOptional() @IsString() @MaxLength(100) workspaceId?:string;
   @IsString() @MinLength(2) @MaxLength(100) name!:string;
-  @IsIn(["openai","openrouter","ollama","custom"]) preset!:"openai"|"openrouter"|"ollama"|"custom";
+  @IsIn(["openai","openrouter","ollama","custom","codex-local"]) preset!:"openai"|"openrouter"|"ollama"|"custom"|"codex-local";
   @IsOptional() @IsUrl({protocols:["http","https"],require_protocol:true}) @MaxLength(500) baseUrl?:string;
   @IsString() @MinLength(1) @MaxLength(160) textModel!:string;
   @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(160) visionModel?:string;

@@ -14,6 +14,29 @@ describe("workspace AI runtime",()=>{
   let app:NestFastifyApplication;
   beforeAll(async()=>{Object.assign(process.env,{NODE_ENV:"test",AUTH_MODE:"single-user",DATABASE_URL:"",REDIS_URL:"",BOOTSTRAP_USER_ID:"runtime-owner",BOOTSTRAP_USER_NAME:"Runtime Owner",REVIEW_LINK_SECRET:"runtime-review-secret-with-more-than-32-characters",MEDIA_DELIVERY_SECRET:"runtime-media-secret-with-more-than-32-characters",CREDENTIAL_ENCRYPTION_KEY:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",AUTOMATION_DELIVERY_ENABLED:"false"});const fixture=await Test.createTestingModule({imports:[AppModule]}).compile();app=fixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter({logger:false}));configureApp(app,app.get(ConfigService));await startE2eApp(app);});
   afterAll(async()=>{vi.unstubAllGlobals();await app.close();});
+  it("routes Local Codex only through a configured single-owner endpoint", async () => {
+    const config=app.get(ConfigService), original=config.get.bind(config);
+    let route:string|undefined, authMode="single-user";
+    const spy=vi.spyOn(config,"get").mockImplementation(((key:string,...args:unknown[])=>key==="LOCAL_CODEX_BASE_URL"?route:key==="AUTH_MODE"?authMode:original(key,...args as [])) as typeof config.get);
+    const service=app.get(AgentRuntimeService), actor={id:"runtime-owner",name:"Runtime Owner",role:"owner" as const};
+    const input={workspaceId:"default",name:"Local Codex test",preset:"codex-local" as const,baseUrl:"https://attacker.invalid/v1",textModel:"test-codex",apiKey:"local-bridge-secret"};
+    try {
+      await expect(service.create("default",input,actor)).rejects.toThrow("Start the local Codex bridge");
+      route="http://attacker.invalid/v1";
+      await expect(service.create("default",input,actor)).rejects.toThrow("server-owned local HTTP");
+      route="http://127.0.0.1:8765/v1";
+      authMode="sessions";
+      await expect(service.create("default",input,actor)).rejects.toThrow("single-owner");
+      authMode="single-user";
+      const created=await service.create("default",input,actor);
+      expect(created).toMatchObject({preset:"codex-local",baseUrl:"http://127.0.0.1:8765/v1",credentialConfigured:true});
+      const calls:string[]=[];
+      vi.stubGlobal("fetch",vi.fn(async(url:RequestInfo|URL)=>{calls.push(String(url));return new Response(JSON.stringify({data:[{id:"test-codex"}]}),{status:200});}));
+      route="http://host.docker.internal:8765/v1";
+      expect((await service.test("default",created.id,actor)).ok).toBe(true);
+      expect(calls).toEqual(["http://host.docker.internal:8765/v1/models"]);
+    }finally{spy.mockRestore();vi.unstubAllGlobals();}
+  });
   it("encrypts a BYOK key, tests and assigns the runtime, then records a draft run without prompt text",async()=>{
     const calls:Array<{url:string;authorization?:string}>=[];vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{calls.push({url:String(input),...(typeof (init?.headers as Record<string,string>|undefined)?.authorization==="string"?{authorization:(init!.headers as Record<string,string>).authorization}:{})});if(String(input).endsWith("/models"))return new Response(JSON.stringify({data:[{id:"openai/gpt-test"}]}),{status:200});return new Response(JSON.stringify({id:"completion-1",model:"openai/gpt-test",choices:[{message:{content:"A clear tested caption"}}],usage:{prompt_tokens:20,completion_tokens:5,total_tokens:25}}),{status:200});}));
     const created=await request(app.getHttpServer()).post("/v1/agent-runtimes").send({workspaceId:"default",name:"Editorial OpenRouter",preset:"openrouter",textModel:"openai/gpt-test",apiKey:"runtime-secret"}).expect(201);

@@ -532,3 +532,9 @@ News leads now have a **Create post** link into the active brand’s Agent works
 ### Live research boundary and local Codex acceptance
 
 Runtime inspection found the development worker configured for mock research. Post creation now distinguishes feed collection from live research readiness; mock or unknown-provider research receipts cannot advance to writing or pass chat publishing. The installed, signed-in Codex CLI separately passed a live colour-panel image-input test. This establishes a local vision capability, not a connected product adapter or an image-generation/publication acceptance run. The personal Hermes installation was left intact.
+
+### Local Codex connection checkpoint
+
+The Local Codex runtime preset now routes writing, copy review and image review through a version-pinned loopback bridge. It uses fresh tool-disabled CLI processes, existing encrypted runtime credentials and usage records. The host and Docker API use separate server-owned routes; arbitrary private endpoints remain disabled. This personal-login preset is limited to single-owner mode. Research and image generation are not exposed through this bridge. See [setup and verification](local-codex-bridge.md).
+
+Local acceptance now includes the product’s vision probe and a real Gujarati draft request through the Docker API, with recorded usage and no publication. The active brand has the tested Local Codex profile assigned.

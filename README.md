@@ -92,3 +92,5 @@ Open [localhost:3000](http://localhost:3000). Keep `.env` private. Default local
 ## License
 
 OriginPost is open source under [AGPL-3.0-only](LICENSE).
+
+For a single-owner local setup, [connect Codex](docs/local-codex-bridge.md) to write and check images using your ChatGPT sign-in. Live news research and image generation are separate connections.

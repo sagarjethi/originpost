@@ -3,7 +3,7 @@ import { DomainError } from "./errors.js";
 import { can } from "./permissions.js";
 import type { Actor, AuditEvent } from "./types.js";
 
-export type AgentRuntimePreset = "openai" | "openrouter" | "ollama" | "custom";
+export type AgentRuntimePreset = "openai" | "openrouter" | "ollama" | "custom" | "codex-local";
 export type AgentRuntimeStatus = "unverified" | "healthy" | "error" | "disabled";
 
 export interface AgentRuntimeProfile {
@@ -87,7 +87,7 @@ const clean = (value: string, maximum: number, label: string) => {
 };
 
 export function normalizeAgentRuntimeBaseUrl(preset: AgentRuntimePreset, raw?: string): string {
-  const fixed = preset === "openai" ? "https://api.openai.com/v1" : preset === "openrouter" ? "https://openrouter.ai/api/v1" : undefined;
+  const fixed = preset === "codex-local" ? "http://127.0.0.1:8765/v1" : preset === "openai" ? "https://api.openai.com/v1" : preset === "openrouter" ? "https://openrouter.ai/api/v1" : undefined;
   const value = fixed ?? raw?.trim();
   if (!value) throw new DomainError("Add the provider base URL.", "agent_runtime_url_required");
   let url: URL;
@@ -98,7 +98,7 @@ export function normalizeAgentRuntimeBaseUrl(preset: AgentRuntimePreset, raw?: s
 
 export function createAgentRuntimeProfile(input: { id?: string; workspaceId: string; name: string; preset: AgentRuntimePreset; baseUrl?: string; textModel: string; visionModel?: string; credentialConfigured: boolean; actor: Actor; now?: string }): { profile: AgentRuntimeProfile; event: AuditEvent } {
   if (input.actor.actorType && input.actor.actorType !== "human" || !can(input.actor.role, "workspace:manage")) throw new DomainError("Only a workspace owner can add an AI runtime.", "permission_denied", 403);
-  if ((input.preset === "openai" || input.preset === "openrouter") && !input.credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
+  if ((["openai", "openrouter", "codex-local"].includes(input.preset)) && !input.credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
   const now = input.now ?? new Date().toISOString();
   const profile: AgentRuntimeProfile = {
     id: input.id ?? `agent_runtime_${randomUUID()}`,
@@ -122,7 +122,7 @@ export function reviseAgentRuntimeProfile(current: AgentRuntimeProfile, input: {
   if (input.actor.actorType && input.actor.actorType !== "human" || !can(input.actor.role, "workspace:manage")) throw new DomainError("Only a workspace owner can change an AI runtime.", "permission_denied", 403);
   const now = input.now ?? new Date().toISOString();
   const credentialConfigured = input.credentialConfigured ?? current.credentialConfigured;
-  if ((current.preset === "openai" || current.preset === "openrouter") && !credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
+  if ((["openai", "openrouter", "codex-local"].includes(current.preset)) && !credentialConfigured) throw new DomainError("This provider needs an API key.", "agent_runtime_key_required", 409);
   const changedConnection = input.baseUrl !== undefined || input.textModel !== undefined || input.visionModel !== undefined || input.credentialConfigured !== undefined;
   const profile: AgentRuntimeProfile = { ...current, version: current.version + 1, name: input.name === undefined ? current.name : clean(input.name, 100, "Runtime name"), baseUrl: input.baseUrl === undefined ? current.baseUrl : normalizeAgentRuntimeBaseUrl(current.preset, input.baseUrl), textModel: input.textModel === undefined ? current.textModel : clean(input.textModel, 160, "Text model"), credentialConfigured, status: input.disabled === true ? "disabled" : input.disabled === false ? "unverified" : current.status === "disabled" ? "disabled" : changedConnection ? "unverified" : current.status, updatedAt: now };
   if (input.visionModel !== undefined) {

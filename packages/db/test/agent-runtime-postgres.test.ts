@@ -13,6 +13,14 @@ suite("Postgres workspace AI runtime repository",()=>{
   const sql=postgres(databaseUrl!);const repository=new PostgresAgentRuntimeRepository(sql);
   beforeAll(async()=>{await sql`insert into workspaces(id,name,slug,created_at) values(${workspaceId},'Agent runtime integration','agent-runtime-integration',${at}) on conflict(id) do nothing`;await sql`insert into auth_users(id,email,display_name,password_hash,status,created_at,updated_at) values(${ownerId},'agent-runtime@example.invalid','Runtime owner','disabled','active',${at},${at}) on conflict(id) do nothing`;await sql`insert into brands(id,workspace_id,name,slug,primary_language,timezone,status,created_by,created_at,updated_at) values(${brandId},${workspaceId},'Runtime brand','runtime','English','UTC','active',${ownerId},${at},${at}) on conflict(id) do nothing`;});
   afterAll(async()=>{await sql`delete from agent_run_ledger where workspace_id=${workspaceId}`;await sql`delete from agent_runtime_assignments where workspace_id=${workspaceId}`;await sql`delete from agent_runtime_profiles where workspace_id=${workspaceId}`;await sql`delete from workspaces where id=${workspaceId}`;await sql`delete from auth_users where id=${ownerId}`;await sql.end();});
+  it("persists a local Codex profile without storing its token in public profile data",async()=>{
+    const created=createAgentRuntimeProfile({workspaceId,name:"Local Codex",preset:"codex-local",textModel:"test-codex",visionModel:"test-codex",credentialConfigured:true,actor,now:at});
+    await repository.createProfile(created.profile,{keyVersion:"v1",algorithm:"aes-256-gcm",iv:"AAAAAAAAAAAAAAAA",authTag:"AAAAAAAAAAAAAAAAAAAAAA==",ciphertext:"dGVzdA=="},created.event);
+    const restored=await repository.getProfile(workspaceId,created.profile.id);
+    expect(restored).toEqual(created.profile);
+    expect(restored).not.toHaveProperty("credential");
+    await sql`delete from agent_runtime_profiles where workspace_id=${workspaceId} and id=${created.profile.id}`;
+  });
   it("round-trips encrypted execution context, healthy assignment, usage, and explicit unassignment",async()=>{
     const created=createAgentRuntimeProfile({id:"runtime-postgres",workspaceId,name:"Editorial runtime",preset:"custom",baseUrl:"https://models.example.invalid/v1",textModel:"editorial-model",visionModel:"visual-model",credentialConfigured:true,actor,now:at});
     const credential:AgentRuntimeCredential={keyVersion:"v1",algorithm:"aes-256-gcm",iv:"aXY=",authTag:"dGFn",ciphertext:"Y2lwaGVydGV4dA=="};
