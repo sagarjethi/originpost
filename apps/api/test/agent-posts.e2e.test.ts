@@ -841,6 +841,32 @@ describe("news post workflow with external providers substituted", () => {
     expect(packet.claims).toEqual(item.claims);
     expect(packet.sources).toEqual(item.sources);
     expect(item.approvals).toHaveLength(0);
+
+    const route = `/v1/agent-posts/${run.id}/copy-revisions`;
+    const corrected = {...run.copy!,caption:run.copy!.caption.replace("today", "according to the council")};
+    const payload = {workspaceId:"default",brandId:"brand_default",expectedVersion:run.version,copy:corrected};
+    const submit = (body:unknown,key="correct-review-draft") => request(app.getHttpServer()).post(route).set("Idempotency-Key",key).send(body);
+    await request(app.getHttpServer()).post(route).send(payload).expect(428);
+    await submit({...payload,copy:run.copy}).expect(400);
+    await submit({...payload,expectedVersion:run.version-1}).expect(409);
+    await submit({...payload,brandId:"missing-brand"}).expect(404);
+    await submit({...payload,copy:{...corrected,unexpected:"field"}}).expect(400);
+    await expect(service.correctCopy("default",run.id,payload,"viewer-correction",{id:"viewer",name:"Viewer",role:"viewer"})).rejects.toMatchObject({code:"permission_denied"});
+    const contentSpy = vi.spyOn(infrastructure.repository,"get").mockResolvedValueOnce({...item,sources:[]});
+    try { await submit(payload,"changed-evidence-correction").expect(409); } finally { contentSpy.mockRestore(); }
+    const writesBefore = text.mock.calls.length;
+    const researchBefore = vi.mocked(infrastructure.researchQueue.add).mock.calls.length;
+    const saved = await submit(payload).expect(201);
+    expect(saved.body).toMatchObject({status:"reviewing-copy",parentRunId:run.id,contentItemId:run.contentItemId,researchRunId:run.researchRunId,evidenceHash:run.evidenceHash,copy:corrected});
+    for (const field of ["copyReview","imageReview","outputMediaId","externalImage","generationId","draftId","projectId"]) expect(saved.body[field]).toBeUndefined();
+    expect((await submit(payload).expect(201)).body.id).toBe(saved.body.id);
+    await submit({...payload,copy:{...corrected,headline:"Different headline"}}).expect(409);
+    expect(await infrastructure.agentPostRepository.get("default",run.id)).toEqual(run);
+    const checked = await advance(saved.body.id);
+    expect(checked).toMatchObject({status:"generating",copyReview:{status:"passed",copyHash:createHash("sha256").update(JSON.stringify(corrected)).digest("hex")}});
+    expect(text.mock.calls.length).toBe(writesBefore);
+    expect(vi.mocked(infrastructure.researchQueue.add).mock.calls.length).toBe(researchBefore);
+    expect(generate.mock.calls.length).toBe(before);
   });
   it("rejects repeated review categories instead of accepting four apparent passes", async () => {
     const before = generate.mock.calls.length;

@@ -40,6 +40,11 @@ export class RecoverAgentPostCompositionDto extends AgentPostQueryDto {
   @IsString() @Length(1, 200) projectId!: string;
 }
 
+export class CorrectAgentPostCopyDto extends AgentPostQueryDto {
+  @IsInt() @Min(1) expectedVersion!: number;
+  @IsObject() copy!: Record<string, unknown>;
+}
+
 export class AgentPostPublishPreviewDto extends AgentPostQueryDto {
   @IsIn(["originpost.publisher"]) recipientId!: "originpost.publisher";
   @IsString() @Length(1, 200) accountId!: string;

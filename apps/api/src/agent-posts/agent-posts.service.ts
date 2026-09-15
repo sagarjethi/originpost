@@ -37,6 +37,7 @@ import type {
   CreateAgentPostDto,
   ImportAgentPostImageDto,
   RecoverAgentPostCompositionDto,
+  CorrectAgentPostCopyDto,
 } from "./agent-posts.dto.js";
 
 const hash = (value: unknown) =>
@@ -622,6 +623,47 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         409,
       );
     return visible(next);
+  }
+  async correctCopy(w: string, parentId: string, dto: CorrectAgentPostCopyDto, key: string | undefined, actor: Actor) {
+    await this.authorize(w, dto.brandId, actor, true);
+    if (!key || key.length > 160) throw new DomainError("Provide a unique request key.", "idempotency_key_required", 428);
+    const parsed = agentPostCopySchema.safeParse(dto.copy);
+    if (!parsed.success) throw new DomainError("Provide a headline, caption and visual direction within the displayed limits.", "copy_invalid", 400);
+    const copy = parsed.data;
+    const id = `agent_post_${hash([w, actor.id, "copy-revision", key]).slice(0, 40)}`;
+    const fingerprint = hash([dto.brandId, parentId, dto.expectedVersion, copy]);
+    const existing = await this.store.get(w, id);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new DomainError("This request key belongs to another correction.", "idempotency_conflict", 409);
+      return visible(existing);
+    }
+    const parent = await this.store.get(w, parentId);
+    if (!parent || parent.brandId !== dto.brandId) throw new DomainError("Post run not found.", "not_found", 404);
+    if (parent.version !== dto.expectedVersion) throw new DomainError("This run changed. Refresh before correcting it.", "version_conflict", 409);
+    if (parent.status !== "blocked" || parent.inFlightUntil || !parent.copy || !parent.evidenceHash || parent.draftId || !(parent.copyReview?.status === "needs-changes" || parent.imageReview?.status === "needs-changes")) {
+      throw new DomainError("Only a draft stopped by copy or image review can use this correction flow.", "copy_correction_unavailable", 409);
+    }
+    if (hash(copy) === hash(parent.copy) && parent.imageReview?.status !== "needs-changes") throw new DomainError("Correct the review findings before submitting this draft again.", "copy_unchanged", 400);
+    const item = await this.content.get(w, parent.contentItemId);
+    if (item.brandId !== dto.brandId || parent.evidenceHash !== hash([item.claims, item.sources])) throw new DomainError("The sources changed. Start a new researched revision.", "evidence_changed", 409);
+    if (!parent.researchRunId || !hasLiveAgentResearch(item, parent.researchRunId)) throw new DomainError("A completed live research receipt is required.", "research_not_live", 409);
+    for (const ref of [parent.template.logo, ...parent.template.references]) {
+      const current = await this.asset(w, dto.brandId, ref.mediaId, ref.mediaId === parent.template.logo.mediaId);
+      if (current.sha256 !== ref.sha256) throw new DomainError("The template assets changed. Start a new revision.", "template_changed", 409);
+    }
+    // New immutable review candidate, sharing the still-unchanged evidence.
+    // No old approvals, reviews, images or provider operation IDs are inherited.
+    const now = new Date().toISOString();
+    const run: AgentPostRun = {
+      id, workspaceId: w, brandId: dto.brandId, createdBy: actor.id, createdAt: now, updatedAt: now,
+      version: 1, fingerprint, input: parent.input, template: structuredClone(parent.template),
+      conversationId: parent.conversationId ?? parent.id, parentRunId: parent.id,
+      requestMessage: "Editor corrected the draft for a new independent review.",
+      ...(parent.sourceLead ? {sourceLead: structuredClone(parent.sourceLead)} : {}),
+      contentItemId: item.id, researchRunId: parent.researchRunId, evidenceHash: parent.evidenceHash,
+      imageMode: parent.imageMode ?? "server", copy, status: "reviewing-copy",
+    };
+    return visible(await this.store.create(run));
   }
   private async recoveryRun(w: string, b: string, id: string, actor: Actor) {
     await this.authorize(w, b, actor, true);

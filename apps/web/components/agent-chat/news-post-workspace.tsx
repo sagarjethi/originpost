@@ -69,7 +69,7 @@ type Run = {
   generationId?: string;
   imageMode?: "server" | "codex-upload";
   projectId?: string;
-  copy?: { headline: string; caption: string };
+  copy?: { headline: string; caption: string; visualDirection: string };
   copyReview?: {
     status: "passed" | "needs-changes";
     reviewedAt: string;
@@ -190,6 +190,8 @@ export function NewsPostWorkspace({
   const [projectId, setProjectId] = useState("");
   const [boards, setBoards] = useState<Board[]>([]);
   const [recoveryOptions, setRecoveryOptions] = useState<{runId:string; projects:{id:string;name:string}[]} | null>(null);
+  const [correction, setCorrection] = useState<{runId:string; copy:NonNullable<Run["copy"]>} | null>(null);
+  const correctionSubmission = useRef<{key:string; fingerprint:string} | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState<"new" | "edit">("new");
   const contextRef = useRef<HTMLDialogElement>(null);
@@ -965,7 +967,7 @@ export function NewsPostWorkspace({
                 </p>
               )}
               {selectedRun.status === "uncertain" && selectedRun.imageMode === "codex-upload" && !selectedRun.outputMediaId && editable && (
-                <section className={styles.setup} aria-label="Recover saved composition">
+                <section className={`${styles.setup} ${styles.reviewActions}`} aria-label="Recover saved composition">
                   <p>If your picture finished in Creative Studio, reconnect the matching composition and continue the image checks.</p>
                   <button disabled={busy} onClick={async () => {
                     setBusy(true); setError("");
@@ -985,6 +987,35 @@ export function NewsPostWorkspace({
                       finally { setBusy(false); }
                     }}>Continue image checks · {project.name}</button>
                   )) : <p>No finished composition matches the saved image, copy and template yet. Open Creative Studio to inspect the retained work.</p>)}
+                </section>
+              )}
+              {selectedRun.status === "blocked" && selectedRun.copy && editable && (selectedRun.copyReview?.status === "needs-changes" || selectedRun.imageReview?.status === "needs-changes") && (
+                <section className={`${styles.setup} ${styles.reviewActions}`} aria-label="Correct reviewed draft">
+                  <strong>Correct the draft</strong>
+                  <p>Keep the completed research and correct the text or image instructions. A new version goes through both reviews; the original stays in this chat.</p>
+                  {correction?.runId !== selectedRun.id ? <button onClick={() => setCorrection({runId:selectedRun.id,copy:{...selectedRun.copy!}})}>Edit corrections</button> : (
+                    <form className={styles.correctionForm} onSubmit={async event => {
+                      event.preventDefault(); setBusy(true); setError("");
+                      const payload = {workspaceId,brandId,expectedVersion:selectedRun.version,copy:correction.copy};
+                      const fingerprint = JSON.stringify([selectedRun.id,payload]);
+                      const storageKey = `originpost:copy-correction:${auth.user.id}:${workspaceId}:${brandId}:${selectedRun.id}`;
+                      try { const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null"); if (saved?.fingerprint === fingerprint && typeof saved.key === "string") correctionSubmission.current = saved; } catch {}
+                      if (correctionSubmission.current?.fingerprint !== fingerprint) correctionSubmission.current = {key:crypto.randomUUID(),fingerprint};
+                      try { sessionStorage.setItem(storageKey,JSON.stringify(correctionSubmission.current)); } catch {}
+                      try {
+                        const run = await request<Run>(`/v1/agent-posts/${selectedRun.id}/copy-revisions`,{method:"POST",headers:{"content-type":"application/json","idempotency-key":correctionSubmission.current!.key},body:JSON.stringify(payload)});
+                        setRuns(old => [run,...old.filter(r => r.id !== run.id)]); choose(run.id); setCorrection(null); correctionSubmission.current = null;
+                        try { sessionStorage.removeItem(storageKey); } catch {}
+                      } catch(e) { setError(e instanceof Error ? e.message : "Corrections could not be saved."); }
+                      finally { setBusy(false); }
+                    }}>
+                      <label>Headline<textarea required maxLength={150} rows={2} value={correction.copy.headline} onChange={e => setCorrection({...correction,copy:{...correction.copy,headline:e.target.value}})} /></label>
+                      <label>Caption<textarea required maxLength={4000} rows={7} value={correction.copy.caption} onChange={e => setCorrection({...correction,copy:{...correction.copy,caption:e.target.value}})} /></label>
+                      <label>Image instructions<textarea required maxLength={2500} rows={5} value={correction.copy.visualDirection} onChange={e => setCorrection({...correction,copy:{...correction.copy,visualDirection:e.target.value}})} /></label>
+                      <p>{selectedRun.imageMode === "codex-upload" ? "After the copy check, upload a corrected Codex image using the new brief." : "After the copy check, the image provider creates a new image."}</p>
+                      <div><button type="submit" disabled={busy}>Save corrections and recheck</button><button type="button" disabled={busy} onClick={() => setCorrection(null)}>Cancel</button></div>
+                    </form>
+                  )}
                 </section>
               )}
               {selectedRun.status === "awaiting-image" && (
@@ -1303,7 +1334,7 @@ export function NewsPostWorkspace({
             </div>
           )}
         </div>
-        {(!selectedRun || canRevise) && (
+        {(!selectedRun || canRevise) && !(correction && correction.runId === selectedRun?.id) && (
           <form className={styles.composerDock} onSubmit={start}>
             <div className={styles.templateSelect}>
               <label htmlFor="post-template">Project template</label>

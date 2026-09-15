@@ -63,6 +63,8 @@ In Agent, choose **Generate in Codex & upload**. After research and writing, dow
 
 If the chat stops after the picture is saved, choose **Find saved composition**. A matching finished picture can continue through the image checks. The saved headline, logo and image must match before it can continue.
 
+If a review finds a mistake, choose **Edit corrections** to fix the headline, caption or image instructions. OriginPost keeps the original version, checks your corrections again, and reuses the completed research only while its sources remain unchanged.
+
 The uploaded image is recorded as editor-attested AI imagery, not a verified provider receipt. Tagging Codex alone does not yet publish a post. The final post still needs a connected account and review.
 
 [Verified Codex capabilities and integration plan](docs/research/2026-09-15-codex-image-workflow.md)

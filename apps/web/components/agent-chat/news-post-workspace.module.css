@@ -1078,6 +1078,11 @@
 .setup strong {
   font-size: 13px;
 }
+.setup.reviewActions { display: block; }
+.correctionForm { display: grid; gap: 14px; margin-top: 16px; }
+.correctionForm label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.correctionForm textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid #ccd1c9; border-radius: 8px; padding: 10px 12px; background: #fff; color: #222b27; font: inherit; font-weight: 400; line-height: 1.6; }
+.correctionForm > div { display: flex; gap: 18px; }
 .request {
   font-size: 14px;
 }
