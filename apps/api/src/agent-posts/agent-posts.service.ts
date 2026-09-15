@@ -24,7 +24,7 @@ import {
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
 import { MediaService } from "../media/media.service.js";
-import { boundedObjectBytes } from "../creative-studio/creative-renderer.js";
+import { boundedObjectBytes, CreativeRenderFailure, validateCreativeTextLayout } from "../creative-studio/creative-renderer.js";
 import { ContentService } from "../content/content.service.js";
 import { ImageGenerationService } from "../image-generation/image-generation.service.js";
 import { CreativeStudioService } from "../creative-studio/creative-studio.service.js";
@@ -840,6 +840,13 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
           "copy_review_required",
           409,
         );
+      // Text geometry can be checked before paying for or requesting an image.
+      try {
+        validateCreativeTextLayout(agentPostCreativeSpec(run, run.template.logo));
+      } catch (error) {
+        if (error instanceof CreativeRenderFailure) throw new DomainError(error.message, error.code, 409);
+        throw error;
+      }
       run.status =
         run.imageMode === "codex-upload" ? "awaiting-image" : "generating";
       return;

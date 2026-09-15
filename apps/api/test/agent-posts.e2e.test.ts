@@ -322,7 +322,7 @@ describe("news post workflow with external providers substituted", () => {
     expect(item.sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "source_lead",
+          id: expect.stringMatching(/^source_/),
           url: "https://example.org/lead",
           rights: "reference-only",
           confidence: 0,
@@ -345,6 +345,14 @@ describe("news post workflow with external providers substituted", () => {
       direction: "Use a shorter headline",
     } as typeof payload).expect(201);
     expect(revision.body.sourceLead).toEqual(first.body.sourceLead);
+    const revisedRun = await advance(revision.body.id);
+    expect(revisedRun.status).toBe("researching");
+    const revisedItem = (await infrastructure.repository.get("default", revisedRun.contentItemId))!;
+    const originalSource = item.sources.find(source => source.url === "https://example.org/lead")!;
+    const revisedSource = revisedItem.sources.find(source => source.url === originalSource.url)!;
+    expect(originalSource.id).not.toBe("source_lead");
+    expect(revisedSource.id).not.toBe(originalSource.id);
+    expect(revisedSource).toMatchObject({url: originalSource.url, snapshot: originalSource.snapshot, rights:"reference-only",confidence:0});
   });
 
   it("does not offer post creation when research is in mock mode", async () => {
@@ -1114,6 +1122,18 @@ describe("news post workflow with external providers substituted", () => {
     const brief = await request(app.getHttpServer()).get(`/v1/agent-posts/${waiting.id}/image-brief?brandId=brand_default`).expect(200);
     expect(brief.body.prompt).toContain("Reserve the top 48% for the headline");
     expect(brief.body.prompt).not.toContain("lower 45%");
+  });
+  it("blocks text overflow before requesting a paid image", async () => {
+    const before = generate.mock.calls.length;
+    text.mockResolvedValueOnce({text:JSON.stringify({headline:"X".repeat(120),caption:"A library opened. Which book would you borrow? Source: City council. #Library",visualDirection:"Illustrated books without words or logos."})});
+    const started = await start("preflight-overflow");
+    await research(started.body.id);
+    let run = await advance(started.body.id);
+    for(let i=0;i<5&&run.status!=="blocked";i++)run=await advance(run.id);
+    expect(run.status).toBe("blocked");
+    expect(run.error).toContain("does not fit");
+    expect(run.generationId).toBeUndefined();
+    expect(generate.mock.calls.length).toBe(before);
   });
   it("keeps the rendered image and blocks a mismatched OCR result before making a draft", async () => {
     const started = await start("image-text-mismatch");

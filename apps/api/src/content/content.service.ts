@@ -1,5 +1,6 @@
 import { ForbiddenException, Inject, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { createHash } from "node:crypto";
 import { InstagramOfficialConnector, type ConnectorMedia } from "@originpost/connectors";
 import {
   acknowledgeManualHandoff, addDraft, addDraftSchema, addExternalReviewComment, addReviewComment, addSource, addSourceSchema, approvalSchema, calendarScheduleCsv, can, collaboratorInviteProof, confirmManualPublication, confirmProviderPublication,
@@ -131,7 +132,14 @@ export class ContentService implements OnModuleInit {
     const parsed = createContentItemSchema.parse(dto);
     const brandId = await resolveActiveBrand(this.infrastructure.organizationRepository, parsed.workspaceId, parsed.brandId);
     const result = createContentItem({ ...parsed, brandId, actor });
-    result.item.sources = structuredClone(sources).map(source => ({ ...source, rights: "reference-only" as const, confidence: 0 }));
+    result.item.sources = structuredClone(sources).map(source => ({
+      ...source,
+      // Source rows belong to one content item. Revisions and separate posts
+      // retain the lead identity in the audit event, but cannot reuse its PK.
+      id: `source_${createHash("sha256").update(JSON.stringify([result.item.workspaceId, result.item.id, source.id])).digest("hex").slice(0, 32)}`,
+      rights: "reference-only" as const,
+      confidence: 0,
+    }));
     result.event.detail = { ...result.event.detail, discoveredSourceIds: sources.map(source => source.id) };
     return this.save(result);
   }

@@ -7,7 +7,7 @@ export const CREATIVE_FONT_VERSION = "noto-latin-gujarati-devanagari-v1";
 // Output encoding is part of immutable render identity. Bump whenever the
 // renderer changes bytes or MIME so an older ready asset cannot satisfy a new
 // render request (Story images changed from PNG to provider-safe JPEG in v3).
-export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v5-news-safe-area`;
+export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v6-headline-fit`;
 
 export class CreativeRenderFailure extends Error {
   constructor(readonly code: string, message: string, readonly field?: string) {
@@ -76,11 +76,22 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   const margin = story ? 120 : 72;
   const footerY = story ? height - 360 : height - margin;
   const maxWidth = spec.layout === "editorial" ? width * 0.58 - margin * 1.2 : width - margin * 2;
-  const headlineSize = story ? 94 : spec.format === "portrait" ? 82 : 74;
+  let headlineSize = story ? 94 : spec.format === "portrait" ? 82 : 74;
   const subtitleSize = story ? 38 : 32;
   const kickerSize = story ? 25 : 22;
   const footerSize = story ? 28 : 20;
-  const headlineLines = wrapCreativeText(spec.headline, headlineSize, maxWidth, spec.layout === "quote" ? 5 : spec.layout === "headline-top" ? 3 : 4, "headline");
+  const maxHeadlineLines = spec.layout === "quote" ? 5 : spec.layout === "headline-top" ? 3 : 4;
+  let headlineLines: string[];
+  const minimumHeadlineSize = spec.layout === "headline-top" ? Math.ceil(headlineSize * .85) : headlineSize;
+  for (;;) {
+    try {
+      headlineLines = wrapCreativeText(spec.headline, headlineSize, maxWidth, maxHeadlineLines, "headline");
+      break;
+    } catch (error) {
+      if (!(error instanceof CreativeRenderFailure) || error.code !== "headline_overflow" || headlineSize <= minimumHeadlineSize) throw error;
+      headlineSize = Math.max(minimumHeadlineSize, headlineSize - 2);
+    }
+  }
   const subtitleLines = spec.subtitle ? wrapCreativeText(spec.subtitle, subtitleSize, maxWidth, 4, "subtitle") : [];
   const kickerLines = spec.kicker ? wrapCreativeText(spec.kicker, kickerSize, maxWidth, 2, "kicker") : [];
   const footerLines = spec.footer ? wrapCreativeText(spec.footer, footerSize, width - margin * 2, 2, "footer") : [];
@@ -120,6 +131,11 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   const subtitle = subtitleLines.length ? `<text text-anchor="${anchor}" fill="${secondary}" font-family="${fontFamily}" font-size="${subtitleSize}" font-weight="520">${tspans(subtitleLines, x, cursor, subtitleSize * 1.32)}</text>` : "";
   const footer = footerLines.length ? `<line x1="${margin}" x2="${width - margin}" y1="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" y2="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" stroke="${accent}" stroke-width="3"/><text text-anchor="${spec.textAlign === "center" ? "middle" : "start"}" fill="${secondary}" font-family="${fontFamily}" font-size="${footerSize}" font-weight="650">${tspans(footerLines, spec.textAlign === "center" ? width / 2 : margin, footerY - footerSize * (footerLines.length - 1) * 1.25, footerSize * 1.25)}</text>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${panels}${kicker}${headline}${subtitle}${footer}</svg>`;
+}
+
+export function validateCreativeTextLayout(spec: CreativeSpec): void {
+  const { width, height } = creativeDimensions[spec.format];
+  textLayer(spec, width, height);
 }
 
 export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8Array, logoBytes?: Uint8Array): Promise<RenderedCreativeImage> {

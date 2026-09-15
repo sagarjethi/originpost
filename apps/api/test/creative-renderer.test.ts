@@ -95,3 +95,8 @@ it("keeps Story branding below the top control area and text above the bottom co
 it("wraps Gujarati words without treating dependent vowel marks as full letters",()=>{
  expect(wrapCreativeText("અહીં સમાચારનું શીર્ષક",94,840,3,"headline")).toEqual(["અહીં સમાચારનું","શીર્ષક"]);
 });
+it("fits a short Gujarati news headline within three large top-headline lines", async () => {
+  const rendered = await renderCreativeImage(spec("story", {layout:"headline-top",headline:"NASAના 10 અવકાશયાત્રી ઉમેદવારોની તાલીમ ચાલુ",subtitle:"",kicker:""}), await source());
+  expect(await sharp(rendered.bytes).metadata()).toMatchObject({width:1080,height:1920});
+  await expect(renderCreativeImage(spec("story", {layout:"headline-top",headline:"Longwordwithoutbreak".repeat(15),subtitle:"",kicker:""}),await source())).rejects.toMatchObject({code:"headline_overflow"});
+});
