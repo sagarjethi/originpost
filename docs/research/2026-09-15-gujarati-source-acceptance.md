@@ -25,3 +25,24 @@ The homepage's `rel=alternate` links were language alternatives, not advertised 
 The timeouts do not establish their cause, and one successful page view does not establish a reliable collector. Keep this source as a candidate for manual research. Before enabling it, verify a stable public endpoint, record the actual article-card structure, test extraction against a structural fixture, preserve date precision/timezone evidence and demonstrate a completed collection with source health and deduplication. Do not bypass publisher restrictions or copy personal browser cookies to the worker.
 
 The existing NASA, PIB, RBI and SEBI collections are unaffected. This candidate does not close the remaining Gujarati-publisher coverage requirement or establish exhaustive news coverage.
+
+## Wrapped-card extraction follow-up
+
+The bounded public transport subsequently retrieved the Gujarati homepage (HTTP
+200, 192,903 bytes) and its permissive robots file. The conventional `/gu/feed/`
+probe timed out; it is not an accepted feed.
+
+Inspection of the retrieved HTML identified a separate extraction gap: headline
+`h2`/`h3` elements sit inside whole-card anchors. The browser collector now supports
+those anchors, reads their accessible full headline, excludes the publisher's
+view counters and date labels from excerpts, and retains the richer excerpt when
+the same article appears in several sections. Offline Chrome extraction of the
+retrieved page found 19 article URLs. Relative Gujarati ages and date strings
+without an explicit timezone remain unknown publication dates.
+
+A real Chrome regression test covers wrapped Gujarati cards, duplicate cards,
+ordinary article markup, explicit timestamp conversion, and rejection of external
+or current-listing links. The six focused extraction/provider tests pass, as does
+worker typechecking. A subsequent production collector attempt still aborted.
+This fixes extraction coverage, but does not prove reliable live collection; the
+Gujarati monitor remains disabled pending successful live acceptance.
