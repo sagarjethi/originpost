@@ -47,6 +47,17 @@ export class AgentPostPublishingService {
     const item = await this.content.get(w, run.contentItemId);
     if (item.brandId !== b)
       throw new DomainError("Content scope changed.", "scope_mismatch", 409);
+    const research = item.researchRuns.find((r) => r.id === run.researchRunId);
+    if (
+      !research ||
+      research.status !== "completed" ||
+      research.provider !== "hermes"
+    )
+      throw new DomainError(
+        "A completed live research receipt is required before publishing this agent post. Test research does not verify news.",
+        "research_not_live",
+        409,
+      );
     const draft = item.drafts.find((d) => d.id === run.draftId);
     if (
       !draft ||

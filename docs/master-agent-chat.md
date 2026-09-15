@@ -528,3 +528,7 @@ New runs now inspect the finished image through a configured, sample-tested visi
 ### Source desk → Agent handoff checkpoint
 
 News leads now have a **Create post** link into the active brand’s Agent workspace. Starting the run validates the selected signal/version and snapshots its source records, including capture references. Revisions inherit that snapshot; subsequent crawler changes cannot replace it. The workflow creates a separate content item with reference-only, unverified sources, copies no discovery claim verdicts, and starts fresh research. The research worker now sends saved source links and bounded excerpts to the provider as explicitly untrusted leads. Creation still requires configured runtimes and human publication review; this checkpoint is not a live end-to-end provider/publication acceptance run.
+
+### Live research boundary and local Codex acceptance
+
+Runtime inspection found the development worker configured for mock research. Post creation now distinguishes feed collection from live research readiness; mock or unknown-provider research receipts cannot advance to writing or pass chat publishing. The installed, signed-in Codex CLI separately passed a live colour-panel image-input test. This establishes a local vision capability, not a connected product adapter or an image-generation/publication acceptance run. The personal Hermes installation was left intact.

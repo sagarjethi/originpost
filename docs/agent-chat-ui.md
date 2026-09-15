@@ -86,3 +86,9 @@ This automated check can be wrong, especially for small or non-Latin text. It ca
 Use **Create post** beside a new or saved lead. Agent loads the exact lead version and displays its original sources. Choose a template and image mode, edit the brief if needed, and submit. Opening the page alone does not start a paid run. Stale, dismissed, saving and other-brand leads cannot start; reopen the current lead from its source desk.
 
 The server snapshots the selected lead and capture metadata, carries those sources into a new content item as reference-only with zero verification confidence, and does not inherit crawler claim verdicts. Research receives the original links, dates and bounded excerpts as untrusted leads. The request includes up to 20 web references and states how many were omitted. A new research result, copy review, image review and human release approval are still required. Revisions retain the original lead snapshot; the original source-desk record remains independently available for triage.
+
+## Research configuration is separate from source collection
+
+RSS and public-page collection can run while the general research provider is in mock mode. That does not make mock results factual verification. Agent post creation now requires the research queue plus configured live Hermes sourcing, exposes a specific test-mode setup message, and rejects completed research receipts from other providers before writing. The chat publishing endpoint checks the exact completed live research receipt again, including for older ready runs. Test fixtures substitute the provider explicitly; no test result counts as live acceptance.
+
+Local Codex image input has now passed a real CLI smoke test using ChatGPT sign-in. An OriginPost adapter for that local capability remains separate work; see the [acceptance record](research/2026-09-15-codex-image-workflow.md#local-cli-image-input-acceptance--15-september-2026).

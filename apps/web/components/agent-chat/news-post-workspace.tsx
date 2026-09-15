@@ -97,6 +97,8 @@ type Capability = {
   codexUpload?: boolean;
   reason: string | null;
   research: boolean;
+  researchMode?: string;
+  researchReason?: string | null;
   text: boolean;
   imageReview?: boolean;
   storage: string;
@@ -862,9 +864,10 @@ export function NewsPostWorkspace({
               <div>
                 <strong>Finish connecting your studio</strong>
                 <p>
-                  {(activeImageMode === "codex-upload" && !capability?.text
-                    ? "Assign tested text and vision models for writing and image checks."
-                    : capability?.reason) ??
+                  {capability?.researchReason ??
+                    (activeImageMode === "codex-upload" && !capability?.text
+                      ? "Assign tested text and vision models for writing and image checks."
+                      : capability?.reason) ??
                     "The workflow API is not available on this server yet."}
                 </p>
                 <button onClick={() => setContextOpen(true)}>

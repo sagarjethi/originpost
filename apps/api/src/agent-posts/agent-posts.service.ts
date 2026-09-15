@@ -176,21 +176,30 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         )
       : Boolean(this.infrastructure.hermes);
     const imageReview = await this.runtimes.imageReviewCapability(w, b);
+    const researchMode = this.config.get<string>("AGENT_MODE") ?? "mock";
+    const research =
+      Boolean(this.infrastructure.researchQueue) &&
+      researchMode === "hermes" &&
+      Boolean(this.infrastructure.hermes);
+    const researchReason = !this.infrastructure.researchQueue
+      ? "Connect the research queue and worker."
+      : researchMode !== "hermes"
+        ? "Research is in test mode. Configure live Hermes research before creating news posts."
+        : !this.infrastructure.hermes
+          ? "Connect the Hermes research endpoint before creating news posts."
+          : null;
     return {
       imageReview,
-      codexUpload:
-        Boolean(this.infrastructure.researchQueue) && textReady && imageReview,
-      available:
-        Boolean(this.infrastructure.researchQueue) &&
-        image.generation &&
-        textReady &&
-        imageReview,
-      research: Boolean(this.infrastructure.researchQueue),
+      researchMode,
+      researchReason,
+      codexUpload: research && textReady && imageReview,
+      available: research && image.generation && textReady && imageReview,
+      research,
       image,
       text: textReady,
       storage: this.infrastructure.storageMode,
-      reason: !this.infrastructure.researchQueue
-        ? "Connect the research queue and worker."
+      reason: !research
+        ? researchReason
         : !image.generation
           ? image.reason
           : !textReady
@@ -320,7 +329,8 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     )
       throw new DomainError(
         dto.imageMode === "codex-upload"
-          ? "Connect the research queue and tested text and vision models."
+          ? (capability.researchReason ??
+            "Connect tested text and vision models.")
           : (capability.reason ?? "Post creation is not configured."),
         "agent_setup_required",
         503,
@@ -710,6 +720,12 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
           409,
         );
       if (research.status !== "completed") return;
+      if (research.provider !== "hermes")
+        throw new DomainError(
+          "This research receipt is not from the live research provider. Test results cannot verify a news post.",
+          "research_not_live",
+          409,
+        );
       if (
         !item.claims.some(
           (c) => c.status === "supported" && c.sourceIds.length,

@@ -79,6 +79,7 @@ describe("news post workflow with external providers substituted", () => {
   beforeAll(async () => {
     Object.assign(process.env, {
       NODE_ENV: "test",
+      AGENT_MODE: "hermes",
       AUTH_MODE: "single-user",
       DATABASE_URL: "",
       REDIS_URL: "",
@@ -191,7 +192,7 @@ describe("news post workflow with external providers substituted", () => {
     await service.advance(run);
     return (await infrastructure.agentPostRepository.get("default", id))!;
   }
-  async function research(id: string, disputed = false) {
+  async function research(id: string, disputed = false, provider = "hermes") {
     const run = await advance(id);
     expect(run, JSON.stringify(run)).toMatchObject({ status: "researching" });
     const item = (await infrastructure.repository.get(
@@ -219,7 +220,7 @@ describe("news post workflow with external providers substituted", () => {
             sourceUrls: ["https://example.org/library"],
           },
         ],
-        provider: "test-research",
+        provider,
         model: "fixture",
         toolsUsed: ["web_search"],
       },
@@ -346,6 +347,58 @@ describe("news post workflow with external providers substituted", () => {
     expect(revision.body.sourceLead).toEqual(first.body.sourceLead);
   });
 
+  it("does not offer post creation when research is in mock mode", async () => {
+    const config = app.get(ConfigService);
+    const get = config.get.bind(config);
+    const spy = vi
+      .spyOn(config, "get")
+      .mockImplementation(((key: string, ...args: unknown[]) =>
+        key === "AGENT_MODE"
+          ? "mock"
+          : get(key, ...(args as []))) as typeof config.get);
+    try {
+      const capability = await request(app.getHttpServer())
+        .get(
+          "/v1/agent-posts/capability?workspaceId=default&brandId=brand_default",
+        )
+        .expect(200);
+      expect(capability.body).toMatchObject({
+        research: false,
+        researchMode: "mock",
+        available: false,
+        codexUpload: false,
+      });
+      expect(capability.body.researchReason).toContain("test mode");
+      await request(app.getHttpServer())
+        .post("/v1/agent-posts")
+        .set("Idempotency-Key", "mock-start")
+        .send({
+          workspaceId: "default",
+          brandId: "brand_default",
+          templateId,
+          input: "A news story",
+          imageMode: "codex-upload",
+        })
+        .expect(503);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rejects a mock research receipt even if a run was started with live configuration", async () => {
+    const first = await start("mock-receipt");
+    await research(first.body.id, false, "mock");
+    const run = (await infrastructure.agentPostRepository.get(
+      "default",
+      first.body.id,
+    ))!;
+    const calls = text.mock.calls.length;
+    const blocked = await advance(run.id);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.error).toContain("Test results cannot verify");
+    expect(text).toHaveBeenCalledTimes(calls);
+  });
+
   it("reaches an exact rendered image and unapproved draft, reusing duplicate requests", async () => {
     const first = await start("success");
     publishRunId = first.body.id;
@@ -391,6 +444,22 @@ describe("news post workflow with external providers substituted", () => {
     });
     expect(run.template.logoPosition).toBe("top-right");
   }, 30000);
+  it("refuses publishing an older ready post whose research receipt is only a test result", async () => {
+    const original = infrastructure.repository.get.bind(infrastructure.repository);
+    const run = (await infrastructure.agentPostRepository.get("default", publishRunId))!;
+    const spy = vi.spyOn(infrastructure.repository, "get").mockImplementation(async (w, id) => {
+      const item = await original(w, id);
+      if (id !== run.contentItemId || !item) return item;
+      const changed = structuredClone(item);
+      changed.researchRuns.find(r => r.id === run.researchRunId)!.provider = "mock";
+      return changed;
+    });
+    try {
+      const response = await request(app.getHttpServer()).get(`/v1/agent-posts/${publishRunId}/publication?workspaceId=default&brandId=brand_default`).expect(409);
+      expect(response.body.message).toContain("live research receipt");
+    } finally { spy.mockRestore(); }
+  });
+
   it("pauses for Codex, binds the upload to its brief and resumes without an image provider call", async () => {
     const before = generate.mock.calls.length;
     const started = await request(app.getHttpServer())
