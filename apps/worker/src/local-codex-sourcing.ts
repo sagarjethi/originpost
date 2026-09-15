@@ -4,10 +4,18 @@ import {
   openAgentRuntimeCredential,
   type SourcingProvider,
 } from "@originpost/agents";
-import type { AgentRuntimeRepository } from "@originpost/domain";
+import {
+  canUseLocalCodex,
+  type AuthRepository,
+  type AgentRuntimeRepository,
+} from "@originpost/domain";
 
 export async function selectBrandSourcing(input: {
   workspaceId: string;
+  actorId: string;
+  authRepository: Pick<AuthRepository, "getUser" | "getMembership">;
+  ownerWorkspaceId?: string | undefined;
+  ownerUserId?: string | undefined;
   brandId: string;
   repository: AgentRuntimeRepository;
   fallback: SourcingProvider;
@@ -27,10 +35,27 @@ export async function selectBrandSourcing(input: {
     assignment.profileId,
   );
   if (profile?.preset !== "codex-local") return input.fallback;
-  if (input.authMode !== "single-user")
-    throw new Error(
-      "Personal Codex research requires a single-owner deployment.",
-    );
+  if (input.authMode !== "single-user") {
+    const [user, membership] = await Promise.all([
+      input.authRepository.getUser(input.actorId),
+      input.authRepository.getMembership(input.workspaceId, input.actorId),
+    ]);
+    if (
+      user?.status !== "active" ||
+      !membership ||
+      profile.createdBy !== input.actorId ||
+      !canUseLocalCodex({
+        authMode: input.authMode,
+        workspaceId: input.workspaceId,
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerUserId: input.ownerUserId,
+        actor: { id: input.actorId, role: membership.role, actorType: "human" },
+      })
+    )
+      throw new Error(
+        "Personal Codex research requires single-owner access or its configured active session owner and workspace.",
+      );
+  }
   const context = await input.repository.getExecutionContext(
     input.workspaceId,
     input.brandId,
@@ -74,4 +99,19 @@ export async function selectBrandSourcing(input: {
     model: context.profile.textModel,
     timeoutMs: 200000,
   });
+}
+
+/** Legacy or differently edited schedules cannot impersonate the configured owner. */
+export function monitorResearchActor(
+  authMode: string,
+  monitor: { createdBy: string; updatedBy?: string | undefined },
+  job: { trigger?: string | undefined; requestedBy?: string | undefined },
+): string {
+  if (authMode === "single-user")
+    return job.requestedBy ?? monitor.updatedBy ?? monitor.createdBy;
+  if (job.trigger === "manual")
+    return job.requestedBy && job.requestedBy === monitor.updatedBy
+      ? job.requestedBy
+      : "";
+  return monitor.updatedBy ?? "";
 }

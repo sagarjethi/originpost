@@ -93,6 +93,7 @@ export interface MonitorRule {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string | undefined;
 }
 
 export interface MonitorRun {

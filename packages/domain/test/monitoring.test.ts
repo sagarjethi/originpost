@@ -25,6 +25,8 @@ describe("monitoring", () => {
     await repository.finishRun({ ...run, status: "completed", discoveredCount: 2, newCount: 1, contentItemId: "content-1", completedAt: "2026-08-28T10:15:05.000Z" }, [{ workspaceId: "ws-1", monitorId: rule.id, fingerprint: "abc", sourceUrl: "https://example.com/news", contentItemId: "content-1", firstSeenAt: "2026-08-28T10:15:05.000Z" }]);
 
     expect(rule.languages).toEqual(["English", "Gujarati"]);
+    expect(rule.updatedBy).toBe(owner.id);
+    expect(updateMonitorRule(rule,{query:"Changed request"},{...owner,id:"another-owner"})).toMatchObject({createdBy:owner.id,updatedBy:"another-owner"});
     expect((await repository.listEnabled()).map((entry) => entry.id)).toEqual([rule.id]);
     expect(await repository.hasFingerprint("ws-1", rule.id, "abc")).toBe(true);
     expect(await repository.get("other", rule.id)).toBeNull();

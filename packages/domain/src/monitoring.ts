@@ -64,7 +64,7 @@ export function createMonitorSuggestion(input: {
 }
 
 export function createMonitorRule(
-  input: Omit<MonitorRule, "id" | "createdBy" | "createdAt" | "updatedAt" | "sourceIntelligence"> & { sourceIntelligence?: SourceIntelligenceInput | undefined },
+  input: Omit<MonitorRule, "id" | "createdBy" | "createdAt" | "updatedAt" | "updatedBy" | "sourceIntelligence"> & { sourceIntelligence?: SourceIntelligenceInput | undefined },
   actor: Actor,
   now = new Date().toISOString(),
 ): MonitorRule {
@@ -80,13 +80,14 @@ export function createMonitorRule(
     createdBy: actor.id,
     createdAt: now,
     updatedAt: now,
+    updatedBy: actor.id,
     ...(sourceIntelligence ? { sourceIntelligence } : {}),
   };
 }
 
 export function updateMonitorRule(
   rule: MonitorRule,
-  patch: { [K in keyof Omit<MonitorRule, "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt" | "sourceIntelligence">]?: Omit<MonitorRule, "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt" | "sourceIntelligence">[K] | undefined } & { sourceIntelligence?: SourceIntelligenceInput | undefined },
+  patch: { [K in keyof Omit<MonitorRule, "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt" | "updatedBy" | "sourceIntelligence">]?: Omit<MonitorRule, "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt" | "updatedBy" | "sourceIntelligence">[K] | undefined } & { sourceIntelligence?: SourceIntelligenceInput | undefined },
   actor: Actor,
   now = new Date().toISOString(),
 ): MonitorRule {
@@ -101,6 +102,7 @@ export function updateMonitorRule(
     languages: patch.languages ? [...new Set(patch.languages.map((language) => language.trim()).filter(Boolean))] : rule.languages,
     sourceLimit: Math.max(2, Math.min(20, patch.sourceLimit ?? rule.sourceLimit)),
     updatedAt: now,
+    updatedBy: actor.id,
     ...(sourceIntelligence ? { sourceIntelligence } : {}),
   };
 }

@@ -84,7 +84,7 @@ export class MonitoringService {
     const monitor = await this.require(workspaceId, id);
     if (!monitor.enabled) throw new DomainError("Enable this monitor before running it.", "monitor_disabled", 409);
     const requestId = `monitor_manual_${crypto.randomUUID()}`;
-    await queue.add("run-monitor", { workspaceId, monitorId: id, trigger: "manual" }, { jobId: requestId, attempts: 1, removeOnComplete: 500, removeOnFail: 1000 });
+    await queue.add("run-monitor", { workspaceId, monitorId: id, trigger: "manual", requestedBy: actor.id }, { jobId: requestId, attempts: 1, removeOnComplete: 500, removeOnFail: 1000 });
     return { accepted: true, requestId, monitorId: id };
   }
 }

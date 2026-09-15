@@ -65,3 +65,10 @@ NASA permits many factual editorial uses subject to its media guidelines, acknow
 A source is ready to enable only when its ownership, exact URL, allowed use, response parser, timestamp behavior and category/language mapping have been recorded and tested. Polling should honor cache headers, bounded payloads/timeouts, per-host backoff and redirects validated against SSRF rules. Store health and last success per source. Protect against XML entity expansion and treat remote content as untrusted data, never instructions.
 
 For a production daily aggregator, demonstrate: scheduled jobs actually running; durable deduplication across restart; valid newest/date filters on the observed edge cases; source errors visible without dropping successful sources; clicking a lead preserves its original sources in research; and no post can bypass claim, media and approval checks. A successful local feed probe alone does not establish that complete workflow.
+
+
+### Local collection acceptance
+
+PIB, RBI and SEBI were re-fetched through the public feed adapter and enabled as separate two-hour collections in the local admin workspace on 15 September 2026. Their scheduled runs returned 20, 10 and 30 persisted leads respectively. Each section was checked through the source-desk API: all claims stayed unverified, all imprecise/missing dates stayed unknown, and Last 24 hours returned no falsely recent items. NASA feed and website collections also remained healthy. This is expanded official-source coverage; Gujarati publisher adapters and exhaustive news coverage remain unfinished.
+
+After the worker restart, a second real collection of each feed completed with zero new duplicates and preserved every existing lead’s first-discovery timestamp.

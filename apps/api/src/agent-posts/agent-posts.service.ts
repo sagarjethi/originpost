@@ -1,4 +1,4 @@
-import { hasLiveAgentResearch } from "@originpost/domain";
+import { canUseLocalCodex, hasLiveAgentResearch } from "@originpost/domain";
 import {
   Inject,
   Injectable,
@@ -168,21 +168,16 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     const image = this.images.capability(w, actor);
     const assigned =
       await this.infrastructure.agentRuntimeRepository.getAssignment(w, b);
-    const textReady = assigned
-      ? Boolean(
-          await this.infrastructure.agentRuntimeRepository.getExecutionContext(
-            w,
-            b,
-          ),
-        )
-      : Boolean(this.infrastructure.hermes);
-    const imageReview = await this.runtimes.imageReviewCapability(w, b);
-    const localResearch = this.config.get<string>("LOCAL_CODEX_RESEARCH_ENABLED") === "true" && this.config.get<string>("AUTH_MODE") !== "sessions" && Boolean(this.config.get<string>("LOCAL_CODEX_BASE_URL")) && (await this.infrastructure.agentRuntimeRepository.getExecutionContext(w,b))?.profile.preset === "codex-local";
+    const context = assigned ? await this.infrastructure.agentRuntimeRepository.getExecutionContext(w,b) : null;
+    const localBlocked = context?.profile.preset === "codex-local" && (!canUseLocalCodex({authMode:this.config.get<string>("AUTH_MODE")??"single-user",workspaceId:w,ownerWorkspaceId:this.config.get<string>("LOCAL_CODEX_OWNER_WORKSPACE_ID"),ownerUserId:this.config.get<string>("LOCAL_CODEX_OWNER_USER_ID"),actor}) || (this.config.get<string>("AUTH_MODE")==="sessions" && context.profile.createdBy!==actor.id));
+    const textReady = assigned ? Boolean(context) && !localBlocked : Boolean(this.infrastructure.hermes);
+    const imageReview = !localBlocked && await this.runtimes.imageReviewCapability(w, b);
+    const localResearch = !localBlocked && this.config.get<string>("LOCAL_CODEX_RESEARCH_ENABLED") === "true" && Boolean(this.config.get<string>("LOCAL_CODEX_BASE_URL")) && context?.profile.preset === "codex-local";
     const researchMode = localResearch ? "codex-local" : this.config.get<string>("AGENT_MODE") ?? "mock";
     const research =
-      Boolean(this.infrastructure.researchQueue) &&
+      !localBlocked && Boolean(this.infrastructure.researchQueue) &&
       (localResearch || (researchMode === "hermes" && Boolean(this.infrastructure.hermes)));
-    const researchReason = !this.infrastructure.researchQueue
+    const researchReason = localBlocked ? "This personal Codex runtime is restricted to its configured owner and workspace." : !this.infrastructure.researchQueue
       ? "Connect the research queue and worker."
       : localResearch ? null : researchMode !== "hermes"
         ? "Research is in test mode. Configure live Hermes research before creating news posts."

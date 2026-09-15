@@ -27,6 +27,6 @@ describe("MonitoringService", () => {
 
     const accepted = await service.trigger("one", monitor.id, owner);
     expect(accepted).toMatchObject({ accepted: true, monitorId: monitor.id });
-    expect(queue.add).toHaveBeenCalledWith("run-monitor", expect.objectContaining({ workspaceId: "one", monitorId: monitor.id, trigger: "manual" }), expect.objectContaining({ attempts: 1 }));
+    expect(queue.add).toHaveBeenCalledWith("run-monitor", expect.objectContaining({ workspaceId: "one", monitorId: monitor.id, trigger: "manual", requestedBy: owner.id }), expect.objectContaining({ attempts: 1 }));
   });
 });

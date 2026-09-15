@@ -88,3 +88,10 @@ A real **Science · NASA website** collection, configured for two-hour checks, u
 For the local worker, install its browser using `pnpm --filter @originpost/worker exec playwright install chromium`. `WEBSITE_BROWSER_EXECUTABLE` may point to an installed Chrome binary for a local run. The Docker worker installs its pinned browser and dependencies, runs as the non-root `node` user with Chromium sandboxing, and uses the included namespace-enabled seccomp profile. Private S3 storage must be configured. See [Playwright browser installation](https://playwright.dev/docs/browsers), [network interception](https://playwright.dev/docs/network), and [sandboxed Docker crawling](https://playwright.dev/docs/docker#crawling-and-scraping).
 
 The complete local web/API/worker stack was subsequently rebuilt and redeployed. A fresh capture through the main API completed with 18 discoveries and zero new signals; its 1440×1000 image was visually checked in the deployed source desk at `http://localhost:3000/signals`.
+
+
+### Official India collections — 15 September 2026
+
+The local admin workspace now also has separate two-hour **India government · PIB**, **Banking · RBI**, and **Markets regulation · SEBI** collections. Their first real scheduled runs stored 20, 10 and 30 leads respectively through `public-feeds`. Section-scoped API reads returned those exact counts. All claims remain unverified and media rights are not granted by feed discovery. Missing dates, timezone-free RBI dates and day-only SEBI dates remain unknown; a publication-window filter correctly excludes them while Any time / Newly found includes them. These counts describe this acceptance run, not guaranteed future coverage.
+
+After the worker restart, a second real collection of each feed completed with zero new duplicates and preserved every existing lead’s first-discovery timestamp.

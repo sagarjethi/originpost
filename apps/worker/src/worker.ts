@@ -1,4 +1,4 @@
-import { selectBrandSourcing } from "./local-codex-sourcing.js";
+import { monitorResearchActor, selectBrandSourcing } from "./local-codex-sourcing.js";
 import { researchContext } from "./research-context.js";
 import "dotenv/config";
 import { createHash } from "node:crypto";
@@ -81,7 +81,7 @@ import { selectMonitorSourcingProvider } from "./monitor-sourcing.js";
 
 interface PublishJob { workspaceId: string; contentItemId: string; targetId: string }
 interface ResearchJob { workspaceId: string; contentItemId: string; researchRunId: string }
-interface MonitorJob { workspaceId: string; monitorId: string; trigger?: "scheduled" | "manual" }
+interface MonitorJob { workspaceId: string; monitorId: string; trigger?: "scheduled" | "manual"; requestedBy?: string }
 interface AnalyticsJob { workspaceId: string; contentItemId: string; proofId: string }
 type InstagramCredentialPayload = { provider: "instagram"; externalAccountId: string; accessToken: string; connectionMode?:"facebook_login"|"instagram_login"; accountType?:"BUSINESS"|"MEDIA_CREATOR"; scope?:string; grantedScopes?:string[]; pageId?:string; pageTasks?:string[]; issuedAt?:string; expiresAt?:string; privateMessagingGrant?:unknown };
 type FacebookCredentialPayload = { provider: "facebook"; externalAccountId: string; accessToken: string; scope?:string; issuedAt?:string; pageTasks?:string[]; privateMessagingGrant?:unknown };
@@ -205,7 +205,7 @@ if (hermesBoardPluginEnabled) {
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by the worker.");
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-const { repository, agentRuntimeRepository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, agentBoardTaskRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
+const { repository, authRepository, agentRuntimeRepository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, agentBoardTaskRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
   databaseUrl,
   allowMemoryFallback: false,
   ...(process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY ? { privateMessageEncryptionKey: process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY } : {}),
@@ -325,7 +325,7 @@ if (youtubeConnectorMode === "official") {
   }));
 }
 const sourcing = createSourcingProvider();
-const brandSourcing = (workspaceId:string, brandId:string) => selectBrandSourcing({workspaceId,brandId,repository:agentRuntimeRepository,fallback:sourcing,enabled:process.env.LOCAL_CODEX_RESEARCH_ENABLED==="true",authMode:process.env.AUTH_MODE??"single-user",baseUrl:process.env.LOCAL_CODEX_BASE_URL,encryptionKey:process.env.CREDENTIAL_ENCRYPTION_KEY});
+const brandSourcing = (workspaceId:string, brandId:string, actorId:string) => selectBrandSourcing({workspaceId,brandId,actorId,authRepository,ownerWorkspaceId:process.env.LOCAL_CODEX_OWNER_WORKSPACE_ID,ownerUserId:process.env.LOCAL_CODEX_OWNER_USER_ID,repository:agentRuntimeRepository,fallback:sourcing,enabled:process.env.LOCAL_CODEX_RESEARCH_ENABLED==="true",authMode:process.env.AUTH_MODE??"single-user",baseUrl:process.env.LOCAL_CODEX_BASE_URL,encryptionKey:process.env.CREDENTIAL_ENCRYPTION_KEY});
 const lumaMumbaiSourcing = new LumaMumbaiSourcingProvider();
 const telegram = process.env.TELEGRAM_BOT_TOKEN ? new TelegramBotClient(process.env.TELEGRAM_BOT_TOKEN) : null;
 const allowedTelegramChats = new Set((process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
@@ -1225,7 +1225,7 @@ const researchWorker = new Worker<ResearchJob>(
 
     let localResearchAttempted = false;
     try {
-      const provider = await brandSourcing(item.workspaceId,item.brandId);
+      const provider = await brandSourcing(item.workspaceId,item.brandId,run.createdBy);
       localResearchAttempted = provider.id === "codex-local";
       const result = await provider.research({
         sessionKey: `originpost-research:${item.workspaceId}:${item.id}`,
@@ -1300,7 +1300,7 @@ const monitorWorker = new Worker<MonitorJob>(
 
     let localResearchAttempted = false;
     try {
-      const monitorSourcing = selectMonitorSourcingProvider(monitor, {id:"brand-runtime",health:async()=>true,research:async request=>{const provider=await brandSourcing(monitor.workspaceId,monitor.brandId);localResearchAttempted=provider.id==="codex-local";return provider.research(request);}}, lumaMumbaiSourcing, configuredWebsiteProvider(monitor.sourceIntelligence?.sources.filter(s => s.enabled && s.kind === "publisher_site") ?? [], monitor.workspaceId, monitor.brandId));
+      const monitorSourcing = selectMonitorSourcingProvider(monitor, {id:"brand-runtime",health:async()=>true,research:async request=>{const provider=await brandSourcing(monitor.workspaceId,monitor.brandId,monitorResearchActor(process.env.AUTH_MODE??"single-user",monitor,job.data));localResearchAttempted=provider.id==="codex-local";return provider.research(request);}}, lumaMumbaiSourcing, configuredWebsiteProvider(monitor.sourceIntelligence?.sources.filter(s => s.enabled && s.kind === "publisher_site") ?? [], monitor.workspaceId, monitor.brandId));
       const result = await monitorSourcing.research({
         sessionKey: `originpost-monitor:${monitor.workspaceId}:${monitor.id}`,
         query: monitor.query,

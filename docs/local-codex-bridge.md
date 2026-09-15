@@ -1,6 +1,6 @@
 # Local Codex research, writing and image review
 
-A single-owner OriginPost installation can use its signed-in Codex CLI for writing, copy review and image review. Public-web research is a separate, opt-in route. This connection does not expose image generation, shell access or publishing. The hosted/multi-user path still uses separately configured providers.
+A single-owner OriginPost installation can use its signed-in Codex CLI for writing, copy review and image review. Public-web research is a separate, opt-in route. This connection does not expose image generation, shell access or publishing. A signed-in installation can explicitly restrict this connection to one configured owner and workspace; other users need separately configured providers.
 
 ```text
 OriginPost runtime settings
@@ -60,7 +60,13 @@ Writing and vision keep web access disabled; research alone permits web-search e
 
 Prompt text travels through stdin. The bridge does not save prompts, image bytes, diagnostic output or final answers to disk. It returns the final text, CLI session-derived receipt ID and reported token counts. UTF-8 output is assembled before decoding, preserving Gujarati characters across chunks. The 100-second writing/vision limit, 180-second research limit and bounded inputs/outputs are enforced; Chat Completions temperature and token-limit fields are not exact CLI sampling/budget controls.
 
-This uses the local owner’s Codex account. Sessions-based multi-user OriginPost deployments reject this preset. Do not publish the bridge port or reuse a personal login as a public service. A shared deployment needs separate user credentials and isolation rather than this local connection.
+This uses the local owner’s Codex account. Sessions mode rejects this preset by default. To use it alongside official social-account connections, the server owner must set both `LOCAL_CODEX_OWNER_WORKSPACE_ID` and `LOCAL_CODEX_OWNER_USER_ID` to the exact workspace and active signed-in owner. The runtime must have been created by that same user. Restart the API and worker after configuration. Do not use the local-only bootstrap identity unless it is an active signed-in owner.
+
+The API checks this restriction before create, update, test, assignment, writing and reviews. The worker rechecks active user status and current owner membership before research. Other users see the runtime unavailable; a different owner role alone grants no access. Changes to either configured ID take effect after restart. Existing model requests are not retroactively cancelled by a membership change.
+
+Scheduled model research also requires a recorded last configuration editor. In sessions mode, save legacy monitors again as the configured owner before enabling local research; a manual run must come from that same user. A monitor edited by someone else cannot borrow the original creator’s identity. Feed and publisher-site collection continue to use their separate collectors.
+
+ Do not publish the bridge port or reuse a personal login as a public service. A shared deployment needs separate user credentials and isolation rather than this local connection.
 
 ## Verification
 

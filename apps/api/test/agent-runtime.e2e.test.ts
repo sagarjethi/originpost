@@ -5,6 +5,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { ConfigService } from "@nestjs/config";
 import request from "supertest";
 import sharp from "sharp";
+import { AgentPostsService } from "../src/agent-posts/agent-posts.service.js";
 import { AgentRuntimeService } from "../src/agent-runtimes/agent-runtime.service.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
@@ -16,8 +17,8 @@ describe("workspace AI runtime",()=>{
   afterAll(async()=>{vi.unstubAllGlobals();await app.close();});
   it("routes Local Codex only through a configured single-owner endpoint", async () => {
     const config=app.get(ConfigService), original=config.get.bind(config);
-    let route:string|undefined, authMode="single-user";
-    const spy=vi.spyOn(config,"get").mockImplementation(((key:string,...args:unknown[])=>key==="LOCAL_CODEX_BASE_URL"?route:key==="AUTH_MODE"?authMode:original(key,...args as [])) as typeof config.get);
+    let route:string|undefined, authMode="single-user", ownerWorkspace:string|undefined, ownerUser:string|undefined;
+    const spy=vi.spyOn(config,"get").mockImplementation(((key:string,...args:unknown[])=>key==="LOCAL_CODEX_BASE_URL"?route:key==="LOCAL_CODEX_OWNER_WORKSPACE_ID"?ownerWorkspace:key==="LOCAL_CODEX_OWNER_USER_ID"?ownerUser:key==="AUTH_MODE"?authMode:original(key,...args as [])) as typeof config.get);
     const service=app.get(AgentRuntimeService), actor={id:"runtime-owner",name:"Runtime Owner",role:"owner" as const};
     const input={workspaceId:"default",name:"Local Codex test",preset:"codex-local" as const,baseUrl:"https://attacker.invalid/v1",textModel:"test-codex",apiKey:"local-bridge-secret"};
     try {
@@ -35,6 +36,20 @@ describe("workspace AI runtime",()=>{
       route="http://host.docker.internal:8765/v1";
       expect((await service.test("default",created.id,actor)).ok).toBe(true);
       expect(calls).toEqual(["http://host.docker.internal:8765/v1/models"]);
+      authMode="sessions";ownerWorkspace="default";ownerUser=actor.id;
+      expect((await service.test("default",created.id,actor)).ok).toBe(true);
+      const count=calls.length;
+      await expect(service.test("default",created.id,{...actor,id:"another-owner"})).rejects.toThrow("configured session owner");
+      await expect(service.create("another-workspace",input,actor)).rejects.toThrow("configured session owner");
+      await expect(service.create("default",input,{...actor,role:"creator"})).rejects.toThrow("Only a workspace owner");
+      await service.assign("default",created.id,{workspaceId:"default",brandId:"brand_default"},actor);
+      const other={...actor,id:"another-owner"};
+      await expect(service.runDraft({workspaceId:"default",brandId:"brand_default",contentItemId:"scope-test",actor:other,messages:[{role:"user",content:"Must never reach Codex"}]})).rejects.toThrow("configured session owner");
+      expect(await app.get(AgentPostsService).capability("default","brand_default",other)).toMatchObject({text:false,imageReview:false,research:false,codexUpload:false,available:false});
+      ownerUser=undefined;
+      await expect(service.test("default",created.id,actor)).rejects.toThrow("configured session owner");
+      expect(calls).toHaveLength(count);
+
     }finally{spy.mockRestore();vi.unstubAllGlobals();}
   });
   it("encrypts a BYOK key, tests and assigns the runtime, then records a draft run without prompt text",async()=>{

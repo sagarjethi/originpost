@@ -27,6 +27,8 @@ Create sections such as **Gujarat, India, World, Business, or Science**, then ad
 
 Choose **Create post** on a news lead to open it in Agent. Its original links stay attached: pick your template, add your direction, then start research and creation. A changed lead asks you to reopen the current version.
 
+You can keep NASA, PIB government, RBI banking and SEBI regulation feeds in separate collections. Each section shows its last check and any collection failures.
+
 Unknown dates stay visibly unknown. Repeated checks do not make an old story look newly published. Website sources include a private desktop screenshot: open **View desktop capture** to compare the page with the extracted news. Login-protected, blocked, or script-only pages need a manual check.
 
 The collector reads your configured sources; it cannot promise every story from every website. Source failures and monitor history are available in Automations.

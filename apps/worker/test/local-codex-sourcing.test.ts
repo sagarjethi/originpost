@@ -1,8 +1,14 @@
 import { createCipheriv, randomBytes } from "node:crypto";
 import { expect, it, vi } from "vitest";
-import type { AgentRuntimeRepository } from "@originpost/domain";
+import type {
+  AuthRepository,
+  AgentRuntimeRepository,
+} from "@originpost/domain";
 import { MockSourcingProvider } from "@originpost/agents";
-import { selectBrandSourcing } from "../src/local-codex-sourcing.js";
+import {
+  monitorResearchActor,
+  selectBrandSourcing,
+} from "../src/local-codex-sourcing.js";
 function fixture() {
   const encryptionKey = randomBytes(32),
     iv = randomBytes(12);
@@ -14,6 +20,7 @@ function fixture() {
   ]);
   const profile = {
     id: "profile",
+    createdBy: "owner",
     preset: "codex-local",
     textModel: "gpt-6-astra",
   };
@@ -33,6 +40,11 @@ function fixture() {
   } as unknown as AgentRuntimeRepository;
   return {
     workspaceId: "workspace",
+    actorId: "owner",
+    authRepository: {
+      getUser: vi.fn().mockResolvedValue({ id: "owner", status: "active" }),
+      getMembership: vi.fn().mockResolvedValue({ role: "owner" }),
+    } as unknown as Pick<AuthRepository, "getUser" | "getMembership">,
     brandId: "brand",
     repository,
     fallback: new MockSourcingProvider(),
@@ -47,7 +59,16 @@ it("uses only the assigned healthy local profile and its workspace-bound credent
   const input = fixture();
   expect((await selectBrandSourcing(input)).id).toBe("codex-local");
   expect(input.getExecutionContext).toHaveBeenCalledWith("workspace", "brand");
-  expect((await selectBrandSourcing({...input,encryptionKey:Buffer.from(input.encryptionKey,"base64").toString("hex")})).id).toBe("codex-local");
+  expect(
+    (
+      await selectBrandSourcing({
+        ...input,
+        encryptionKey: Buffer.from(input.encryptionKey, "base64").toString(
+          "hex",
+        ),
+      })
+    ).id,
+  ).toBe("codex-local");
   await expect(
     selectBrandSourcing({ ...input, workspaceId: "other" }),
   ).rejects.toThrow("credential could not be opened");
@@ -75,4 +96,83 @@ it("rejects shared-account execution and arbitrary bridge endpoints", async () =
       "server-owned",
     );
   }
+});
+
+it("allows only the explicitly configured active session owner and checks membership at execution", async () => {
+  const input = {
+    ...fixture(),
+    authMode: "sessions",
+    ownerUserId: "owner",
+    ownerWorkspaceId: "workspace",
+  };
+  expect((await selectBrandSourcing(input)).id).toBe("codex-local");
+  for (const change of [
+    { actorId: "other-owner" },
+    { workspaceId: "other" },
+    { ownerUserId: "" },
+    { ownerWorkspaceId: "" },
+  ])
+    await expect(selectBrandSourcing({ ...input, ...change })).rejects.toThrow(
+      "configured active session owner",
+    );
+  vi.mocked(input.authRepository.getMembership).mockResolvedValue({
+    role: "creator",
+  } as never);
+  await expect(selectBrandSourcing(input)).rejects.toThrow(
+    "configured active session owner",
+  );
+  vi.mocked(input.authRepository.getMembership).mockResolvedValue({
+    role: "owner",
+  } as never);
+  vi.mocked(input.authRepository.getUser).mockResolvedValue({
+    status: "disabled",
+  } as never);
+  await expect(selectBrandSourcing(input)).rejects.toThrow(
+    "configured active session owner",
+  );
+});
+
+it("binds personal monitor execution to the current editor and manual requester", () => {
+  expect(
+    monitorResearchActor(
+      "sessions",
+      { createdBy: "owner" },
+      { trigger: "scheduled" },
+    ),
+  ).toBe("");
+  expect(
+    monitorResearchActor(
+      "sessions",
+      { createdBy: "owner", updatedBy: "owner" },
+      { trigger: "scheduled" },
+    ),
+  ).toBe("owner");
+  expect(
+    monitorResearchActor(
+      "sessions",
+      { createdBy: "owner", updatedBy: "editor" },
+      { trigger: "manual", requestedBy: "owner" },
+    ),
+  ).toBe("");
+  expect(
+    monitorResearchActor(
+      "sessions",
+      { createdBy: "owner", updatedBy: "owner" },
+      { trigger: "manual", requestedBy: "other" },
+    ),
+  ).toBe("");
+  expect(
+    monitorResearchActor(
+      "sessions",
+      { createdBy: "owner", updatedBy: "owner" },
+      { trigger: "manual", requestedBy: "owner" },
+    ),
+  ).toBe("owner");
+  expect(
+    monitorResearchActor(
+      "single-user",
+      { createdBy: "owner" },
+      { trigger: "scheduled" },
+    ),
+  ).toBe("owner");
 });
