@@ -213,6 +213,7 @@ export type AgentPostRun = {
     briefHash: string;
   };
   resumedAt?: string;
+  compositionRecovery?: { projectId: string; revisionId: string; specSha256: string; recoveredAt: string; recoveredBy: string; previousError?: string };
   projectId?: string;
   outputMediaId?: string;
   draftId?: string;
@@ -328,7 +329,7 @@ export function agentPostCreativeSpec(
     subtitle: "",
     font: "manrope",
     textAlign: "left",
-    focalPoint: { x: 50, y: 50 },
+    focalPoint: { x: 50, y: t.layout === "headline-top" ? 65 : 50 },
     zoom: 1,
     palette: t.palette,
     logo: {

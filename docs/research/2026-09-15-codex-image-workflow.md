@@ -93,3 +93,15 @@ Both server generation and exported Codex briefs now share layout-specific place
 The first revision exposed a PostgreSQL source-key collision: a new content item reused a discovery source ID already owned by the original item. Source imports now derive a separate ID per content item and retain the original lead IDs in the audit event. Live PostgreSQL verification confirmed distinct IDs, unchanged original evidence and a running research job. The failed revision remains recorded; it failed before content creation or a provider call.
 
 Top-headline text can shrink by at most 15% to fit its three-line limit. Text geometry is checked before image generation, so a headline that still cannot fit is blocked before requesting a paid image.
+
+## Real Codex image and durable composition acceptance
+
+An interactive Codex image call produced a conceptual NASA-training equipment illustration, then an image edit repositioned the subjects. The tool did not return a model identifier; provenance records it as unknown. The selected PNG was uploaded through normal inspection and copied to a separate AI-labelled media record. The original upload remained unchanged.
+
+This exposed two production defects: full-canvas cropping hid part of the illustration under the headline, and PostgreSQL rejected creative snapshots containing the logo/disclosure fields. Renderer v7 fits the image into a dedicated window between opaque text panels. Migration 071 accepts the supported fields and top-headline layout while retaining strict field validation. Actual PostgreSQL tests cover persistence plus rejection of unknown keys, malformed logo hashes and oversized disclosure text.
+
+The retained image rendered successfully through Creative Studio at 1080×1920. An independent pixel/brand/provenance review returned `PASS_WITH_NOTES`; human publication approval remains absent. No image-generation retry was needed for composition recovery.
+
+The resumed product vision check correctly blocked this candidate before draft creation: the propeller-plane illustration did not match the aircraft described by the NASA source. Headline, footer, disclosure and logo passed. The independent report alone therefore does not establish acceptance. A new revision removes all aircraft from the illustrative direction; the blocked candidate and both reviews remain retained.
+
+`GET /v1/agent-posts/:id/composition-recovery` offers matching ready compositions among the latest 100 projects. `POST` accepts a project ID and expected run version. Recovery is restricted to uncertain Codex-upload composition handoffs with unchanged live evidence, a passed copy review, the bound brief and the retained AI image. It compares the complete creative-spec hash, records the prior error and recovering editor, and continues through the normal image-review/draft stages. It cannot resume an uncertain image review, generation-provider call or draft write. A changed revision blocks continuation. The chat exposes this as **Find saved composition**.

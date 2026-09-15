@@ -50,4 +50,14 @@ suite("Postgres Creative Studio repository", () => {
     expect(await mediaRepository.references(workspaceId, outputMediaId)).toMatchObject({ creativeProjectIds: [initial.project.id], creativeRenderIds: [render.id] });
     expect(await sql<{ count: number }[]>`select count(*)::int as count from audit_events where id in ('creative-postgres-created','creative-postgres-started','creative-postgres-failed','creative-postgres-retried','creative-postgres-ready')`).toEqual([{ count: 5 }]);
   });
+  it("stores top-headline logo/disclosure snapshots and rejects unknown or malformed fields", async () => {
+    const branded: CreativeSpec = {...spec,layout:"headline-top",disclosure:"AI દ્વારા બનાવેલ પ્રતીકાત્મક તસવીર",logo:{mediaId:sourceMediaId,sha256:"a".repeat(64),position:"top-left",widthPercent:25,marginPercent:4,background:"#001122",crop:"full"}};
+    const initial = createCreativeProject({id:"creative-logo-postgres",revisionId:"creative-logo-revision-postgres",workspaceId,brandId,name:"Logo and disclosure",spec:branded,actorId:"creative-user",now:at});
+    await repository.createProject(initial,audit("creative-logo-created"));
+    const rows = await sql`select spec from creative_revisions where id=${initial.revision.id}`;
+    expect(rows[0]!.spec).toMatchObject({layout:"headline-top",disclosure:branded.disclosure,logo:branded.logo});
+    for (const invalid of [{...branded,unexpected:true},{...branded,logo:{...branded.logo,sha256:"invalid"}},{...branded,disclosure:"X".repeat(61)}]) {
+      await expect(sql`update creative_revisions set spec=${sql.json(invalid as never)} where id=${initial.revision.id}`).rejects.toMatchObject({code:"23514"});
+    }
+  });
 });

@@ -13,6 +13,7 @@ import {
   agentPostCopyReviewSchema,
   agentPostSkillInstructions,
   agentPostCreativeSpec,
+  creativeSpecSha256,
   agentPostTemplateSchema,
   can,
   DomainError,
@@ -35,6 +36,7 @@ import type {
   AgentPostTemplateDto,
   CreateAgentPostDto,
   ImportAgentPostImageDto,
+  RecoverAgentPostCompositionDto,
 } from "./agent-posts.dto.js";
 
 const hash = (value: unknown) =>
@@ -621,6 +623,47 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
       );
     return visible(next);
   }
+  private async recoveryRun(w: string, b: string, id: string, actor: Actor) {
+    await this.authorize(w, b, actor, true);
+    const run = await this.store.get(w, id);
+    if (!run || run.brandId !== b) throw new DomainError("Post run not found.", "not_found", 404);
+    // Only recover the local composition handoff. Never retry a provider call,
+    // a possibly-created draft, or an uncertain image review this way.
+    if (run.status !== "uncertain" || run.imageMode !== "codex-upload" || !run.externalImage || !run.copy || run.inFlightUntil || run.outputMediaId || run.draftId || run.imageReview || run.generationId || run.copyReview?.status !== "passed" || run.copyReview.copyHash !== hash(run.copy) || run.copyReview.evidenceHash !== run.evidenceHash) {
+      throw new DomainError("This run cannot resume from a saved composition. Inspect its linked records.", "composition_recovery_unavailable", 409);
+    }
+    const brief = await this.exportImageBrief(w, b, id, actor);
+    if (brief.briefHash !== run.externalImage.briefHash) throw new DomainError("The image brief changed.", "brief_changed", 409);
+    const item = await this.content.get(w, run.contentItemId);
+    if (!hasLiveAgentResearch(item, run.researchRunId)) throw new DomainError("Live research is required.", "research_not_live", 409);
+    const original = await this.asset(w, b, run.externalImage.mediaId);
+    const source = await this.asset(w, b, `media_codex_${run.id}`);
+    const media = await this.infrastructure.mediaRepository.get(w, source.mediaId);
+    if (source.sha256 !== run.externalImage.sha256 || original.sha256 !== source.sha256 || media?.contentItemId !== run.contentItemId || media?.syntheticLineage?.kind !== "ai-generation" || media.syntheticLineage.generationId !== run.id) throw new DomainError("The retained image does not match this run.", "image_changed", 409);
+    return { run, specSha256: creativeSpecSha256(agentPostCreativeSpec(run, source)) };
+  }
+  async compositionRecoveryOptions(w: string, b: string, id: string, actor: Actor) {
+    const { run, specSha256 } = await this.recoveryRun(w, b, id, actor);
+    const projects = await this.creative.list(w, b, 100, actor);
+    const options = [];
+    for (const project of projects) {
+      if (project.status !== "ready" || (run.projectId && run.projectId !== project.id)) continue;
+      const detail = await this.creative.detail(w, project.id, actor);
+      if (detail.currentRevision.specSha256 === specSha256 && detail.outputAsset?.status === "ready") options.push({ id: project.id, name: project.name });
+    }
+    return options;
+  }
+  async recoverComposition(w: string, id: string, dto: RecoverAgentPostCompositionDto, actor: Actor) {
+    const { run, specSha256 } = await this.recoveryRun(w, dto.brandId, id, actor);
+    if (run.version !== dto.expectedVersion) throw new DomainError("This run changed. Refresh before continuing.", "version_conflict", 409);
+    const detail = await this.creative.detail(w, dto.projectId, actor);
+    if (detail.project.brandId !== run.brandId || (run.projectId && run.projectId !== dto.projectId) || detail.project.status !== "ready" || detail.currentRevision.specSha256 !== specSha256 || detail.outputAsset?.status !== "ready") throw new DomainError("Choose a finished composition that exactly matches this run's image, copy and template.", "composition_mismatch", 409);
+    const now = new Date().toISOString();
+    const next: AgentPostRun = { ...run, status: "composing", projectId: detail.project.id, resumedAt: now, updatedAt: now, version: run.version + 1, compositionRecovery: { projectId: detail.project.id, revisionId: detail.currentRevision.id, specSha256, recoveredAt: now, recoveredBy: actor.id, ...(run.error ? {previousError: run.error} : {}) } };
+    delete next.error;
+    if (!(await this.store.replace(next, run.version))) throw new DomainError("This run changed. Refresh before continuing.", "version_conflict", 409);
+    return visible(next);
+  }
   private async step(run: AgentPostRun, actor: Actor) {
     const w = run.workspaceId,
       t = run.template;
@@ -983,6 +1026,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
     }
     if (run.status === "composing") {
       const project = await this.creative.detail(w, run.projectId!, actor);
+      if (run.compositionRecovery && (project.currentRevision.id !== run.compositionRecovery.revisionId || project.currentRevision.specSha256 !== run.compositionRecovery.specSha256)) throw new DomainError("The recovered composition changed. Review its saved revision.", "composition_changed", 409);
       if (project.project.status === "failed") {
         run.status = "failed";
         run.error =

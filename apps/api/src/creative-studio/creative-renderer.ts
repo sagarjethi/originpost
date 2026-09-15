@@ -7,7 +7,7 @@ export const CREATIVE_FONT_VERSION = "noto-latin-gujarati-devanagari-v1";
 // Output encoding is part of immutable render identity. Bump whenever the
 // renderer changes bytes or MIME so an older ready asset cannot satisfy a new
 // render request (Story images changed from PNG to provider-safe JPEG in v3).
-export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v6-headline-fit`;
+export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v7-image-window`;
 
 export class CreativeRenderFailure extends Error {
   constructor(readonly code: string, message: string, readonly field?: string) {
@@ -70,7 +70,7 @@ function tspans(lines: string[], x: number, y: number, lineHeight: number): stri
   return lines.map((line, index) => `<tspan x="${x}" y="${Math.round(y + index * lineHeight)}">${xml(line)}</tspan>`).join("");
 }
 
-function textLayer(spec: CreativeSpec, width: number, height: number): string {
+function textLayer(spec: CreativeSpec, width: number, height: number): {svg: string; visualFrame?: {top: number; height: number}} {
   const [background, panel, primary, accent, secondary] = spec.palette;
   const story = spec.format === "story";
   const margin = story ? 120 : 72;
@@ -107,10 +107,14 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   const subtitleGap = subtitleLines.length ? 27 : 0;
   let startY: number;
   let panels: string;
+  let visualFrame: {top: number; height: number} | undefined;
   if (spec.layout === "headline-top") {
     startY = story ? (kickerLines.length ? 460 : 560) : (kickerLines.length ? 240 : 340);
     const panelBottom = Math.round(startY + kickerHeight + kickerGap + headlineHeight + subtitleGap + subtitleHeight + 65);
-    panels = `<rect width="${width}" height="${panelBottom}" fill="${panel}" fill-opacity="0.97"/><rect y="${panelBottom}" width="${width}" height="8" fill="${accent}"/><rect y="${Math.round(footerY - footerLines.length * footerSize * 1.35 - 40)}" width="${width}" height="${height}" fill="${panel}" fill-opacity="0.96"/>`;
+    const footerTop = Math.round(footerY - footerLines.length * footerSize * 1.35 - 40);
+    visualFrame = {top: panelBottom + 8, height: footerTop - panelBottom - 8};
+    if (visualFrame.height < (story ? 240 : 160)) throw new CreativeRenderFailure("layout_overflow", "The text leaves too little room for the picture. Shorten the copy or choose another layout.", "headline");
+    panels = `<rect width="${width}" height="${panelBottom}" fill="${panel}"/><rect y="${panelBottom}" width="${width}" height="8" fill="${accent}"/><rect y="${footerTop}" width="${width}" height="${height}" fill="${panel}"/>`;
   } else if (spec.layout === "editorial") {
     startY = height * 0.22;
     panels = `<rect width="${Math.round(width * 0.64)}" height="${height}" fill="${panel}" fill-opacity="0.94"/><rect x="${margin}" y="${Math.round(startY - 48)}" width="74" height="8" rx="4" fill="${accent}"/>`;
@@ -130,7 +134,7 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   cursor += headlineHeight + (subtitleLines.length ? 27 : 0);
   const subtitle = subtitleLines.length ? `<text text-anchor="${anchor}" fill="${secondary}" font-family="${fontFamily}" font-size="${subtitleSize}" font-weight="520">${tspans(subtitleLines, x, cursor, subtitleSize * 1.32)}</text>` : "";
   const footer = footerLines.length ? `<line x1="${margin}" x2="${width - margin}" y1="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" y2="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" stroke="${accent}" stroke-width="3"/><text text-anchor="${spec.textAlign === "center" ? "middle" : "start"}" fill="${secondary}" font-family="${fontFamily}" font-size="${footerSize}" font-weight="650">${tspans(footerLines, spec.textAlign === "center" ? width / 2 : margin, footerY - footerSize * (footerLines.length - 1) * 1.25, footerSize * 1.25)}</text>` : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${panels}${kicker}${headline}${subtitle}${footer}</svg>`;
+  return {svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${panels}${kicker}${headline}${subtitle}${footer}</svg>`, ...(visualFrame ? {visualFrame} : {})};
 }
 
 export function validateCreativeTextLayout(spec: CreativeSpec): void {
@@ -141,6 +145,8 @@ export function validateCreativeTextLayout(spec: CreativeSpec): void {
 export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8Array, logoBytes?: Uint8Array): Promise<RenderedCreativeImage> {
   if (sourceBytes.byteLength < 1 || sourceBytes.byteLength > 64 * 1024 * 1024) throw new CreativeRenderFailure("source_size_invalid", "The source image must be between 1 byte and 64 MB.", "sourceMediaId");
   const { width, height } = creativeDimensions[spec.format];
+  const layout = textLayer(spec, width, height);
+  const pictureHeight = layout.visualFrame?.height ?? height;
   let normalized: Buffer;
   let sourceWidth: number;
   let sourceHeight: number;
@@ -148,13 +154,16 @@ export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8
     const result = await sharp(sourceBytes, { limitInputPixels: 100_000_000, failOn: "error" }).rotate().toBuffer({ resolveWithObject: true });
     normalized = result.data; sourceWidth = result.info.width; sourceHeight = result.info.height;
   } catch { throw new CreativeRenderFailure("source_image_invalid", "The selected source image could not be decoded safely.", "sourceMediaId") }
-  const scale = Math.max(width / sourceWidth, height / sourceHeight) * spec.zoom;
+  const scale = Math.max(width / sourceWidth, pictureHeight / sourceHeight) * spec.zoom;
   const cropWidth = Math.max(1, Math.min(sourceWidth, Math.round(width / scale)));
-  const cropHeight = Math.max(1, Math.min(sourceHeight, Math.round(height / scale)));
+  const cropHeight = Math.max(1, Math.min(sourceHeight, Math.round(pictureHeight / scale)));
   const left = Math.max(0, Math.min(sourceWidth - cropWidth, Math.round((sourceWidth - cropWidth) * spec.focalPoint.x / 100)));
   const top = Math.max(0, Math.min(sourceHeight - cropHeight, Math.round((sourceHeight - cropHeight) * spec.focalPoint.y / 100)));
-  const background = await sharp(normalized, { limitInputPixels: 100_000_000 }).extract({ left, top, width: cropWidth, height: cropHeight }).resize(width, height, { fit: "fill", kernel: sharp.kernel.lanczos3 }).png({ compressionLevel: 9, adaptiveFiltering: false, palette: false }).toBuffer();
-  const overlay = Buffer.from(textLayer(spec, width, height), "utf8");
+  const picture = await sharp(normalized, { limitInputPixels: 100_000_000 }).extract({ left, top, width: cropWidth, height: cropHeight }).resize(width, pictureHeight, { fit: "fill", kernel: sharp.kernel.lanczos3 }).png({ compressionLevel: 9, adaptiveFiltering: false, palette: false }).toBuffer();
+  const background = layout.visualFrame
+    ? await sharp({create:{width,height,channels:3,background:spec.palette[0]}}).composite([{input:picture,left:0,top:layout.visualFrame.top}]).png().toBuffer()
+    : picture;
+  const overlay = Buffer.from(layout.svg, "utf8");
   let bytes: Buffer;
   try {
     const layers: OverlayOptions[] = [{ input: overlay, top: 0, left: 0 }];

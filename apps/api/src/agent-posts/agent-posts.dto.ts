@@ -35,6 +35,11 @@ export class ImportAgentPostImageDto extends AgentPostQueryDto {
   @IsString() @Matches(/^[a-f0-9]{64}$/) briefHash!: string;
 }
 
+export class RecoverAgentPostCompositionDto extends AgentPostQueryDto {
+  @IsInt() @Min(1) expectedVersion!: number;
+  @IsString() @Length(1, 200) projectId!: string;
+}
+
 export class AgentPostPublishPreviewDto extends AgentPostQueryDto {
   @IsIn(["originpost.publisher"]) recipientId!: "originpost.publisher";
   @IsString() @Length(1, 200) accountId!: string;

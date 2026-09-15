@@ -19,6 +19,7 @@ import {
   AgentPostTemplateDto,
   CreateAgentPostDto,
   ImportAgentPostImageDto,
+  RecoverAgentPostCompositionDto,
 } from "./agent-posts.dto.js";
 @Controller({ path: "agent-posts", version: "1" })
 export class AgentPostsController {
@@ -98,6 +99,12 @@ export class AgentPostsController {
       d,
       actorFrom(r),
     );
+  }
+  @Get(":id/composition-recovery") recoveryOptions(@Req() r: FastifyRequest, @Query() q: AgentPostQueryDto, @Param("id") id: string) {
+    return this.posts.compositionRecoveryOptions(workspaceFrom(r, q.workspaceId), q.brandId, id, actorFrom(r));
+  }
+  @Post(":id/composition-recovery") recoverComposition(@Req() r: FastifyRequest, @Body() d: RecoverAgentPostCompositionDto, @Param("id") id: string) {
+    return this.posts.recoverComposition(workspaceFrom(r, d.workspaceId), id, d, actorFrom(r));
   }
   @Get(":id/publication") publication(
     @Req() r: FastifyRequest,

@@ -61,6 +61,8 @@ Desktop capture of the local owner account. The displayed queue contains local t
 
 In Agent, choose **Generate in Codex & upload**. After research and writing, download the brief and open its style references. Give these to Codex, then upload the generated PNG or JPEG to the same project chat. OriginPost applies your original logo and exact headline, adds an AI label, and prepares the draft for review.
 
+If the chat stops after the picture is saved, choose **Find saved composition**. A matching finished picture can continue through the image checks. The saved headline, logo and image must match before it can continue.
+
 The uploaded image is recorded as editor-attested AI imagery, not a verified provider receipt. Tagging Codex alone does not yet publish a post. The final post still needs a connected account and review.
 
 [Verified Codex capabilities and integration plan](docs/research/2026-09-15-codex-image-workflow.md)

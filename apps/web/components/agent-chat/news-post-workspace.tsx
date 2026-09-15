@@ -189,6 +189,7 @@ export function NewsPostWorkspace({
   const [mobileHistory, setMobileHistory] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [boards, setBoards] = useState<Board[]>([]);
+  const [recoveryOptions, setRecoveryOptions] = useState<{runId:string; projects:{id:string;name:string}[]} | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState<"new" | "edit">("new");
   const contextRef = useRef<HTMLDialogElement>(null);
@@ -962,6 +963,29 @@ export function NewsPostWorkspace({
                 <p className={styles.error} role="status">
                   {selectedRun.error}
                 </p>
+              )}
+              {selectedRun.status === "uncertain" && selectedRun.imageMode === "codex-upload" && !selectedRun.outputMediaId && editable && (
+                <section className={styles.setup} aria-label="Recover saved composition">
+                  <p>If your picture finished in Creative Studio, reconnect the matching composition and continue the image checks.</p>
+                  <button disabled={busy} onClick={async () => {
+                    setBusy(true); setError("");
+                    try {
+                      const projects = await request<{id:string;name:string}[]>(`/v1/agent-posts/${selectedRun.id}/composition-recovery?${query}`);
+                      setRecoveryOptions({runId:selectedRun.id,projects});
+                    } catch(e) { setError(e instanceof Error ? e.message : "Saved compositions could not be checked."); }
+                    finally { setBusy(false); }
+                  }}>Find saved composition</button>
+                  {recoveryOptions?.runId === selectedRun.id && (recoveryOptions.projects.length ? recoveryOptions.projects.map(project => (
+                    <button key={project.id} disabled={busy} onClick={async () => {
+                      setBusy(true); setError("");
+                      try {
+                        const next = await request<Run>(`/v1/agent-posts/${selectedRun.id}/composition-recovery`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workspaceId,brandId,expectedVersion:selectedRun.version,projectId:project.id})});
+                        setRuns(old => old.map(run => run.id === next.id ? next : run)); setRecoveryOptions(null);
+                      } catch(e) { setError(e instanceof Error ? e.message : "Composition recovery failed."); }
+                      finally { setBusy(false); }
+                    }}>Continue image checks · {project.name}</button>
+                  )) : <p>No finished composition matches the saved image, copy and template yet. Open Creative Studio to inspect the retained work.</p>)}
+                </section>
               )}
               {selectedRun.status === "awaiting-image" && (
                 <section

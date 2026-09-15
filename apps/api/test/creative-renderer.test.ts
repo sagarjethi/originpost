@@ -100,3 +100,13 @@ it("fits a short Gujarati news headline within three large top-headline lines", 
   expect(await sharp(rendered.bytes).metadata()).toMatchObject({width:1080,height:1920});
   await expect(renderCreativeImage(spec("story", {layout:"headline-top",headline:"Longwordwithoutbreak".repeat(15),subtitle:"",kicker:""}),await source())).rejects.toMatchObject({code:"headline_overflow"});
 });
+it("keeps the source picture out of the top headline and footer panels", async () => {
+  const config = spec("story", {layout:"headline-top",headline:"Training update",subtitle:"",kicker:""});
+  const solid = (background:string) => sharp({create:{width:1024,height:1536,channels:3,background}}).png().toBuffer();
+  const red = await renderCreativeImage(config,await solid("#ff0000"));
+  const blue = await renderCreativeImage(config,await solid("#0000ff"));
+  const region = (bytes:Buffer,top:number,height:number) => sharp(bytes).extract({left:0,top,width:1080,height}).raw().toBuffer();
+  expect((await region(red.bytes,0,640)).equals(await region(blue.bytes,0,640))).toBe(true);
+  expect((await region(red.bytes,1600,320)).equals(await region(blue.bytes,1600,320))).toBe(true);
+  expect((await region(red.bytes,1000,200)).equals(await region(blue.bytes,1000,200))).toBe(false);
+});

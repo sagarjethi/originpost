@@ -566,11 +566,33 @@ describe("news post workflow with external providers substituted", () => {
         upload.body.asset.id,
       ),
     ).toBe(false);
+    run = await advance(run.id);
+    expect(run.status).toBe("composing");
+    const savedProjectId = run.projectId!;
+    const interrupted = { ...run, status: "uncertain" as const, version: run.version + 1, error: "Lost composition response" };
+    delete interrupted.projectId;
+    expect(await infrastructure.agentPostRepository.replace(interrupted, run.version)).toBe(true);
+    run = interrupted;
+    const options = await request(app.getHttpServer()).get(`${route}/composition-recovery?brandId=brand_default`).expect(200);
+    expect(options.body).toEqual([{id:savedProjectId,name:run.copy!.headline}]);
+    const recovery = {workspaceId:"default",brandId:"brand_default",projectId:savedProjectId,expectedVersion:run.version};
+    await request(app.getHttpServer()).post(`${route}/composition-recovery`).send({...recovery,expectedVersion:run.version-1}).expect(409);
+    await request(app.getHttpServer()).post(`${route}/composition-recovery`).send({...recovery,brandId:"missing-brand"}).expect(404);
+    const tampered = {...run,version:run.version+1,copy:{...run.copy!,headline:"Unreviewed headline"}};
+    expect(await infrastructure.agentPostRepository.replace(tampered,run.version)).toBe(true);
+    await request(app.getHttpServer()).post(`${route}/composition-recovery`).send({...recovery,expectedVersion:tampered.version}).expect(409);
+    run = {...run,version:tampered.version+1};
+    expect(await infrastructure.agentPostRepository.replace(run,tampered.version)).toBe(true);
+    const recovered = await request(app.getHttpServer()).post(`${route}/composition-recovery`).send({...recovery,expectedVersion:run.version}).expect(201);
+    expect(recovered.body).toMatchObject({status:"composing",compositionRecovery:{projectId:savedProjectId,recoveredBy:"post-owner",previousError:"Lost composition response"}});
+    // A replay cannot re-run image review or append another draft.
+    await request(app.getHttpServer()).post(`${route}/composition-recovery`).send({...recovery,expectedVersion:run.version}).expect(409);
     for (let i = 0; i < 8 && run.status !== "ready"; i++)
       run = await advance(run.id);
     expect(run, JSON.stringify(run)).toMatchObject({
       status: "ready",
       outputMediaId: expect.any(String),
+      imageReview: {status:"passed"},
     });
     expect(generate.mock.calls.length).toBe(before);
     const output = await infrastructure.mediaRepository.get(
