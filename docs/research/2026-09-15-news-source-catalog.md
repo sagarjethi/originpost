@@ -72,3 +72,7 @@ For a production daily aggregator, demonstrate: scheduled jobs actually running;
 PIB, RBI and SEBI were re-fetched through the public feed adapter and enabled as separate two-hour collections in the local admin workspace on 15 September 2026. Their scheduled runs returned 20, 10 and 30 persisted leads respectively. Each section was checked through the source-desk API: all claims stayed unverified, all imprecise/missing dates stayed unknown, and Last 24 hours returned no falsely recent items. NASA feed and website collections also remained healthy. This is expanded official-source coverage; Gujarati publisher adapters and exhaustive news coverage remain unfinished.
 
 After the worker restart, a second real collection of each feed completed with zero new duplicates and preserved every existing lead’s first-discovery timestamp.
+
+### Gujarati source candidate
+
+Local desktop Chrome showed current Gujarati updates on [Akashvani's Gujarati homepage](https://newsonair.gov.in/gu/), while the indexed web copy was older. Follow-up browser/collector probes timed out, so this source has not been enabled as a reliable scheduled collection. Language-alternate links were not mistaken for feeds, and Gujarati display dates were not assigned an invented timezone. See the [capture and acceptance record](2026-09-15-gujarati-source-acceptance.md).

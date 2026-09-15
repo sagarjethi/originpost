@@ -1,16 +1,17 @@
 # Agent news studio
 
-The `/agent` route now runs a news-to-image workflow inside OriginPost. It replaces the earlier tab-local chat preview. Named agent group conversations remain an architectural proposal; this route currently uses the brand’s assigned text runtime and the server image provider.
+The `/agent` route runs a durable news-to-draft workflow inside OriginPost. It uses the brand’s assigned research, text and vision runtime. Images can come from the configured server provider or from an interactive Codex session followed by upload. Named agent group conversations remain proposed; `@Publisher` is a bounded publishing action, not a general agent mention router.
 
 ## User flow
 
 1. Open **Project templates**. Upload the original logo and up to three rights-cleared style reference images, or select images already in the active brand’s Library.
 2. Choose language, square/portrait/Story format, text layout, colors, footer, logo corner, width, margin, background plate, and optional quarter of a four-logo board. **Top news headline** places the headline above the visual. Story exports reserve space above the logo and below the footer for platform controls. Set **AI illustration label** in the audience’s language; the independent image check compares its observed text with that saved label. The placement preview shows the selected crop and corner.
 3. Save an immutable template version. Paste a news URL or news text and optionally add direction for this post.
-4. **Research & create** starts source research, then copy, a separate text review against the frozen evidence, one paid image request, deterministic text/logo composition, and a domain draft. The UI polls every four seconds and displays copy and the final image as they become available.
-5. Open **Sources & review** to inspect evidence and approve the exact draft through the existing workflow. Nothing is automatically published.
+4. **Research & create** starts source research, writing and a separate copy review against the frozen evidence. In server mode, a passing copy check permits an image-provider request. In **Generate in Codex & upload** mode, download the brief, create the visual in Codex and upload it to the same run. OriginPost then adds the original logo and exact text, checks the finished pixels and saves a draft. The UI polls every four seconds and displays progress.
+5. If a review rejects the result, use **Edit corrections** to fix the headline, caption or visual instructions. This creates a new candidate, reuses the completed research only while its source records are unchanged, and runs the checks again. Old versions and findings remain in chat.
+6. Open **Sources & review** or **@Publisher** to inspect and approve the exact draft. Choose a live account, confirm platform options and the publishing preview, then follow the receipt in chat. No publication is inferred from a mention, upload or passing AI review.
 
-Templates and runs are scoped to Workspace and Brand. A run freezes its template, logo/reference hashes, and verified evidence hash. Changing a saved template does not change an existing run. New versions create a new run and paid request; they do not silently overwrite a prior draft.
+Templates and runs are scoped to Workspace and Brand. A run freezes its template, logo/reference hashes and evidence hash. Changing a saved template does not change an existing run. General revision requests run research and writing again; editor corrections can reuse unchanged live research. Images in server mode may incur a new provider charge; Codex upload mode waits for an editor-supplied image. Versions never silently overwrite an earlier draft.
 
 ## Implementation
 
@@ -35,15 +36,15 @@ pnpm --filter @originpost/web build
 
 The capability endpoint (`GET /v1/agent-posts/capability?workspaceId=…&brandId=…`) checks the research queue, enabled image provider, and a tested brand text runtime (or configured Hermes fallback). A connected queue is not proof that an external research worker is healthy; stalled research times out visibly.
 
-Required live services: PostgreSQL, Redis plus research worker, private media storage, a tested brand runtime or Hermes, and `IMAGE_GENERATION_MODE=openai` with `OPENAI_IMAGE_API_KEY` (or `OPENAI_API_KEY`) on the server. `OPENAI_IMAGE_MODEL` chooses the deployment’s supported image model. Never put credentials in templates or post text. Memory storage remains development-only and loses runs on restart.
+Required services for durable operation: PostgreSQL, Redis plus research worker, private media storage, and tested research/text/vision capabilities. The configured runtime can be Hermes or the scoped Local Codex bridge. Server image generation additionally needs `IMAGE_GENERATION_MODE=openai` and its provider key; `OPENAI_IMAGE_MODEL` selects the supported model. **Codex upload mode does not need a server image-generation key.** It still needs research, copy review, vision review and storage. Never put credentials in templates or post text. Memory storage remains development-only and loses runs on restart.
 
-The API scans pending runs every three seconds and claims stages using repository compare-and-swap. A normal restart resumes unclaimed stages. An expired in-flight claim or unconfirmed command becomes `uncertain`, requiring inspection of linked receipts before another paid request. There is no automatic paid retry, resume button, cancel endpoint, or template deletion UI in this slice. Saved template assets are protected from Trash.
+The API scans pending runs every three seconds and claims stages using repository compare-and-swap. A normal restart resumes unclaimed stages. An expired in-flight claim or unconfirmed command becomes `uncertain`, requiring inspection of linked receipts before another paid request. **Find saved composition** can reconnect an exact matching ready composition for an uncertain Codex-upload handoff. It does not retry an uncertain provider call, image review or draft write. General cancellation and template deletion remain absent. Saved template assets are protected from Trash.
 
-On 2026-09-14, migration 066 was applied locally and the local UI was connected to the updated API. The local image provider was disabled and no tested brand text runtime was assigned. No live image generation was claimed or performed.
+Initial state on 2026-09-14: migration 066 was applied and the UI connected, but no live generation had been exercised. Subsequent acceptance on 2026-09-15 completed the Local Codex research/copy/vision path, interactive image generation, normal upload, deterministic composition and final draft creation. Migrations through 071 are required for the current workflow.
 
 ## Validation
 
-HTTP integration coverage substitutes external research/text/image providers while exercising real content creation, image receipts, media storage, rendering, and unapproved drafts. Additional coverage checks duplicate requests, concurrent claims, disputed evidence, expired claims, original logo pixels/hash rejection, multipart references, and PostgreSQL scope/CAS/idempotency in an isolated schema. Live provider credentials remain necessary for a real-news acceptance run.
+HTTP integration coverage substitutes external providers while exercising content creation, media storage, rendering and unapproved drafts. It covers duplicate requests, concurrent claims, disputed evidence, expired claims, original logo hashes, references, correction/recovery and publishing review gates. Separate PostgreSQL tests cover persistence and constraints. A real NASA draft completed the Local Codex upload path and passed product and independent reviews. Its content record has no publication approval or live publishing target; local connected accounts are still mocks. See the [live acceptance record](research/2026-09-15-codex-image-workflow.md).
 
 ## Project chat UI checkpoint — 2026-09-15
 
@@ -53,7 +54,7 @@ Completed runs accept revision messages in the same saved conversation. A revisi
 
 The setup drawer reads actual brand account and generation capability status, distinguishes test connections, and links to channel, runtime, and Board configuration. Instagram, Facebook, and YouTube use the existing connector setup; publishing checks and approval still apply. Private output previews refresh while open.
 
-The UI checkpoint and public website collector have been pushed to origin/main. Arbitrary social connectors and expanded one-click publishing remain incomplete. Live image/text runtimes still require configuration; no real post was generated or published in this UI pass.
+This earlier UI checkpoint and the public website collector were pushed to origin/main. Later acceptance produced a real reviewed draft, described above. Arbitrary social connectors, general agent groups and live connected-account publication remain incomplete.
 
 ## Second copy review
 
@@ -89,6 +90,6 @@ The server snapshots the selected lead and capture metadata, carries those sourc
 
 ## Research configuration is separate from source collection
 
-RSS and public-page collection can run while the general research provider is in mock mode. That does not make mock results factual verification. Agent post creation now requires the research queue plus configured live Hermes sourcing, exposes a specific test-mode setup message, and rejects completed research receipts from other providers before writing. The chat publishing endpoint checks the exact completed live research receipt again, including for older ready runs. Test fixtures substitute the provider explicitly; no test result counts as live acceptance.
+RSS and public-page collection can run while the general research provider is in mock mode. That does not make mock results factual verification. Agent creation requires the research queue and configured live research, including the supported Local Codex route or Hermes. Matched Local Codex retrieval context is retained as source evidence, not a truth verdict. The chat publishing endpoint checks the completed live research receipt and requires passed copy/image reviews matching the current evidence and asset hashes. Test fixtures substitute providers explicitly; test results do not count as live acceptance.
 
-Local Codex image input has now passed a real CLI smoke test using ChatGPT sign-in. An OriginPost adapter for that local capability remains separate work; see the [acceptance record](research/2026-09-15-codex-image-workflow.md#local-cli-image-input-acceptance--15-september-2026).
+The Local Codex bridge now supports product research, text and vision. It does not expose unattended image generation from the personal subscription. Interactive Codex generation and explicit upload are verified; the server image-provider route is separate. Personal runtime credentials remain owner-scoped. See [bridge setup](local-codex-bridge.md) and the [image acceptance record](research/2026-09-15-codex-image-workflow.md).
