@@ -493,6 +493,7 @@ describe("news post workflow with external providers substituted", () => {
       evidence: { claims: expect.any(Array) },
     });
     expect(brief.body.prompt).toContain("Do not render words");
+    expect(brief.body.prompt).toContain("lower 45% for the headline");
     await request(app.getHttpServer())
       .get(`${route}/image-brief?brandId=missing-brand`)
       .expect(404);
@@ -1090,6 +1091,7 @@ describe("news post workflow with external providers substituted", () => {
     expect(run.imageReview!.logo).toEqual(run.template.logo);
   });
   it("composes and verifies the template's exact localized illustration label", async()=>{
+    const generationRequest = vi.spyOn(app.get(ImageGenerationService), "create");
     const original=(await infrastructure.agentPostRepository.template("default",templateId))!;
     const {id,workspaceId,brandId,createdBy,createdAt,logo,references,...input}=original;
     const label="AI દ્વારા બનાવેલ પ્રતીકાત્મક તસવીર";
@@ -1099,9 +1101,19 @@ describe("news post workflow with external providers substituted", () => {
     let run=await advance(started.body.id);
     for(let i=0;i<10&&run.status!=="reviewing-image";i++)run=await advance(run.id);
     expect(run.status).toBe("reviewing-image");
+    expect(generationRequest).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({prompt: expect.stringContaining("Reserve the top 48% for the headline")}), expect.anything(), expect.anything());
+    generationRequest.mockRestore();
     vision.mockResolvedValueOnce({provider:"test-vision",model:"test-vision-model",text:JSON.stringify({observedHeadline:run.copy!.headline,observedFooter:run.template.footer,observedDisclosure:label,checks:["legibility","branding","visual-integrity","disclosure"].map(category=>({category,verdict:"pass",explanation:"Visible text matches the supplied pixels."}))})});
     run=await advance(run.id);
     expect(run.imageReview).toMatchObject({status:"passed",textMatches:{disclosure:true}});
+    const uploadRun = await request(app.getHttpServer()).post("/v1/agent-posts").set("Idempotency-Key", "top-headline-upload-guide").send({workspaceId:"default",brandId:"brand_default",templateId:saved.body.id,input:"The city council opened a public library today.",imageMode:"codex-upload"}).expect(201);
+    await research(uploadRun.body.id);
+    let waiting = await advance(uploadRun.body.id);
+    for(let i=0;i<5&&waiting.status!=="awaiting-image";i++)waiting=await advance(waiting.id);
+    expect(waiting.status).toBe("awaiting-image");
+    const brief = await request(app.getHttpServer()).get(`/v1/agent-posts/${waiting.id}/image-brief?brandId=brand_default`).expect(200);
+    expect(brief.body.prompt).toContain("Reserve the top 48% for the headline");
+    expect(brief.body.prompt).not.toContain("lower 45%");
   });
   it("keeps the rendered image and blocks a mismatched OCR result before making a draft", async () => {
     const started = await start("image-text-mismatch");

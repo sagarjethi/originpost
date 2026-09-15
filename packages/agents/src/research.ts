@@ -23,7 +23,7 @@ export interface SourcingResult {
     publishedAt?: string | undefined;
     excerpt?: string | undefined;
     confidence: number;
-    retrieval?: { status: "matched" | "mismatch" | "unavailable"; checkedAt: string; finalUrl?: string; sha256?: string; reason?: string };
+    retrieval?: { status: "matched" | "mismatch" | "unavailable"; checkedAt: string; finalUrl?: string; sha256?: string; reason?: string; context?: string; contextSha256?: string; contextStart?: number; contextTruncated?: boolean };
     feedUrl?: string | undefined;
     stableId?: string | undefined;
     pageUrl?: string | undefined;

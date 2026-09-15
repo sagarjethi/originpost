@@ -36,3 +36,10 @@ it("does not render unsafe source links", () => {
   expect(html).not.toContain("href=");
   expect(html).toContain("No independent page check recorded");
 });
+it("exposes bounded reviewer context as escaped source text", () => {
+  const html = renderToStaticMarkup(<SourceEvidenceCard source={{id:"s",title:"Source",confidence:80,retrieval:{status:"matched",checkedAt:"2026-09-15T00:00:00Z",context:"<script>untrusted source</script>",contextTruncated:true}}}/>);
+  expect(html).toContain("Source text supplied to the reviewers");
+  expect(html).toContain("limited window");
+  expect(html).toContain("&lt;script&gt;");
+  expect(html).not.toContain("<script>");
+});

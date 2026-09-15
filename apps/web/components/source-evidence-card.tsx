@@ -13,6 +13,8 @@ export type SourceEvidenceView = {
     finalUrl?: string;
     sha256?: string;
     reason?: string;
+    context?: string;
+    contextTruncated?: boolean;
   };
 };
 function publicLink(value?: string) {
@@ -58,6 +60,13 @@ export function SourceEvidenceCard({ source }: { source: SourceEvidenceView }) {
               claim or image rights.
             </p>
             {source.excerpt && <blockquote>{source.excerpt}</blockquote>}
+            {proof.status === "matched" && proof.context && (
+              <details>
+                <summary>Source text supplied to the reviewers</summary>
+                <p>{proof.contextTruncated ? "This is a limited window of the retrieved page. Other page text is not included." : "Text extracted from the retrieved page."} Source text can contain errors; editors still verify its claims.</p>
+                <blockquote className="source-context">{proof.context}</blockquote>
+              </details>
+            )}
             {proof.reason && <p>{proof.reason}</p>}
             {proof.sha256 && (
               <p>

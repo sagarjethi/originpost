@@ -127,7 +127,7 @@ export interface MonitorFingerprint {
 export interface SourceSnapshot { resourceFailures?: number; sha256: string; capturedAt: string; pageUrl: string; width: number; height: number }
 
 export interface SourceEvidence {
-  retrieval?: { status: "matched" | "mismatch" | "unavailable"; checkedAt: string; finalUrl?: string; sha256?: string; reason?: string };
+  retrieval?: { status: "matched" | "mismatch" | "unavailable"; checkedAt: string; finalUrl?: string; sha256?: string; reason?: string; context?: string; contextSha256?: string; contextStart?: number; contextTruncated?: boolean };
   snapshot?: SourceSnapshot | undefined;
   id: string;
   kind: "url" | "note" | "image" | "video" | "document" | "voice" | "screenshot";

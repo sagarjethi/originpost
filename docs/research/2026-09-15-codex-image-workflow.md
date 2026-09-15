@@ -83,3 +83,9 @@ A live smoke test used installed Codex CLI 0.153.4 with its existing ChatGPT sig
 This proves local non-interactive image input and a text result on this account. It does not prove image generation output, news verification accuracy, isolation between product users, or an installed OriginPost runtime adapter. A local connector still needs bounded process lifecycle, constrained tools, private temporary asset cleanup, exact run binding and a capability test. It must not expose the personal authenticated CLI as a public shared endpoint. The installed personal Hermes is 0.20.6 with a carried local commit; it was not upgraded or repurposed as the pinned OriginPost Board runtime.
 
 The official [non-interactive guide](https://learn.chatgpt.com/docs/non-interactive-mode) documents CLI automation; the [app-server protocol](https://learn.chatgpt.com/docs/app-server) is the separate integration seam for streaming clients. Neither this smoke test nor image-input support establishes unattended image-output capability.
+
+## Live acceptance findings — source context and layout guidance
+
+The first real NASA training draft was correctly blocked by copy review: its caption contained details absent from the saved short excerpt. The blocked run is retained. Local source retrieval now preserves a bounded window of independently fetched text, its hash and a truncation marker alongside the original quote check. Writing and review receive the same window, and editors can inspect it in the source card. Text presence is not a truth verdict.
+
+Both server generation and exported Codex briefs now share layout-specific placement guidance. A top-headline template reserves the upper area and places the illustrative subject below it; lower-headline, side-panel and statement layouts have separate guidance. This fixes a conflict where every template previously reserved the lower area for text. Actual final pixels still require review.

@@ -12,6 +12,10 @@ export type SourceRetrieval = {
   finalUrl?: string;
   sha256?: string;
   reason?: string;
+  context?: string;
+  contextSha256?: string;
+  contextStart?: number;
+  contextTruncated?: boolean;
 };
 const normalize = (text: string) =>
   text.normalize("NFC").replace(/\s+/gu, " ").trim();
@@ -54,6 +58,9 @@ export async function verifySourceExcerpts(
   const sources: SourcingResult["sources"] = [];
   const verified = new Set<string>();
   const signal = AbortSignal.timeout(45000);
+  // Bound the entire evidence packet, including multi-source research, so the
+  // writer and independent reviewer can receive the same retrieved context.
+  const contextLimit = Math.min(12000, Math.floor(24000 / Math.max(1, result.sources.length)));
   for (let offset = 0; offset < result.sources.length; offset += 3) {
     sources.push(
       ...(await Promise.all(
@@ -77,11 +84,19 @@ export async function verifySourceExcerpts(
               : sourcePageText(page.body.toString("utf8"));
             const excerpt = normalize(source.excerpt ?? "");
             const matched = excerpt.length >= 30 && text.includes(excerpt);
+            const contextStart = Math.max(0, Math.min(text.indexOf(excerpt) - Math.floor(contextLimit / 2), text.length - contextLimit));
+            const context = text.slice(contextStart, contextStart + contextLimit);
             retrieval = {
               status: matched ? "matched" : "mismatch",
               checkedAt,
               finalUrl: page.url,
               sha256: createHash("sha256").update(page.body).digest("hex"),
+              ...(matched ? {
+                context,
+                contextSha256: createHash("sha256").update(context).digest("hex"),
+                contextStart,
+                contextTruncated: context.length < text.length,
+              } : {}),
               ...(!matched
                 ? {
                     reason:

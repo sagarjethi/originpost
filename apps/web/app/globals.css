@@ -961,4 +961,5 @@ button.safety-card:hover { border-color: #83a391; background: #ffffff12; }
 .source-retrieval summary { cursor: pointer; line-height: 1.4; }
 .source-retrieval p, .source-retrieval blockquote { margin: 6px 0; line-height: 1.5; overflow-wrap: anywhere; }
 .source-retrieval code { white-space: normal; overflow-wrap: anywhere; }
+.source-retrieval .source-context { max-height: 24rem; overflow: auto; }
 .source-card a { color: inherit; }
