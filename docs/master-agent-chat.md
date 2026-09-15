@@ -538,3 +538,10 @@ Runtime inspection found the development worker configured for mock research. Po
 The Local Codex runtime preset now routes writing, copy review and image review through a version-pinned loopback bridge. It uses fresh tool-disabled CLI processes, existing encrypted runtime credentials and usage records. The host and Docker API use separate server-owned routes; arbitrary private endpoints remain disabled. This personal-login preset is limited to single-owner mode. Research and image generation are not exposed through this bridge. See [setup and verification](local-codex-bridge.md).
 
 Local acceptance now includes the product’s vision probe and a real Gujarati draft request through the Docker API, with recorded usage and no publication. The active brand has the tested Local Codex profile assigned.
+
+
+### Local research evidence checkpoint — 15 September 2026
+
+Local Codex research has an opt-in public-web route separate from tool-disabled writing and vision. The worker uses the brand’s tested runtime, decrypts its scoped credential, independently retrieves source excerpts, and stores match status plus response hashes. Fresh research receipts are preserved even when discovery already saved the same URL. The agent-post gate requires matched source receipts for supported Codex claims; publisher count no longer implies independent verification in the UI. Failed local research attempts are not automatically retried. The README retains only the normal desktop admin screenshot. Shared-session personal-runtime authorization, automatic image generation and actual connected-account publishing acceptance remain outstanding.
+
+Live acceptance: Docker API → local Codex web research → independent NASA page retrieval → PostgreSQL receipt round-trip passed. The original lead remained unchanged, the claim used the fresh matched source, and the agent-post evidence gate accepted the saved receipt. API/worker key decoding now supports both configured hex and base64 forms. No approvals or publishing targets were created.

@@ -1,3 +1,4 @@
+import { selectBrandSourcing } from "./local-codex-sourcing.js";
 import { researchContext } from "./research-context.js";
 import "dotenv/config";
 import { createHash } from "node:crypto";
@@ -50,7 +51,7 @@ import {
   type ProviderGrantProvider,
 } from "@originpost/domain";
 import { decideInstagramCollaboratorPoll } from "./instagram-collaborator-poll-state.js";
-import { Queue, Worker } from "bullmq";
+import { Queue, Worker, UnrecoverableError } from "bullmq";
 import { hasCompletePublishProof, officialPublishNextStep } from "./provider-publish-state.js";
 import { facebookIntentMarker, facebookPublishNextStep } from "./facebook-publish-state.js";
 import { groupMonitorSuggestions } from "./monitor-suggestion-groups.js";
@@ -204,7 +205,7 @@ if (hermesBoardPluginEnabled) {
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by the worker.");
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-const { repository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, agentBoardTaskRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
+const { repository, agentRuntimeRepository, analyticsRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentBoardRepository, agentBoardTaskRepository, organizationRepository, privateConversationRepository, connectedAccountRepository, providerLifecycleRepository, oauthRepository, mediaRepository, monitorRepository, sourceSignalRepository, notificationRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository } = await createContentRepository({
   databaseUrl,
   allowMemoryFallback: false,
   ...(process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY ? { privateMessageEncryptionKey: process.env.PRIVATE_MESSAGE_ENCRYPTION_KEY } : {}),
@@ -324,6 +325,7 @@ if (youtubeConnectorMode === "official") {
   }));
 }
 const sourcing = createSourcingProvider();
+const brandSourcing = (workspaceId:string, brandId:string) => selectBrandSourcing({workspaceId,brandId,repository:agentRuntimeRepository,fallback:sourcing,enabled:process.env.LOCAL_CODEX_RESEARCH_ENABLED==="true",authMode:process.env.AUTH_MODE??"single-user",baseUrl:process.env.LOCAL_CODEX_BASE_URL,encryptionKey:process.env.CREDENTIAL_ENCRYPTION_KEY});
 const lumaMumbaiSourcing = new LumaMumbaiSourcingProvider();
 const telegram = process.env.TELEGRAM_BOT_TOKEN ? new TelegramBotClient(process.env.TELEGRAM_BOT_TOKEN) : null;
 const allowedTelegramChats = new Set((process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
@@ -1211,13 +1213,21 @@ const researchWorker = new Worker<ResearchJob>(
     if (!item) throw new Error("Content item not found.");
     const run = item.researchRuns.find((entry) => entry.id === job.data.researchRunId);
     if (!run) throw new Error("Research run not found.");
+    if (run.status === "completed") return { skipped: true, reason: "already-completed" };
+    if (run.status === "running") {
+      await saveResult(repository, failResearch(item, run.id, "The previous research attempt was interrupted. Review its outcome before starting a new run.", systemActor));
+      throw new UnrecoverableError("Research outcome is uncertain; automatic replay is disabled.");
+    }
 
     const running = markResearchRunning(item, run.id, systemActor);
     await saveResult(repository, running);
     item = running.item;
 
+    let localResearchAttempted = false;
     try {
-      const result = await sourcing.research({
+      const provider = await brandSourcing(item.workspaceId,item.brandId);
+      localResearchAttempted = provider.id === "codex-local";
+      const result = await provider.research({
         sessionKey: `originpost-research:${item.workspaceId}:${item.id}`,
         query: run.query,
         context: researchContext(item),
@@ -1236,6 +1246,7 @@ const researchWorker = new Worker<ResearchJob>(
           ...(source.publisher ? { publisher: source.publisher } : {}),
           ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}),
           ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+          ...(source.retrieval ? {retrieval: source.retrieval} : {}),
           retrievedAt: new Date().toISOString(),
           rights: "reference-only",
           confidence: source.confidence,
@@ -1257,6 +1268,7 @@ const researchWorker = new Worker<ResearchJob>(
         const failed = failResearch(latest, run.id, error instanceof Error ? error.message : "Unknown sourcing error", systemActor);
         await saveResult(repository, failed);
       }
+      if (localResearchAttempted) throw new UnrecoverableError("Local Codex research did not finish safely. Review the failed run before starting another request.");
       throw error;
     }
   },
@@ -1286,8 +1298,9 @@ const monitorWorker = new Worker<MonitorJob>(
       return { skipped: true, reason: "monitor-already-running" };
     }
 
+    let localResearchAttempted = false;
     try {
-      const monitorSourcing = selectMonitorSourcingProvider(monitor, sourcing, lumaMumbaiSourcing, configuredWebsiteProvider(monitor.sourceIntelligence?.sources.filter(s => s.enabled && s.kind === "publisher_site") ?? [], monitor.workspaceId, monitor.brandId));
+      const monitorSourcing = selectMonitorSourcingProvider(monitor, {id:"brand-runtime",health:async()=>true,research:async request=>{const provider=await brandSourcing(monitor.workspaceId,monitor.brandId);localResearchAttempted=provider.id==="codex-local";return provider.research(request);}}, lumaMumbaiSourcing, configuredWebsiteProvider(monitor.sourceIntelligence?.sources.filter(s => s.enabled && s.kind === "publisher_site") ?? [], monitor.workspaceId, monitor.brandId));
       const result = await monitorSourcing.research({
         sessionKey: `originpost-monitor:${monitor.workspaceId}:${monitor.id}`,
         query: monitor.query,
@@ -1330,7 +1343,7 @@ const monitorWorker = new Worker<MonitorJob>(
         const created = createMonitorSuggestion({
           workspaceId: monitor.workspaceId, brandId: monitor.brandId, monitorId: monitor.id, monitorRunId: run.id, title: group.suggestion.title, summary: group.suggestion.summary,
           query: monitor.query, depth: monitor.depth, languages: monitor.languages, ...(monitor.region ? { region: monitor.region } : {}), freshnessHours: monitor.freshnessHours, sourceLimit: monitor.sourceLimit,
-          sources: group.candidates.map(({ source }) => ({ kind: "url" as const, title: source.title, url: source.url, ...(source.publisher ? { publisher: source.publisher } : {}), ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}), ...(source.excerpt ? { excerpt: source.excerpt } : {}), retrievedAt: completedAt, rights: "reference-only" as const, confidence: source.confidence })),
+          sources: group.candidates.map(({ source }) => ({ kind: "url" as const, title: source.title, url: source.url, ...(source.publisher ? { publisher: source.publisher } : {}), ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}), ...(source.excerpt ? { excerpt: source.excerpt } : {}), ...(source.retrieval ? { retrieval: source.retrieval } : {}), retrievedAt: completedAt, rights: "reference-only" as const, confidence: source.confidence })),
           claims: result.claims.filter((claim) => claim.sourceUrls.some((url) => groupUrls.has(url))), provider: result.provider, model: result.model, ...(result.responseId ? { responseId: result.responseId } : {}), toolsUsed: result.toolsUsed,
         }, systemActor, completedAt);
         const fingerprints = group.candidates.map(({ source, fingerprint }) => ({ workspaceId: monitor.workspaceId, monitorId: monitor.id, fingerprint, sourceUrl: source.url, contentItemId: created.item.id, firstSeenAt: completedAt }));
@@ -1379,6 +1392,7 @@ const monitorWorker = new Worker<MonitorJob>(
         monitorId: monitor.id,
         actionUrl: "/?module=Automations",
       });
+      if (localResearchAttempted) throw new UnrecoverableError("Local Codex monitoring did not finish safely. Review this run before retrying.");
       throw error;
     }
   },

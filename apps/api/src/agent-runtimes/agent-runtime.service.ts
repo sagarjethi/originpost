@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
-import { AgentProviderError, OpenAICompatibleAgentProvider, type AgentMessage, type AgentImageInput } from "@originpost/agents";
+import { openAgentRuntimeCredential, AgentProviderError, OpenAICompatibleAgentProvider, type AgentMessage, type AgentImageInput } from "@originpost/agents";
 import { agentRunHash, can, createAgentRuntimeProfile, DomainError, reviseAgentRuntimeProfile, type Actor, type AgentRunLedgerEntry, type AgentRuntimeCredential, type AgentRuntimeProfile, type AuditEvent } from "@originpost/domain";
 import { probeImageInput } from "./vision-probe.js";
 import { INFRASTRUCTURE } from "../common/tokens.js";
@@ -22,7 +22,7 @@ export class AgentRuntimeService{
   private audit(workspaceId:string,actor:Actor,action:string,detail:Record<string,unknown>,contentItemId?:string):AuditEvent{return{id:`evt_${randomUUID()}`,workspaceId,...(contentItemId?{contentItemId}:{}),actorId:actor.id,actorType:actor.actorType??"human",action,detail,createdAt:new Date().toISOString()};}
   private key(){const raw=this.config.get<string>("CREDENTIAL_ENCRYPTION_KEY")?.trim();if(!raw)return null;const key=/^[a-f0-9]{64}$/i.test(raw)?Buffer.from(raw,"hex"):Buffer.from(raw,"base64");return key.length===32?key:null;}
   private seal(workspaceId:string,profileId:string,value:string):AgentRuntimeCredential{const key=this.key();if(!key)throw new DomainError("Set a 32-byte CREDENTIAL_ENCRYPTION_KEY before saving an AI provider key.","agent_runtime_encryption_required",409);const iv=randomBytes(12);const cipher=createCipheriv("aes-256-gcm",key,iv);cipher.setAAD(Buffer.from(`${workspaceId}:${profileId}:agent-runtime:v1`));const ciphertext=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return{keyVersion:"v1",algorithm:"aes-256-gcm",iv:iv.toString("base64"),authTag:cipher.getAuthTag().toString("base64"),ciphertext:ciphertext.toString("base64")};}
-  private open(workspaceId:string,profileId:string,value:AgentRuntimeCredential|null){if(!value)return undefined;const key=this.key();if(!key)throw new DomainError("AI provider credential encryption is not configured.","agent_runtime_encryption_required",409);try{const decipher=createDecipheriv("aes-256-gcm",key,Buffer.from(value.iv,"base64"));decipher.setAAD(Buffer.from(`${workspaceId}:${profileId}:agent-runtime:v1`));decipher.setAuthTag(Buffer.from(value.authTag,"base64"));return Buffer.concat([decipher.update(Buffer.from(value.ciphertext,"base64")),decipher.final()]).toString("utf8");}catch{throw new DomainError("The AI provider key cannot be opened. Save it again.","agent_runtime_credential_invalid",409);}}
+  private open(workspaceId:string,profileId:string,value:AgentRuntimeCredential|null){if(!value)return undefined;const key=this.key();if(!key)throw new DomainError("AI provider credential encryption is not configured.","agent_runtime_encryption_required",409);try{return openAgentRuntimeCredential(workspaceId,profileId,value,key);}catch{throw new DomainError("The AI provider key cannot be opened. Save it again.","agent_runtime_credential_invalid",409);}}
   private localCodexEndpoint() {
     if (this.config.get<string>("AUTH_MODE") === "sessions") throw new DomainError("The personal local Codex bridge is available only in single-owner deployments.", "local_codex_scope", 409);
     const raw = this.config.get<string>("LOCAL_CODEX_BASE_URL");

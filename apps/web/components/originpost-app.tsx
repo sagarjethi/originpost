@@ -1,5 +1,6 @@
 "use client";
 
+import { SourceEvidenceCard, type SourceEvidenceView } from "./source-evidence-card";
 import {
   Archive,
   AlertCircle,
@@ -73,7 +74,7 @@ type ContentItem = {
   researchDepth: "quick" | "standard" | "deep";
   riskLevel: "low" | "medium" | "high" | "sensitive";
   tags?: string[];
-  sources: Array<{ id: string; title: string; url?: string; publisher?: string; publishedAt?: string; confidence: number }>;
+  sources: SourceEvidenceView[];
   claims: Array<{ id: string; text: string; status: string; sourceIds: string[] }>;
   researchRuns: Array<{
     id: string;
@@ -429,7 +430,7 @@ export function OriginPostApp() {
   const manualPlatform = platformLabel(manualTarget?.platform ?? "");
   const sourcePublishers = new Set(selected?.sources.map((source) => source.publisher?.trim()).filter(Boolean));
   const supportedClaims = selected?.claims.filter((claim) => claim.status === "supported").length ?? 0;
-  const crossCheckLabel = (selected?.sources.length ?? 0) >= 2 && sourcePublishers.size >= 2 && supportedClaims > 0 ? "Cross-checked" : (selected?.sources.length ?? 0) >= 2 ? "Check the claims" : "Needs a second source";
+  const crossCheckLabel = (selected?.sources.length ?? 0) >= 2 && sourcePublishers.size >= 2 && supportedClaims > 0 ? "Multiple publishers — check independence" : (selected?.sources.length ?? 0) >= 2 ? "Check the claims" : "Needs a second source";
   const newestSourceDate = selected?.sources.map((source) => source.publishedAt ? new Date(source.publishedAt).getTime() : 0).filter(Boolean).sort((a, b) => b - a)[0];
   const homeQueue = [...items]
     .filter((item) => item.status !== "archived" && item.status !== "published")
@@ -762,8 +763,8 @@ export function OriginPostApp() {
                 <div><small>Sources</small><strong>{selected.sources.length}</strong></div>
                 <div><small>Drafts</small><strong>{selected.drafts.length}</strong></div>
               </div>
-              {selected.tags?.includes("monitor") ? <div className={`evidence-status ${crossCheckLabel === "Cross-checked" ? "checked" : "waiting"}`}><ShieldCheck size={16} /><div><strong>{crossCheckLabel}</strong><small>{sourcePublishers.size || selected.sources.length} publisher{(sourcePublishers.size || selected.sources.length) === 1 ? "" : "s"} · {supportedClaims} supported claim{supportedClaims === 1 ? "" : "s"}{newestSourceDate ? ` · newest ${new Date(newestSourceDate).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></div></div> : null}
-              <div className="detail-section"><div className="section-label"><span>Evidence</span></div>{selected.sources.length ? selected.sources.slice(0, 2).map((source) => <div className="source-card" key={source.id}><FileText size={17} /><div><strong>{source.title}</strong><small>{source.publisher ?? "Saved source"} · {source.confidence}% confidence</small></div><ShieldCheck size={16} /></div>) : <div className="dashed-action dashed-action-static"><FileText size={16} /> No sources yet</div>}</div>
+              {selected.tags?.includes("monitor") ? <div className={`evidence-status ${"waiting"}`}><ShieldCheck size={16} /><div><strong>{crossCheckLabel}</strong><small>{sourcePublishers.size || selected.sources.length} publisher{(sourcePublishers.size || selected.sources.length) === 1 ? "" : "s"} · {supportedClaims} supported claim{supportedClaims === 1 ? "" : "s"}{newestSourceDate ? ` · newest ${new Date(newestSourceDate).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></div></div> : null}
+              <div className="detail-section"><div className="section-label"><span>Evidence</span></div>{selected.sources.length ? selected.sources.map((source) => <SourceEvidenceCard key={source.id} source={source} />) : <div className="dashed-action dashed-action-static"><FileText size={16} /> No sources yet</div>}</div>
               <div className="detail-section">
                 <div className="section-label"><span>Source research</span><button onClick={() => void researchItem(selected)} disabled={recentResearch?.status === "queued" || recentResearch?.status === "running"}>{recentResearch?.status === "queued" || recentResearch?.status === "running" ? "Working…" : "Run again"}</button></div>
                 {recentResearch ? <div className={`research-card ${recentResearch.status}`}><Bot size={18} /><div><strong>{recentResearch.status === "completed" ? `${recentResearch.sourceCount} sources and ${recentResearch.claimCount} claims saved` : recentResearch.status === "failed" ? "Research needs attention" : "Checking sources and dates"}</strong><small>{recentResearch.provider ? `${recentResearch.provider} · ` : ""}{recentResearch.toolsUsed.length ? recentResearch.toolsUsed.join(", ") : recentResearch.query}</small>{recentResearch.error ? <em>{recentResearch.error}</em> : null}</div></div> : <button className="dashed-action" onClick={() => void researchItem(selected)}><Search size={16} /> Research with the sourcing agent</button>}

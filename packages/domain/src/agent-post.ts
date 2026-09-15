@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DomainError } from "./errors.js";
-import type { SourceEvidence } from "./types.js";
+import type { ContentItem, SourceEvidence } from "./types.js";
 import type { CreativeSpec } from "./creative-studio.js";
 
 export const agentPostSkills = [
@@ -340,4 +340,17 @@ export function agentPostCreativeSpec(
     },
     disclosure: "AI illustration",
   };
+}
+
+/** Local research must carry worker-checked excerpts, not just a provider label. */
+export function hasLiveAgentResearch(item: Pick<ContentItem,"researchRuns"|"claims"|"sources">, runId: string | undefined): boolean {
+  const research=item.researchRuns.find(run=>run.id===runId);
+  if(!research || research.status!=="completed") return false;
+  if(research.provider==="hermes") return true;
+  if(research.provider!=="codex-local" || !research.toolsUsed.includes("web_search")) return false;
+  const supported=item.claims.filter(claim=>claim.status==="supported");
+  return supported.length>0 && supported.every(claim=>claim.sourceIds.length>0 && claim.sourceIds.every(id=>{
+    const source=item.sources.find(value=>value.id===id), proof=source?.retrieval;
+    return proof?.status==="matched" && /^[a-f0-9]{64}$/.test(proof.sha256??"") && Date.parse(proof.checkedAt)>=Date.parse(research.createdAt);
+  }));
 }

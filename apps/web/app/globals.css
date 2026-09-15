@@ -956,3 +956,9 @@ button.safety-card:hover { border-color: #83a391; background: #ffffff12; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 @media(max-width:760px){.topbar .new-button{width:44px;min-width:44px;height:44px;padding:0;justify-content:center}.topbar .new-button svg{display:block;flex-shrink:0}.topbar-create-label{display:none}.topbar .topbar-help{width:36px;min-width:36px;flex-shrink:0}}
+
+.source-retrieval { font-size: 11px; margin-top: 6px; }
+.source-retrieval summary { cursor: pointer; line-height: 1.4; }
+.source-retrieval p, .source-retrieval blockquote { margin: 6px 0; line-height: 1.5; overflow-wrap: anywhere; }
+.source-retrieval code { white-space: normal; overflow-wrap: anywhere; }
+.source-card a { color: inherit; }

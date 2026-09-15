@@ -23,6 +23,7 @@ export interface SourcingResult {
     publishedAt?: string | undefined;
     excerpt?: string | undefined;
     confidence: number;
+    retrieval?: { status: "matched" | "mismatch" | "unavailable"; checkedAt: string; finalUrl?: string; sha256?: string; reason?: string };
     feedUrl?: string | undefined;
     stableId?: string | undefined;
     pageUrl?: string | undefined;
@@ -90,7 +91,7 @@ function parseJsonText(text: string): unknown {
 }
 
 export class HermesSourcingProvider implements SourcingProvider {
-  readonly id = "hermes";
+  readonly id: string = "hermes";
 
   constructor(private readonly config: {
     baseUrl: string;

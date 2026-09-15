@@ -208,7 +208,7 @@ export function completeResearch(
   if (!run) throw new DomainError("Research run not found.", "research_not_found", 404);
   const existingUrls = new Set(item.sources.map((source) => source.url).filter(Boolean));
   const newSources = result.sources
-    .filter((source) => !source.url || !existingUrls.has(source.url))
+    .filter((source) => Boolean(source.retrieval) || !source.url || !existingUrls.has(source.url))
     .map((source) => ({ ...source, id: id("source"), capturedAt: now }));
   const allSources = [...item.sources, ...newSources];
   const sourceByUrl = new Map(allSources.filter((source) => source.url).map((source) => [source.url!, source.id]));

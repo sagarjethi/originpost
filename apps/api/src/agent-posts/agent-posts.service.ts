@@ -1,3 +1,4 @@
+import { hasLiveAgentResearch } from "@originpost/domain";
 import {
   Inject,
   Injectable,
@@ -176,14 +177,14 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         )
       : Boolean(this.infrastructure.hermes);
     const imageReview = await this.runtimes.imageReviewCapability(w, b);
-    const researchMode = this.config.get<string>("AGENT_MODE") ?? "mock";
+    const localResearch = this.config.get<string>("LOCAL_CODEX_RESEARCH_ENABLED") === "true" && this.config.get<string>("AUTH_MODE") !== "sessions" && Boolean(this.config.get<string>("LOCAL_CODEX_BASE_URL")) && (await this.infrastructure.agentRuntimeRepository.getExecutionContext(w,b))?.profile.preset === "codex-local";
+    const researchMode = localResearch ? "codex-local" : this.config.get<string>("AGENT_MODE") ?? "mock";
     const research =
       Boolean(this.infrastructure.researchQueue) &&
-      researchMode === "hermes" &&
-      Boolean(this.infrastructure.hermes);
+      (localResearch || (researchMode === "hermes" && Boolean(this.infrastructure.hermes)));
     const researchReason = !this.infrastructure.researchQueue
       ? "Connect the research queue and worker."
-      : researchMode !== "hermes"
+      : localResearch ? null : researchMode !== "hermes"
         ? "Research is in test mode. Configure live Hermes research before creating news posts."
         : !this.infrastructure.hermes
           ? "Connect the Hermes research endpoint before creating news posts."
@@ -720,7 +721,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
           409,
         );
       if (research.status !== "completed") return;
-      if (research.provider !== "hermes")
+      if (!hasLiveAgentResearch(item, run.researchRunId))
         throw new DomainError(
           "This research receipt is not from the live research provider. Test results cannot verify a news post.",
           "research_not_live",

@@ -1,3 +1,4 @@
+import { hasLiveAgentResearch } from "@originpost/domain";
 import { Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { can, DomainError, type Actor } from "@originpost/domain";
@@ -51,7 +52,7 @@ export class AgentPostPublishingService {
     if (
       !research ||
       research.status !== "completed" ||
-      research.provider !== "hermes"
+      !hasLiveAgentResearch(item, run.researchRunId)
     )
       throw new DomainError(
         "A completed live research receipt is required before publishing this agent post. Test research does not verify news.",
