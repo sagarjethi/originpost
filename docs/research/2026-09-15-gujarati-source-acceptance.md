@@ -46,3 +46,23 @@ or current-listing links. The six focused extraction/provider tests pass, as doe
 worker typechecking. A subsequent production collector attempt still aborted.
 This fixes extraction coverage, but does not prove reliable live collection; the
 Gujarati monitor remains disabled pending successful live acceptance.
+
+## Transport diagnosis and alternative feeds
+
+A traced production-path retry failed while retrieving `robots.txt`, before the
+browser was launched. This establishes an intermittent policy-transport failure
+on that attempt; it does not establish that browser readiness caused every prior
+failure. The collector now preserves a safe, actionable robots-policy failure in
+its source-health error. Partial successful collections retain separate failure
+codes without exposing raw transport details.
+
+Additional direct bounded probes on 15 September returned:
+
+- `https://www.gujaratsamachar.com/rss`: HTTP 404.
+- `https://www.gujaratsamachar.com/rss/top-stories`: HTTP 404.
+- `https://sandesh.com/rss`: HTTP 200, HTML application shell, not RSS/Atom XML.
+
+These URLs are not accepted feeds. A search result or an RSS-labelled navigation
+link does not prove a working feed. No new scheduled monitor was enabled from
+these probes. Nine focused browser extraction, source-provider and robots-policy
+tests pass, including preserving successful sources when another fails.

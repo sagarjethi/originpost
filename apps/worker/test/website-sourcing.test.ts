@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   WebsiteSourcingProvider,
+  PublisherCaptureError,
   ensureSourceSnapshotBucket,
   type WebsiteCapture,
 } from "../src/website-sourcing.js";
@@ -182,5 +183,27 @@ describe("publisher browser sourcing", () => {
       ),
     ).rejects.toMatchObject({ $metadata: { httpStatusCode: 403 } });
     expect(denied).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("publisher failure reporting", () => {
+  it("surfaces an actionable robots failure instead of a generic all-pages error", async () => {
+    const provider = new WebsiteSourcingProvider(config.sources, async () => {
+      throw new PublisherCaptureError("robots_unavailable", "Publisher robots.txt could not be retrieved.");
+    }, async () => "a".repeat(64), now);
+    await expect(provider.research(request)).rejects.toThrow("All publisher pages failed. Publisher robots.txt could not be retrieved.");
+  });
+
+  it("keeps successful sources and safe diagnostics without leaking raw transport errors", async () => {
+    const sources = [...config.sources, { ...config.sources[0]!, label: "Failed publisher", url: "https://second.example/news" }];
+    const provider = new WebsiteSourcingProvider(sources, async (url) => {
+      if (url.includes("second.example")) throw new Error("private transport detail");
+      return capture;
+    }, async () => "a".repeat(64), now);
+    const result = await provider.research(request);
+    expect(result.sources).toHaveLength(2);
+    expect(result.raw).toMatchObject({ failed: ["Failed publisher"], failureDetails: [{ label: "Failed publisher", code: "capture_failed" }] });
+    expect(JSON.stringify(result)).not.toContain("private transport detail");
   });
 });

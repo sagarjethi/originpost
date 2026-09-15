@@ -43,6 +43,17 @@ export type WebsiteCapture = {
 export type CaptureWebsite = (url: string) => Promise<WebsiteCapture>;
 const userAgent = "OriginPost";
 
+export class PublisherCaptureError extends Error {
+  constructor(
+    readonly code: "robots_unavailable" | "robots_disallowed" | "crawl_delay",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "PublisherCaptureError";
+  }
+}
+
 /** Fresh, unauthenticated desktop context. Every byte is fetched through the pinned public-address transport. */
 export const capturePublicWebsite: CaptureWebsite = async (url) => {
   const abort = new AbortController();
@@ -78,9 +89,11 @@ export const capturePublicWebsite: CaptureWebsite = async (url) => {
       const response = await fetchPublicResource(`${origin}/robots.txt`, {
         maxBytes: 512 * 1024,
         signal: timeout,
+      }).catch((cause: unknown) => {
+        throw new PublisherCaptureError("robots_unavailable", "Publisher robots.txt could not be retrieved. No page was collected; retry when the publisher is reachable.", { cause });
       });
       if (response.status !== 200 && response.status !== 404)
-        throw new Error("Publisher robots policy is unavailable.");
+        throw new PublisherCaptureError("robots_unavailable", "Publisher robots policy is unavailable.");
       rules = robotsParser(
         `${origin}/robots.txt`,
         response.status === 404 ? "" : response.body.toString("utf8"),
@@ -88,10 +101,10 @@ export const capturePublicWebsite: CaptureWebsite = async (url) => {
       robots.set(origin, rules);
     }
     if (rules.isAllowed(target, userAgent) === false)
-      throw new Error("Publisher robots policy disallows this page.");
+      throw new PublisherCaptureError("robots_disallowed", "Publisher robots policy disallows this page.");
     // Collections already run on a schedule. A longer publisher-specific delay requires a dedicated adapter.
     if ((rules.getCrawlDelay(userAgent) ?? 0) > 1)
-      throw new Error("Publisher requires a slower dedicated collector.");
+      throw new PublisherCaptureError("crawl_delay", "Publisher requires a slower dedicated collector.");
   }
   await allowed(url);
   const browser = await chromium.launch({
@@ -236,6 +249,7 @@ export class WebsiteSourcingProvider implements SourcingProvider {
   async research(request: SourcingRequest): Promise<SourcingResult> {
     const sources: SourcingResult["sources"] = [];
     const failed: string[] = [];
+    const failureDetails: Array<{ label: string; code: string; message: string }> = [];
     for (const source of this.sources.slice(0, 20)) {
       try {
         const captured = await this.capture(source.url);
@@ -266,13 +280,18 @@ export class WebsiteSourcingProvider implements SourcingProvider {
             },
           });
         }
-      } catch {
+      } catch (error) {
         failed.push(source.label);
+        failureDetails.push({
+          label: source.label,
+          code: error instanceof PublisherCaptureError ? error.code : "capture_failed",
+          message: error instanceof PublisherCaptureError ? error.message : "Page capture or snapshot storage failed. Check browser installation, storage and public page availability.",
+        });
       }
     }
     if (failed.length === this.sources.length)
       throw new Error(
-        "All publisher pages failed. Check browser installation, storage, robots policy and public page availability.",
+        `All publisher pages failed. ${[...new Set(failureDetails.map((failure) => failure.message))].join(" ")}`,
       );
     const unique = [
       ...new Map(sources.map((source) => [source.url, source])).values(),
@@ -297,7 +316,7 @@ export class WebsiteSourcingProvider implements SourcingProvider {
         "desktop_website_capture",
         ...failed.map((label) => `collector_failed:${label}`),
       ],
-      raw: { failed, capturedAt: this.now().toISOString() },
+      raw: { failed, failureDetails, capturedAt: this.now().toISOString() },
     };
   }
 }
