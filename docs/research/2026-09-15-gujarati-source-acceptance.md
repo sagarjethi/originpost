@@ -66,3 +66,27 @@ These URLs are not accepted feeds. A search result or an RSS-labelled navigation
 link does not prove a working feed. No new scheduled monitor was enabled from
 these probes. Nine focused browser extraction, source-provider and robots-policy
 tests pass, including preserving successful sources when another fails.
+
+## Desktop rendering diagnosis
+
+The deployed sandboxed worker subsequently reached the Gujarati document but
+hit its 30-second full-load deadline. Changing readiness to DOMContentLoaded plus
+a three-second resource window reached screenshot creation, which then timed out
+waiting for web fonts. The collector now cancels unfinished resource requests at
+that boundary, allowing installed fallback fonts. A real Chrome regression uses
+both a stalled image and a stalled web font and verifies article text plus a
+1440×1000 PNG.
+
+A sandboxed Docker trial then finished in 4.7 seconds with 19 extracted links,
+but visual inspection rejected the result: only navigation and player chrome
+were visible, with the news cards hidden by script-dependent animation styling.
+This is not an accepted source screenshot. Extraction now excludes cards hidden
+by ancestor opacity, visibility or display and prevents those hidden cards from
+falling back to a fabricated homepage lead. The publisher remains disabled; a
+subsequent conventional Gujarati feed probe also timed out.
+
+The existing NASA website collection completed after the preceding worker update
+with 18 leads and zero new duplicates. RBI, SEBI and PIB each completed their next
+two-hour scheduled run at approximately 03:09 UTC on 15 September, with zero new
+duplicates. This verifies continued scheduling and deduplication for those sources,
+not completion of Gujarati coverage.

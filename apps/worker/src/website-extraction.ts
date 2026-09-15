@@ -18,7 +18,16 @@ export function extractWebsiteStories() {
   const anchors = document.querySelectorAll<HTMLAnchorElement>(
     "main article a[href], article h2 a[href], article h3 a[href], main h2 a[href], main h3 a[href], [role=main] h2 a[href], main a[href]:has(h2), main a[href]:has(h3), [role=main] a[href]:has(h2)",
   );
+  let hiddenCards = false;
+  const visible = (element: Element) => {
+    for (let current: Element | null = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || Number(style.opacity) === 0) return false;
+    }
+    return element.getClientRects().length > 0;
+  };
   for (const anchor of Array.from(anchors).slice(0, 500)) {
+    if (!visible(anchor)) { hiddenCards = true; continue; }
     const title = plain(
       (anchor.querySelector("h2, h3")
         ? anchor.getAttribute("aria-label") || anchor.querySelector("h2, h3")?.textContent
@@ -54,7 +63,7 @@ export function extractWebsiteStories() {
       ...(publishedAt ? { publishedAt } : {}),
     });
   }
-  if (!stories.length) {
+  if (!stories.length && !hiddenCards) {
     const title = plain(
       document.querySelector("h1")?.textContent || document.title,
       300,

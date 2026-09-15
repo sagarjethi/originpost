@@ -31,6 +31,9 @@ it("extracts wrapped headline cards without treating counters or relative ages a
       { title: "ગુજરાતમાં લોકમેળાનો આજથી શુભારંભ", url: "https://publisher.example/gu/story", excerpt: "મેળાની શરૂઆત થઈ." },
       { title: "Another source headline", url: "https://publisher.example/other", excerpt: "Article excerpt.", publishedAt: "2026-09-14T06:30:00.000Z" },
     ]);
+    await page.evaluate(() => { document.querySelector("main")!.style.opacity = "0"; });
+    const hidden = await page.evaluate(extractWebsiteStories);
+    expect(hidden.stories).toEqual([]);
   } finally {
     await browser.close();
   }

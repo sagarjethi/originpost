@@ -1,6 +1,6 @@
 import { extractWebsiteStories } from "./website-extraction.js";
 import { createHash } from "node:crypto";
-import { chromium } from "playwright";
+import { chromium, errors } from "playwright";
 import { createRequire } from "node:module";
 import {
   PutObjectCommand,
@@ -58,22 +58,24 @@ export class PublisherCaptureError extends Error {
 export const capturePublicWebsite: CaptureWebsite = async (url) => {
   const abort = new AbortController();
   const timeout = AbortSignal.any([AbortSignal.timeout(45_000), abort.signal]);
+  const resourcesAbort = new AbortController();
+  const resourceSignal = AbortSignal.any([timeout, resourcesAbort.signal]);
   let activeRequests = 0;
   const waiting: Array<() => void> = [];
-  timeout.addEventListener(
+  resourceSignal.addEventListener(
     "abort",
     () => waiting.splice(0).forEach((wake) => wake()),
     { once: true },
   );
   async function resource(target: string) {
-    while (activeRequests >= 4 && !timeout.aborted)
+    while (activeRequests >= 4 && !resourceSignal.aborted)
       await new Promise<void>((resolve) => waiting.push(resolve));
-    timeout.throwIfAborted();
+    resourceSignal.throwIfAborted();
     activeRequests++;
     try {
       return await fetchPublicResource(target, {
         maxBytes: 4 * 1024 * 1024,
-        signal: timeout,
+        signal: resourceSignal,
         followRedirects: false,
       });
     } finally {
@@ -198,11 +200,22 @@ export const capturePublicWebsite: CaptureWebsite = async (url) => {
       }
     });
     const response = await page.goto(url, {
-      waitUntil: "load",
+      waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
     if (!response || !response.ok())
       throw new Error("Publisher page did not load successfully.");
+    // The text is available at DOM readiness. Decorative assets get a bounded
+    // settling period, not the entire collection deadline.
+    try {
+      await page.waitForLoadState("load", { timeout: 3_000 });
+    } catch (error) {
+      if (!(error instanceof errors.TimeoutError)) throw error;
+      // Cancel pending fonts too, so screenshot falls back to installed fonts
+      // instead of waiting indefinitely for document.fonts.ready.
+      resourcesAbort.abort();
+      failures++;
+    }
     const extracted = await page.evaluate(extractWebsiteStories);
     if (
       /captcha|access denied|just a moment|sign in|log in/i.test(
