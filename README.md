@@ -39,6 +39,8 @@ The collector reads your configured sources; it cannot promise every story from 
 
 Before creating an image, a second AI pass checks the written post against its saved sources. If it finds a problem, creation stops and shows the reasons. After composition, a configured vision model reads the image text and checks the logo, clarity and illustration label. Differences stop the run and remain visible in chat. An editor still inspects the image and approves publication.
 
+Publishing requires both checks to match the current post and sources. Older drafts without those checks need a newly reviewed version.
+
 ## Set up your brand once
 
 ![Illustrative template showing original logo, visual, headline, source credit, and social handle](docs/images/template-guide.svg)

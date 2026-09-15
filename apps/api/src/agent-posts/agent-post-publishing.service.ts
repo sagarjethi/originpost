@@ -133,6 +133,29 @@ export class AgentPostPublishingService {
         "evidence_changed",
         409,
       );
+    if (
+      run.copyReview?.status !== "passed" ||
+      run.copyReview.copyHash !== hash(run.copy) ||
+      run.copyReview.evidenceHash !== run.evidenceHash
+    )
+      throw new DomainError(
+        "A passed copy review matching this post and its sources is required. Create and review a corrected version.",
+        "copy_review_required",
+        409,
+      );
+    if (
+      run.imageReview?.status !== "passed" ||
+      run.imageReview.copyHash !== hash(run.copy) ||
+      run.imageReview.evidenceHash !== run.evidenceHash ||
+      !run.imageReview.textMatches.headline ||
+      !run.imageReview.textMatches.footer ||
+      !run.imageReview.textMatches.disclosure
+    )
+      throw new DomainError(
+        "A passed image review matching this post and its sources is required. Create and review a corrected version.",
+        "image_review_required",
+        409,
+      );
     const account = await this.infrastructure.connectedAccountRepository.get(
       w,
       dto.accountId,
@@ -247,12 +270,10 @@ export class AgentPostPublishingService {
         409,
       );
     if (
-      run.imageReview &&
-      (run.imageReview.status !== "passed" ||
-        run.imageReview.image.mediaId !== asset.id ||
+      run.imageReview.image.mediaId !== asset.id ||
         run.imageReview.image.sha256 !== asset.sha256 ||
-        run.imageReview.copyHash !== hash(run.copy) ||
-        run.imageReview.evidenceHash !== run.evidenceHash)
+        run.imageReview.logo.mediaId !== run.template.logo.mediaId ||
+        run.imageReview.logo.sha256 !== run.template.logo.sha256
     )
       throw new DomainError(
         "The image review no longer matches this post. Create and review a corrected version.",

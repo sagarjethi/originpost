@@ -468,6 +468,25 @@ describe("news post workflow with external providers substituted", () => {
     } finally { spy.mockRestore(); }
   });
 
+  it.each(["missing-copy", "stale-copy", "missing-image", "stale-image", "failed-image-text"])("requires complete matching reviews before publication: %s", async (scenario) => {
+    const original = (await infrastructure.agentPostRepository.get("default", publishRunId))!;
+    const changed = structuredClone(original);
+    if (scenario === "missing-copy") delete changed.copyReview;
+    if (scenario === "stale-copy") changed.copyReview!.copyHash = "0".repeat(64);
+    if (scenario === "missing-image") delete changed.imageReview;
+    if (scenario === "stale-image") changed.imageReview!.evidenceHash = "0".repeat(64);
+    if (scenario === "failed-image-text") changed.imageReview!.textMatches.disclosure = false;
+    const spy = vi.spyOn(infrastructure.agentPostRepository, "get").mockResolvedValue(changed);
+    try {
+      // Existing work stays readable, but a new publishing preview is refused
+      // before account validation or any scheduling/provider operation.
+      await request(app.getHttpServer()).get(`/v1/agent-posts/${publishRunId}/publication?brandId=brand_default`).expect(200);
+      const result = await request(app.getHttpServer()).post(`/v1/agent-posts/${publishRunId}/publication-preview`).send({workspaceId:"default",brandId:"brand_default",recipientId:"originpost.publisher",accountId:"unconnected",scheduledFor:new Date(Date.now()+3600000).toISOString()}).expect(409);
+      expect(result.body.error).toBe(scenario.includes("copy") ? "copy_review_required" : "image_review_required");
+      expect((await infrastructure.repository.get("default", original.contentItemId))!.targets).toHaveLength(0);
+    } finally { spy.mockRestore(); }
+  });
+
   it("pauses for Codex, binds the upload to its brief and resumes without an image provider call", async () => {
     const before = generate.mock.calls.length;
     const started = await request(app.getHttpServer())

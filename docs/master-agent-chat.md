@@ -568,3 +568,9 @@ Focused API tests pass (36), including interrupted composition, stale-version an
 Added an editor correction form that creates a new reviewed candidate while reusing unchanged live research. The rejected copy remains in chat; all copy and image checks run again, and no prior approval or generated asset is inherited. API tests cover permission, scope, source changes, stale versions and idempotent replay. Installed Chrome confirmed the desktop form is usable and cancellation restores the chat composer.
 
 The real corrected NASA run reached `ready`: corrected copy passed review, Codex removed the unsupported aircraft, the normal upload/composition flow succeeded, all four product image checks passed, and the draft was saved automatically. The local content record has one draft, zero approvals and zero publishing targets. The connected-account list contains only mocks. The full publishing goal remains open.
+
+### 2026-09-15 — publishing review gate and live news filters
+
+New chat publishing previews now require both passed copy and image reviews bound to the current copy and source hashes. Missing legacy reviews, stale reviews and failed image-text comparisons are rejected; the final media hash and original-logo reference must also match. Existing receipts remain readable. Five additional API cases verify these requirements before account validation or scheduling.
+
+Live filter checks covered 109 discovered leads: seven had source-reported dates within the last 24 hours, while 102 had unknown publication dates. Publication and discovery ordering passed; the NASA website section returned 20 correctly scoped leads. Enabled official-source collections reported healthy completed runs, including scheduled runs. These checks establish behavior for configured sources, not universal news coverage. Live social publishing remains unverified because only mock accounts are configured.
