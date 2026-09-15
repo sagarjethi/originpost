@@ -8,6 +8,7 @@ Checks below were direct HTTPS requests from the development machine followed by
 
 | Publisher / coverage | Feed URL | Language observed | Direct result | Publisher evidence / deployment condition |
 | --- | --- | --- | --- | --- |
+| BBC Gujarati / Gujarati reporting | `https://feeds.bbci.co.uk/gujarati/rss.xml` | Gujarati | HTTP 200; RSS XML; 18 items, all with explicit timestamps. Newest observed: `2026-09-15T02:46:12Z`. | BBC-hosted feed; BBC also lists Gujarati in its [World Service feed project](https://github.com/bbc/world-service-rss). Enabled locally for reference-only discovery every two hours. Article claims and image reuse rights require separate checks. |
 | NASA / science and space | `https://www.nasa.gov/feed/` | English | HTTP 200; RSS XML; 10 items. First date: `Mon, 14 Sep 2026 19:00:00 +0000`. | Exact feed linked as Recently Published Content in the [official feed directory](https://www.nasa.gov/rss-feeds/). Apply the source-specific media and AI conditions below. |
 | PIB / India government releases | `https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3` | Hindi titles in the fetched sample, despite English selected in the directory | HTTP 200; RSS XML; 20 items. Sample items contained title and link only, **no publication date**. | Exact endpoint in [PIB's directory](https://www.pib.gov.in/ViewRss.aspx?lang=1&reg=3). Treat language as observed metadata, not guaranteed by query parameters. Read linked release for date and primary statements. |
 | RBI / India monetary policy and banking | `https://rbi.org.in/pressreleases_rss.xml` | English | HTTP 200; RSS XML; 10 items. First date: `Fri, 11 Sep 2026 21:40:00` — **timezone missing**. | Exact link extracted from [RBI RSS page](https://www.rbi.org.in/Scripts/rss.aspx). Preserve raw date; do not silently interpret in the server timezone. Policy text must be checked in the actual release. |
@@ -76,3 +77,22 @@ After the worker restart, a second real collection of each feed completed with z
 ### Gujarati source candidate
 
 Local desktop Chrome showed current Gujarati updates on [Akashvani's Gujarati homepage](https://newsonair.gov.in/gu/), while the indexed web copy was older. Follow-up browser/collector probes timed out, so this source has not been enabled as a reliable scheduled collection. Language-alternate links were not mistaken for feeds, and Gujarati display dates were not assigned an invented timezone. See the [capture and acceptance record](2026-09-15-gujarati-source-acceptance.md).
+
+
+### BBC Gujarati collection acceptance
+
+On 15 September, the normal worker's first scheduled run saved 18 Gujarati leads
+from the BBC-hosted feed. The collection checks every 120 minutes and retains up
+to seven days from the feed, allowing the UI's 2-hour, 24-hour and 7-day filters to
+operate on the original publication timestamps. At the check time these filters
+returned 2, 10 and 18 leads respectively, all sorted newest first and scoped to
+the Gujarati collection. Every claim stayed unverified and every source stayed
+reference-only. A second worker run added zero duplicates and preserved all first
+discovery times. Local desktop Chrome verified the section, publication-window
+and order selectors with the saved Gujarati headline visible in the page.
+
+This adds a working Gujarati discovery source; it does not supply every Gujarati
+publisher or certify BBC reports as independently verified. The Akashvani website
+candidate remains disabled. BBC-hosted XML was fetched directly; older indexed
+GitHub copies were not used to establish freshness. Publisher photos were not
+imported or licensed by this collection.

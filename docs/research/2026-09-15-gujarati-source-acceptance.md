@@ -90,3 +90,16 @@ with 18 leads and zero new duplicates. RBI, SEBI and PIB each completed their ne
 two-hour scheduled run at approximately 03:09 UTC on 15 September, with zero new
 duplicates. This verifies continued scheduling and deduplication for those sources,
 not completion of Gujarati coverage.
+
+
+## Working alternative: BBC Gujarati
+
+The BBC-hosted `https://feeds.bbci.co.uk/gujarati/rss.xml` feed passed actual
+collection acceptance. Its first scheduled run saved 18 leads and a second run
+saved no duplicates. All publication timestamps had explicit timezone evidence;
+the 2-hour, 24-hour and 7-day filters returned 2, 10 and 18 items at verification.
+The local desktop section selector was checked in Chrome. See the
+[source catalog acceptance](2026-09-15-news-source-catalog.md#bbc-gujarati-collection-acceptance)
+for settings and limits. This closes the lack of any working Gujarati-language
+feed, while the Akashvani website candidate and broader publisher coverage remain
+unfinished.
