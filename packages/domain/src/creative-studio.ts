@@ -4,7 +4,7 @@ import { DomainError } from "./errors.js";
 import type { AuditEvent } from "./types.js";
 
 export const creativeFormats = ["square", "portrait", "story"] as const;
-export const creativeLayouts = ["editorial", "headline", "quote"] as const;
+export const creativeLayouts = ["editorial", "headline", "headline-top", "quote"] as const;
 export const creativeFonts = ["manrope", "newsreader"] as const;
 export const creativeTextAlignments = ["left", "center"] as const;
 export const creativeProjectStatuses = ["draft", "rendering", "ready", "failed"] as const;

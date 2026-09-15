@@ -5,7 +5,7 @@ export const creativeDimensions = {
 } as const;
 
 export type CreativeFormat = keyof typeof creativeDimensions;
-export type CreativeLayout = "editorial" | "headline" | "quote";
+export type CreativeLayout = "editorial" | "headline" | "headline-top" | "quote";
 export type CreativeFont = "manrope" | "newsreader";
 export type CreativeTextAlign = "left" | "center";
 

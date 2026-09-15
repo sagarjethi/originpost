@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { validateMeasuredMedia, type CreativeSpec } from "@originpost/domain";
-import { boundedObjectBytes, CreativeRenderFailure, renderCreativeImage } from "../src/creative-studio/creative-renderer.js";
+import { boundedObjectBytes, CreativeRenderFailure, wrapCreativeText, renderCreativeImage } from "../src/creative-studio/creative-renderer.js";
 
 const palette: CreativeSpec["palette"] = ["#303A36", "#1E2623", "#FFFFFF", "#D1AA7B", "#E6EEE9"];
 
@@ -74,4 +74,24 @@ it("places original logo pixels at the selected corner and rejects changed bytes
   const pixel = await sharp(rendered.bytes).extract({left:55,top:55,width:1,height:1}).removeAlpha().raw().toBuffer();
   expect([...pixel]).toEqual([255,0,0]);
   await expect(renderCreativeImage(configured,await source(),Buffer.from("changed"))).rejects.toMatchObject({code:"logo_hash_mismatch"});
+});
+
+it("keeps Story branding below the top control area and text above the bottom controls", async()=>{
+  const {createHash}=await import("node:crypto");
+  const logo=await sharp({create:{width:80,height:40,channels:3,background:"#FF0000"}}).png().toBuffer();
+  const input=await source();
+  const base=spec("story",{layout:"headline-top",headline:"નમૂનાનું શીર્ષક",subtitle:"",kicker:"",footer:"@wingnewsgujarat",disclosure:"AI દ્વારા બનાવેલ પ્રતીકાત્મક તસવીર"});
+  const branded=await renderCreativeImage({...base,logo:{mediaId:"logo",sha256:createHash("sha256").update(logo).digest("hex"),position:"top-left",widthPercent:20,marginPercent:2,background:"#FFFFFF",crop:"full"}},input,logo);
+  const pixel=await sharp(branded.bytes).extract({left:150,top:250,width:1,height:1}).removeAlpha().raw().toBuffer();
+  expect(pixel[0]).toBeGreaterThan(240);expect(pixel[1]).toBeLessThan(15);
+  const plain=await renderCreativeImage(base,input);
+  const top=(bytes:Buffer)=>sharp(bytes).extract({left:0,top:0,width:1080,height:210}).raw().toBuffer();
+  expect(await top(branded.bytes)).toEqual(await top(plain.bytes));
+  const noFooter=await renderCreativeImage({...base,footer:""},input);
+  const bottom=(bytes:Buffer)=>sharp(bytes).extract({left:0,top:1600,width:1080,height:320}).raw().toBuffer();
+  expect(await bottom(plain.bytes)).toEqual(await bottom(noFooter.bytes));
+});
+
+it("wraps Gujarati words without treating dependent vowel marks as full letters",()=>{
+ expect(wrapCreativeText("અહીં સમાચારનું શીર્ષક",94,840,3,"headline")).toEqual(["અહીં સમાચારનું","શીર્ષક"]);
 });

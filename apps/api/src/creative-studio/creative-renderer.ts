@@ -7,7 +7,7 @@ export const CREATIVE_FONT_VERSION = "noto-latin-gujarati-devanagari-v1";
 // Output encoding is part of immutable render identity. Bump whenever the
 // renderer changes bytes or MIME so an older ready asset cannot satisfy a new
 // render request (Story images changed from PNG to provider-safe JPEG in v3).
-export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v4-logo-plate`;
+export const CREATIVE_RENDERER_VERSION = `originpost-sharp-${sharp.versions.sharp}-vips-${sharp.versions.vips}-layout-v5-news-safe-area`;
 
 export class CreativeRenderFailure extends Error {
   constructor(readonly code: string, message: string, readonly field?: string) {
@@ -33,7 +33,7 @@ function xml(value: string): string {
 }
 
 function characterUnits(value: string): number {
-  return [...value].reduce((total, character) => total + (/\p{Script=Latin}|[0-9.,:;!?'"()\-–—]/u.test(character) ? 0.55 : /\s/u.test(character) ? 0.3 : 0.72), 0);
+  return [...value].reduce((total, character) => total + (/\p{Mark}/u.test(character) ? 0.08 : /\p{Script=Latin}|[0-9.,:;!?'"()\-–—]/u.test(character) ? 0.55 : /\s/u.test(character) ? 0.3 : 0.72), 0);
 }
 
 export function wrapCreativeText(value: string, fontSize: number, maxWidth: number, maxLines: number, field: string): string[] {
@@ -73,13 +73,14 @@ function tspans(lines: string[], x: number, y: number, lineHeight: number): stri
 function textLayer(spec: CreativeSpec, width: number, height: number): string {
   const [background, panel, primary, accent, secondary] = spec.palette;
   const story = spec.format === "story";
-  const margin = story ? 86 : 72;
+  const margin = story ? 120 : 72;
+  const footerY = story ? height - 360 : height - margin;
   const maxWidth = spec.layout === "editorial" ? width * 0.58 - margin * 1.2 : width - margin * 2;
   const headlineSize = story ? 94 : spec.format === "portrait" ? 82 : 74;
   const subtitleSize = story ? 38 : 32;
   const kickerSize = story ? 25 : 22;
-  const footerSize = story ? 24 : 20;
-  const headlineLines = wrapCreativeText(spec.headline, headlineSize, maxWidth, spec.layout === "quote" ? 5 : 4, "headline");
+  const footerSize = story ? 28 : 20;
+  const headlineLines = wrapCreativeText(spec.headline, headlineSize, maxWidth, spec.layout === "quote" ? 5 : spec.layout === "headline-top" ? 3 : 4, "headline");
   const subtitleLines = spec.subtitle ? wrapCreativeText(spec.subtitle, subtitleSize, maxWidth, 4, "subtitle") : [];
   const kickerLines = spec.kicker ? wrapCreativeText(spec.kicker, kickerSize, maxWidth, 2, "kicker") : [];
   const footerLines = spec.footer ? wrapCreativeText(spec.footer, footerSize, width - margin * 2, 2, "footer") : [];
@@ -91,27 +92,32 @@ function textLayer(spec: CreativeSpec, width: number, height: number): string {
   const headlineHeight = headlineLines.length * headlineSize * 1.08;
   const subtitleHeight = subtitleLines.length * subtitleSize * 1.32;
   const kickerHeight = kickerLines.length * kickerSize * 1.24;
+  const kickerGap = kickerLines.length ? headlineSize * 1.15 + 18 : 0;
+  const subtitleGap = subtitleLines.length ? 27 : 0;
   let startY: number;
   let panels: string;
-  if (spec.layout === "editorial") {
+  if (spec.layout === "headline-top") {
+    startY = story ? (kickerLines.length ? 460 : 560) : (kickerLines.length ? 240 : 340);
+    const panelBottom = Math.round(startY + kickerHeight + kickerGap + headlineHeight + subtitleGap + subtitleHeight + 65);
+    panels = `<rect width="${width}" height="${panelBottom}" fill="${panel}" fill-opacity="0.97"/><rect y="${panelBottom}" width="${width}" height="8" fill="${accent}"/><rect y="${Math.round(footerY - footerLines.length * footerSize * 1.35 - 40)}" width="${width}" height="${height}" fill="${panel}" fill-opacity="0.96"/>`;
+  } else if (spec.layout === "editorial") {
     startY = height * 0.22;
     panels = `<rect width="${Math.round(width * 0.64)}" height="${height}" fill="${panel}" fill-opacity="0.94"/><rect x="${margin}" y="${Math.round(startY - 48)}" width="74" height="8" rx="4" fill="${accent}"/>`;
   } else if (spec.layout === "quote") {
     startY = height * 0.3;
     panels = `<rect x="${margin * 0.55}" y="${Math.round(height * 0.16)}" width="${Math.round(width - margin * 1.1)}" height="${Math.round(height * 0.68)}" rx="34" fill="${panel}" fill-opacity="0.9"/><text x="${margin}" y="${Math.round(height * 0.28)}" fill="${accent}" font-family="${fontFamily}" font-size="120" font-weight="800">“</text>`;
   } else {
-    startY = height - margin - (footerLines.length ? footerLines.length * footerSize * 1.25 + 38 : 0) - subtitleHeight - (subtitleLines.length ? 28 : 0) - headlineHeight - kickerHeight - 55;
+    startY = footerY - (footerLines.length ? footerLines.length * footerSize * 1.25 + 38 : 0) - subtitleHeight - (subtitleLines.length ? 28 : 0) - headlineHeight - kickerHeight - kickerGap - 55;
     panels = `<defs><linearGradient id="creativeShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${background}" stop-opacity="0"/><stop offset="0.43" stop-color="${panel}" stop-opacity="0.16"/><stop offset="1" stop-color="${panel}" stop-opacity="0.97"/></linearGradient></defs><rect width="${width}" height="${height}" fill="url(#creativeShade)"/>`;
   }
-  const requiredBottom = startY + kickerHeight + headlineHeight + subtitleHeight + 75 + footerLines.length * footerSize * 1.25;
-  if (startY < margin || requiredBottom > height - margin / 2) throw new CreativeRenderFailure("layout_overflow", "The text layers do not fit this output size. Shorten the copy or choose another layout.", "headline");
+  const requiredBottom = startY + kickerHeight + kickerGap + headlineHeight + subtitleGap + subtitleHeight + 75 + footerLines.length * footerSize * 1.25;
+  if (startY < margin || requiredBottom > (story ? height - 340 : height - margin / 2)) throw new CreativeRenderFailure("layout_overflow", "The text layers do not fit this output size. Shorten the copy or choose another layout.", "headline");
   let cursor = startY;
   const kicker = kickerLines.length ? `<text text-anchor="${anchor}" fill="${accent}" font-family="${fontFamily}" font-size="${kickerSize}" font-weight="800" letter-spacing="2">${tspans(kickerLines, x, cursor, kickerSize * 1.24)}</text>` : "";
-  cursor += kickerHeight + (kickerLines.length ? 25 : 0);
+  cursor += kickerHeight + kickerGap;
   const headline = `<text text-anchor="${anchor}" fill="${primary}" font-family="${fontFamily}" font-size="${headlineSize}" font-weight="800">${tspans(headlineLines, x, cursor, headlineSize * 1.08)}</text>`;
   cursor += headlineHeight + (subtitleLines.length ? 27 : 0);
   const subtitle = subtitleLines.length ? `<text text-anchor="${anchor}" fill="${secondary}" font-family="${fontFamily}" font-size="${subtitleSize}" font-weight="520">${tspans(subtitleLines, x, cursor, subtitleSize * 1.32)}</text>` : "";
-  const footerY = height - margin;
   const footer = footerLines.length ? `<line x1="${margin}" x2="${width - margin}" y1="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" y2="${Math.round(footerY - footerSize * footerLines.length * 1.35 - 18)}" stroke="${accent}" stroke-width="3"/><text text-anchor="${spec.textAlign === "center" ? "middle" : "start"}" fill="${secondary}" font-family="${fontFamily}" font-size="${footerSize}" font-weight="650">${tspans(footerLines, spec.textAlign === "center" ? width / 2 : margin, footerY - footerSize * (footerLines.length - 1) * 1.25, footerSize * 1.25)}</text>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${panels}${kicker}${headline}${subtitle}${footer}</svg>`;
 }
@@ -145,14 +151,19 @@ export async function renderCreativeImage(spec: CreativeSpec, sourceBytes: Uint8
         logoImage = logoImage.extract({ left: spec.logo.crop.endsWith("right") ? w : 0, top: spec.logo.crop.startsWith("bottom") ? h : 0, width: w, height: h });
       }
       const fitted = await logoImage.resize({ width: Math.round(width * spec.logo.widthPercent / 100), height: Math.round(height * .09), fit: "inside" }).png().toBuffer({ resolveWithObject: true });
-      const inset = Math.round(width * spec.logo.marginPercent / 100), padding = 12;
+      const inset = Math.max(spec.format === "story" ? 120 : 0, Math.round(width * spec.logo.marginPercent / 100)), padding = 12;
+      const logoTop = spec.format === "story" ? 220 : inset;
       const plateWidth = fitted.info.width + padding * 2, plateHeight = fitted.info.height + padding * 2;
       const plate = await sharp({ create: { width: plateWidth, height: plateHeight, channels: 4, background: spec.logo.background } }).composite([{ input: fitted.data, left: padding, top: padding }]).png().toBuffer();
-      layers.push({ input: plate, left: spec.logo.position === "top-left" ? inset : width - inset - plateWidth, top: inset });
+      layers.push({ input: plate, left: spec.logo.position === "top-left" ? inset : width - inset - plateWidth, top: logoTop });
     }
     if (spec.disclosure) {
-      const labelX = spec.logo?.position === "top-right" ? 50 : width - 295;
-      const label = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${labelX}" y="50" width="245" height="40" rx="8" fill="#111111"/><text x="${labelX + 20}" y="77" font-size="20" font-family="sans-serif" fill="#ffffff">${xml(spec.disclosure)}</text></svg>`);
+      const story = spec.format === "story";
+      const labelWidth = story ? 420 : 360, labelTop = story ? 220 : 50;
+      const labelX = spec.logo?.position === "top-right" ? (story ? 120 : 50) : width - labelWidth - (story ? 120 : 50);
+      const labelLines = wrapCreativeText(spec.disclosure, 24, labelWidth - 32, 3, "disclosure");
+      const labelHeight = 20 + labelLines.length * 32;
+      const label = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${labelX}" y="${labelTop}" width="${labelWidth}" height="${labelHeight}" rx="8" fill="#111111"/><text font-size="24" font-family="Noto Sans Gujarati, Noto Sans Devanagari, Noto Sans, sans-serif" fill="#ffffff">${tspans(labelLines,labelX+16,labelTop+32,32)}</text></svg>`);
       layers.push({ input: label, top: 0, left: 0 });
     }
     const composed = sharp(background).composite(layers);

@@ -179,7 +179,7 @@ export class AgentPostImageReviewService {
         normalizeImageReviewText(run.template.footer),
       disclosure:
         normalizeImageReviewText(parsed.data.observedDisclosure) ===
-        "AI illustration",
+        normalizeImageReviewText(run.template.disclosureText ?? "AI illustration"),
     };
     return {
       ...parsed.data,

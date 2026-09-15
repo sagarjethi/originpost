@@ -550,3 +550,9 @@ Live acceptance: Docker API → local Codex web research → independent NASA pa
 ### Signed-in owner runtime scope — 15 September 2026
 
 The personal Codex bridge and official social connections can now coexist in sessions mode when the server explicitly configures one owner user and workspace. API model execution checks that identity and profile ownership; worker research checks current active status and owner membership. Other users cannot use the profile merely because they share the workspace. Monitor configuration records its latest editor and manual jobs record their requester, preventing use of an earlier creator’s identity. This capability is covered by API, worker and domain tests. The development default workspace currently has no active signed-in owner, so its authentication mode has not been switched and no social account connection or publication is claimed.
+
+### 2026-09-15 — top-headline template and Gujarati export check
+
+Added a top-headline layout, Story control-area margins, localized illustration labels and matching pixel-review expectations. Fixed swapped accent/supporting-color labels and the lower-headline preview position. Gujarati wrapping now accounts for combining marks; the rendered sample also exposed and resolved category/headline overlap.
+
+A local WING NEWS ગુજરાત template was saved with an inspected, exact crop of the supplied original logo. Independent review of the 1080×1920 placeholder found no material logo, spelling, overlap or safe-area defect. The crop matched the original pixels exactly. This is template acceptance only: the renderer uses Noto Gujarati fallback, and each real headline, image and disclosure still needs final review. No news publication was approved by this preview. Focused renderer/creative/agent-post tests: 34 passed; repository type checks: 14 tasks passed. The README retains the desktop admin screenshot only.

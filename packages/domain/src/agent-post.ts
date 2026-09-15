@@ -53,7 +53,7 @@ export const agentPostTemplateSchema = z
     name: z.string().trim().min(1).max(100),
     language: z.string().trim().min(2).max(40),
     format: z.enum(["square", "portrait", "story"]),
-    layout: z.enum(["headline", "editorial", "quote"]),
+    layout: z.enum(["headline", "headline-top", "editorial", "quote"]),
     palette: z.tuple([color, color, color, color, color]),
     logoMediaId: z.string().min(1).max(200),
     logoBackground: color.default("#FFFFFF"),
@@ -66,6 +66,7 @@ export const agentPostTemplateSchema = z
     referenceMediaIds: z.array(z.string().min(1).max(200)).max(3),
     styleInstructions: z.string().trim().max(2000),
     footer: z.string().trim().max(100),
+    disclosureText: z.string().trim().min(1).max(60).optional(),
   })
   .strict();
 export type AgentPostTemplateInput = z.infer<typeof agentPostTemplateSchema>;
@@ -338,7 +339,7 @@ export function agentPostCreativeSpec(
       background: t.logoBackground,
       crop: t.logoCrop,
     },
-    disclosure: "AI illustration",
+    disclosure: t.disclosureText ?? "AI illustration",
   };
 }
 

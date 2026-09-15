@@ -38,7 +38,7 @@ import {
 } from "./creative-studio-utils";
 
 type CreativeTemplate = {
-  id: "headline" | "editorial" | "quote";
+  id: "headline" | "headline-top" | "editorial" | "quote";
   name: string;
   description: string;
   layout: CreativeLayout;
@@ -539,10 +539,10 @@ export function CreativeStudio({ auth, workspaceId, brandId, initialContentItemI
         <aside className={styles.previewColumn}>
           <section className={styles.previewCard}>
             <div className={styles.previewHead}><div><SlidersHorizontal size={16} /><span><strong>Layout preview</strong><small>Draft guide · not final pixels</small></span></div><em>{dimensions.width}×{dimensions.height}</em></div>
-            <div className={`${styles.canvas} ${styles[spec.layout]}`} style={previewStyle}>
+            <div data-format={spec.format} className={`${styles.canvas} ${styles[spec.layout]}`} style={previewStyle}>
               {sourceUrl ? <img src={sourceUrl} alt={selectedSource?.altText || selectedSource?.fileName || "Selected source"} style={sourceStyle} /> : <div className={styles.noSource}><ImageIcon size={28} />Choose a source</div>}
               <div className={styles.scrim} />
-              <div className={styles.previewCopy}>{spec.kicker ? <small style={{ color: spec.palette[3] }}>{spec.kicker}</small> : null}<strong>{spec.headline || "Your headline appears here"}</strong>{spec.subtitle ? <p>{spec.subtitle}</p> : null}{spec.footer ? <em>{spec.footer}</em> : null}</div>
+              <div className={styles.previewCopy}>{spec.kicker ? <small style={{ color: spec.palette[3] }}>{spec.kicker}</small> : null}<strong style={{color:spec.palette[2]}}>{spec.headline || "Your headline appears here"}</strong>{spec.subtitle ? <p>{spec.subtitle}</p> : null}{spec.footer ? <em>{spec.footer}</em> : null}</div>
               <div className={styles.paletteStrip}>{spec.palette.map((color) => <i key={color} style={{ background: color }} />)}</div>
             </div>
             <p className={styles.previewNote}>The renderer uses the saved revision, source hash, exact canvas, bundled fonts, and template version.</p>

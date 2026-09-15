@@ -45,6 +45,8 @@ Before creating an image, a second AI pass checks the written post against its s
 
 Templates keep logo placement, image references, writing skills, colours, and footer text together. The original logo is placed after image generation. Example captions and similar-post images guide style; they do not supply verified facts.
 
+Choose **Top news headline** to put the headline above the picture. Story exports leave room for the platform’s controls and keep the logo and social handles inside the safe area. Set the illustration label in your audience’s language; the image reviewer checks that same label on the finished image.
+
 Each new version stays in the project chat, so you can compare the changes. Boards organize projects and team tasks.
 
 ![OriginPost desktop admin dashboard](docs/images/admin-desktop.jpg)

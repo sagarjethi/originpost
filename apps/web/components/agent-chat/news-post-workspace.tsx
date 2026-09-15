@@ -36,6 +36,7 @@ type Template = {
   logoMargin: number;
   logoBackground: string;
   logoCrop: string;
+  disclosureText?: string;
   referenceMediaIds: string[];
   styleInstructions: string;
   footer: string;
@@ -129,11 +130,12 @@ const initial = {
   logoMargin: 4,
   logoBackground: "#FFFFFF",
   logoCrop: "full",
+  disclosureText: "AI illustration",
   referenceMediaIds: [] as string[],
   styleInstructions:
     "Clear editorial illustration, strong contrast, ample space for the headline. Never invent a documentary scene.",
   footer: "",
-  palette: ["#101820", "#151E2A", "#FFFFFF", "#E8EBEF", "#F6D55C"],
+  palette: ["#101820", "#151E2A", "#FFFFFF", "#F6D55C", "#E8EBEF"],
 };
 
 export function NewsPostWorkspace({
@@ -1647,6 +1649,7 @@ export function NewsPostWorkspace({
                 value={form.layout}
                 onChange={(e) => setForm({ ...form, layout: e.target.value })}
               >
+                <option value="headline-top">Top news headline</option>
                 <option value="headline">Lower headline</option>
                 <option value="editorial">Editorial side panel</option>
                 <option value="quote">Statement panel</option>
@@ -1798,6 +1801,11 @@ export function NewsPostWorkspace({
               maxLength={100}
             />
           </label>
+          <label>
+            AI illustration label
+            <input value={form.disclosureText} maxLength={60} onChange={(e)=>setForm({...form,disclosureText:e.target.value})} required />
+            <small>Shown on generated images. Use the language your audience reads.</small>
+          </label>
           <fieldset>
             <legend>Brand colors</legend>
             <div className={styles.colors}>
@@ -1805,8 +1813,8 @@ export function NewsPostWorkspace({
                 "Background",
                 "Panel",
                 "Headline",
-                "Supporting text",
                 "Accent",
+                "Supporting text",
               ].map((name, i) => (
                 <label key={name}>
                   {name}
@@ -1896,9 +1904,9 @@ function TemplateLogoPreview({
         <div
           style={{
             position: "absolute",
-            top: `${(1080 * template.logoMargin) / height}%`,
+            top: template.format === "story" ? `${220 / height * 100}%` : `${(1080 * template.logoMargin) / height}%`,
             [template.logoPosition === "top-left" ? "left" : "right"]:
-              `${template.logoMargin}%`,
+              `${template.format === "story" ? Math.max(120 / 1080 * 100,template.logoMargin) : template.logoMargin}%`,
             width: `${((logoWidth + 24) / 1080) * 100}%`,
             padding: "1.111%",
             background: template.logoBackground,
@@ -1921,6 +1929,7 @@ function TemplateLogoPreview({
           style={{
             color: template.palette[2],
             background: template.palette[1],
+            ...(template.layout === "headline-top" ? {top: template.format === "story" ? "29%" : "25%",bottom:"auto"} : {}),
           }}
         >
           Your headline

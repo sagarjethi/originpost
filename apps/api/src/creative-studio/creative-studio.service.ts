@@ -9,6 +9,7 @@ import { CreativeRenderCoordinator } from "./creative-render.coordinator.js";
 import { CREATIVE_FONT_VERSION, CREATIVE_RENDERER_VERSION, CREATIVE_TEMPLATE_VERSION } from "./creative-renderer.js";
 
 const templates = [
+  { id: "headline-top", name: "News headline", layout: "headline-top", description: "A full-width headline above the visual with protected Story margins." },
   { id: "headline", name: "Headline", layout: "headline", description: "Full-bleed image with a protected lower text field." },
   { id: "editorial", name: "Photo-led editorial", layout: "editorial", description: "Image-led story with a calm side panel for exact copy." },
   { id: "quote", name: "Quote", layout: "quote", description: "A focused statement card with a strong central panel." },

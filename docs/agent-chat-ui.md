@@ -5,7 +5,7 @@ The `/agent` route now runs a news-to-image workflow inside OriginPost. It repla
 ## User flow
 
 1. Open **Project templates**. Upload the original logo and up to three rights-cleared style reference images, or select images already in the active brand’s Library.
-2. Choose language, square/portrait/Story format, text layout, colors, footer, logo corner, width, margin, background plate, and optional quarter of a four-logo board. The placement preview shows the selected crop and corner.
+2. Choose language, square/portrait/Story format, text layout, colors, footer, logo corner, width, margin, background plate, and optional quarter of a four-logo board. **Top news headline** places the headline above the visual. Story exports reserve space above the logo and below the footer for platform controls. Set **AI illustration label** in the audience’s language; the independent image check compares its observed text with that saved label. The placement preview shows the selected crop and corner.
 3. Save an immutable template version. Paste a news URL or news text and optionally add direction for this post.
 4. **Research & create** starts source research, then copy, a separate text review against the frozen evidence, one paid image request, deterministic text/logo composition, and a domain draft. The UI polls every four seconds and displays copy and the final image as they become available.
 5. Open **Sources & review** to inspect evidence and approve the exact draft through the existing workflow. Nothing is automatically published.

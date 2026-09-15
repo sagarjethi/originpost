@@ -175,14 +175,14 @@ describe("news post workflow with external providers substituted", () => {
     vi.restoreAllMocks();
     await app.close();
   });
-  async function start(key: string) {
+  async function start(key: string, selectedTemplateId = templateId) {
     return request(app.getHttpServer())
       .post("/v1/agent-posts")
       .set("Idempotency-Key", key)
       .send({
         workspaceId: "default",
         brandId: "brand_default",
-        templateId,
+        templateId: selectedTemplateId,
         input: "The city council opened a public library today.",
       })
       .expect(201);
@@ -1088,6 +1088,20 @@ describe("news post workflow with external providers substituted", () => {
       call[0].messages.map((message) => message.content).join(" "),
     ).not.toContain(run.template.footer);
     expect(run.imageReview!.logo).toEqual(run.template.logo);
+  });
+  it("composes and verifies the template's exact localized illustration label", async()=>{
+    const original=(await infrastructure.agentPostRepository.template("default",templateId))!;
+    const {id,workspaceId,brandId,createdBy,createdAt,logo,references,...input}=original;
+    const label="AI દ્વારા બનાવેલ પ્રતીકાત્મક તસવીર";
+    const saved=await request(app.getHttpServer()).post("/v1/agent-posts/templates").send({workspaceId:"default",brandId:"brand_default",template:{...input,name:"Localized label",layout:"headline-top",disclosureText:label}}).expect(201);
+    const started=await start("localized-image-label",saved.body.id);
+    await research(started.body.id);
+    let run=await advance(started.body.id);
+    for(let i=0;i<10&&run.status!=="reviewing-image";i++)run=await advance(run.id);
+    expect(run.status).toBe("reviewing-image");
+    vision.mockResolvedValueOnce({provider:"test-vision",model:"test-vision-model",text:JSON.stringify({observedHeadline:run.copy!.headline,observedFooter:run.template.footer,observedDisclosure:label,checks:["legibility","branding","visual-integrity","disclosure"].map(category=>({category,verdict:"pass",explanation:"Visible text matches the supplied pixels."}))})});
+    run=await advance(run.id);
+    expect(run.imageReview).toMatchObject({status:"passed",textMatches:{disclosure:true}});
   });
   it("keeps the rendered image and blocks a mismatched OCR result before making a draft", async () => {
     const started = await start("image-text-mismatch");
