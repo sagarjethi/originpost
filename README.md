@@ -81,7 +81,7 @@ The uploaded image is recorded as editor-attested AI imagery, not a verified pro
 | Publish to social media | The relevant social account and publishing permissions |
 | Work with a team | Team sign-in and workspace invitations |
 
-This is an **alpha**. Local test connections are simulations and are labeled as such. A successful code build does not mean live accounts or providers are connected.
+This is an **alpha**. Local test connections are simulations and are labeled as such. A successful code build does not mean live accounts or providers are connected. See [what has been verified and what still needs setup](docs/research/2026-09-15-workflow-acceptance.md).
 
 ## Run it locally
 
