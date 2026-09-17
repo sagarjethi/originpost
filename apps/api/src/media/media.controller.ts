@@ -11,8 +11,11 @@ export class MediaController {
   constructor(private readonly media: MediaService) {}
   private async sendDelivery(token: string, range: string | undefined, reply: FastifyReply) {
     const result = await this.media.deliver(token, range);
-    const safeName = result.fileName.replace(/["\r\n]/g, "_");
-    reply.status(result.statusCode).header("cache-control", "private, no-store").header("accept-ranges", "bytes").header("content-type", result.contentType).header("content-length", String(result.contentLength)).header("content-disposition", `inline; filename="${safeName}"`);
+    // HTTP headers are ASCII; preserve local-language names using RFC 5987.
+    const fileName = Buffer.from(result.fileName, "utf8").toString("utf8");
+    const safeName = fileName.replace(/[^\x20-\x7E]|["\\]/g, "_");
+    const encodedName = encodeURIComponent(fileName).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+    reply.status(result.statusCode).header("cache-control", "private, no-store").header("accept-ranges", "bytes").header("content-type", result.contentType).header("content-length", String(result.contentLength)).header("content-disposition", `inline; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
     if (result.range) reply.header("content-range", `bytes ${result.range.start}-${result.range.end}/${result.totalLength}`);
     return reply.send(result.body);
   }

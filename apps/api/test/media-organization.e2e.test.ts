@@ -4,11 +4,12 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { Test } from "@nestjs/testing";
 import type { MediaAsset } from "@originpost/domain";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../src/app.module.js";
 import { INFRASTRUCTURE } from "../src/common/tokens.js";
 import { configureApp } from "../src/configure-app.js";
 import type { OriginPostInfrastructure } from "../src/infrastructure/infrastructure.types.js";
+import { MediaService } from "../src/media/media.service.js";
 import { startE2eApp } from "./test-app.js";
 
 const workspaceId = "media-organization-api";
@@ -56,6 +57,18 @@ describe("Media Organization API", () => {
     expect(folders.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: root.body.id, childFolderCount: 1 }), expect.objectContaining({ id: child.body.id, directAssetCount: 2 })]));
     await request(app.getHttpServer()).post("/v1/media-assets/organize").send({ workspaceId, brandId, assets: [{ assetId: "media-api-a", expectedVersion: 0 }], addTags: ["stale"] }).expect(409);
     await request(app.getHttpServer()).delete(`/v1/media-assets/folders/${child.body.id}?workspaceId=${workspaceId}&brandId=${brandId}&version=1`).expect(409);
+  });
+
+  it.each(["ગુજરાતી સમાચાર.jpg", "हिंदी आवाज़.mp3", 'quote"\\name\r\n.jpg'])("delivers non-ASCII and unsafe filenames without invalid headers: %s",async(fileName)=>{
+    const bytes=Buffer.from('ID3fixture');
+    const spy=vi.spyOn(app.get(MediaService),'deliver').mockResolvedValue({fileName,body:bytes,statusCode:200,contentType:'audio/mpeg',contentLength:bytes.length,totalLength:bytes.length} as never);
+    try {
+      const response=await request(app.getHttpServer()).get('/v1/media-assets/preview?token=fixture').expect(200);
+      const disposition=response.headers['content-disposition'] as string;
+      expect(disposition).toMatch(/^[\x20-\x7E]+$/);
+      expect(decodeURIComponent(disposition.split("filename*=UTF-8''")[1]!)).toBe(fileName);
+      expect(response.body).toEqual(bytes);
+    } finally {spy.mockRestore();}
   });
 
   it("rejects unknown fields and empty bulk changes", async () => {
