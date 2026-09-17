@@ -14,6 +14,7 @@ export class AudioSkillDto {
   @IsInt() @Min(1) @Max(3000) maxCharacters!: number;
 }
 export class SaveAudioProfileDto extends AudioQueryDto {
+  @IsOptional() @IsString() @Length(1,200) projectTemplateId?: string;
   @IsInt() @Min(0) version = 0;
   @IsIn(['elevenlabs']) provider: 'elevenlabs' = 'elevenlabs';
   @IsString() @Length(1,100) name!: string;
@@ -26,6 +27,7 @@ export class SaveAudioProfileDto extends AudioQueryDto {
   @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => AudioSkillDto) skills: AudioSkillDto[] = [];
 }
 export class GenerateAudioDto extends AudioQueryDto {
+  @IsOptional() @IsString() @Length(1,200) projectTemplateId?: string;
   @IsString() @Length(1,100) profileId!: string;
   @Matches(/^[a-zA-Z0-9_-]{1,100}$/) voiceId!: string;
   @Matches(/^[a-z]{2,3}$/) language!: string;
@@ -33,5 +35,15 @@ export class GenerateAudioDto extends AudioQueryDto {
   @IsString() @Length(16,100) requestId!: string;
   @IsOptional() @IsString() @Length(1,100) contentItemId?: string;
   @IsOptional() @Matches(/^[a-z0-9][a-z0-9-]{0,63}$/) skillId?: string;
+  @IsOptional() @IsBoolean() sample = false;
   @IsIn([true]) rightsConfirmed!: boolean;
+}
+
+export class DraftAudioScriptDto extends AudioQueryDto {
+  @IsOptional() @IsString() @Length(1,200) projectTemplateId?: string;
+  @IsString() @Length(1,100) profileId!: string;
+  @IsString() @Length(1,100) contentItemId!: string;
+  @Matches(/^[a-z]{2,3}$/) language!: string;
+  @IsOptional() @Matches(/^[a-z0-9][a-z0-9-]{0,63}$/) skillId?: string;
+  @IsOptional() @IsBoolean() sample = false;
 }

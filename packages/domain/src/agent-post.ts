@@ -1,3 +1,4 @@
+import { languageSkillSchema } from './language-skills.js';
 import { z } from "zod";
 import { DomainError } from "./errors.js";
 import type { ContentItem, SourceEvidence } from "./types.js";
@@ -49,6 +50,7 @@ export const agentPostTemplateSchema = z
   .object({
     boardId: z.string().max(200).optional(),
     skills: z.array(z.enum(agentPostSkillIds)).max(4).optional(),
+    languageSkills: z.array(languageSkillSchema).max(6).optional(),
     exampleCaption: z.string().trim().max(1500).optional(),
     name: z.string().trim().min(1).max(100),
     language: z.string().trim().min(2).max(40),

@@ -7,6 +7,8 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/configure-app.js';
 import { startE2eApp } from './test-app.js';
+import { AgentRuntimeService } from '../src/agent-runtimes/agent-runtime.service.js';
+import { languageSkills, type ContentItem } from '@originpost/domain';
 import { AudioService } from '../src/audio/audio.service.js';
 import { ElevenLabsAudioProvider } from '../src/audio/audio-provider.js';
 import { INFRASTRUCTURE } from '../src/common/tokens.js';
@@ -45,6 +47,38 @@ describe('secure audio workflow',()=>{
     await expect(service.save('default',undefined,settings(),{...owner,actorType:'agent'})).rejects.toThrow(/owner/);
     await expect(service.generate('another-workspace',generation(),owner)).rejects.toThrow();
     await request(app.getHttpServer()).get(`/v1/audio/profiles/${profileId}/catalogue?workspaceId=default&brandId=unrelated`).expect(404);
+  });
+  it('rejects oversized short samples and foreign profiles before reserving usage',async()=>{
+    const before=provider.synthesize.mock.calls.length;
+    const infra=app.get<OriginPostInfrastructure>(INFRASTRUCTURE);
+    const runs=await infra.audioRepository.listRuns('default','brand_default');
+    await request(app.getHttpServer()).post('/v1/audio/generations').send({...generation(),sample:true,text:'અ'.repeat(101)}).expect(400);
+    await request(app.getHttpServer()).post('/v1/audio/generations').send({...generation(),projectTemplateId:'foreign-template'}).expect(400);
+    expect(provider.synthesize.mock.calls.length).toBe(before);
+    expect(await infra.audioRepository.listRuns('default','brand_default')).toEqual(runs);
+  });
+  it('drafts from supported facts and selected locale without calling speech',async()=>{
+    const infra=app.get<OriginPostInfrastructure>(INFRASTRUCTURE),runtime=app.get(AgentRuntimeService);
+    const item={id:'audio-news',brandId:'brand_default',claims:[{id:'c1',text:'The library opened.',status:'supported',sourceIds:['s1']},{id:'c2',text:'Unverified claim',status:'disputed',sourceIds:[]}],sources:[{id:'s1',title:'Council',url:'https://example.org/library'}]} as ContentItem;
+    const get=vi.spyOn(infra.repository,'get').mockResolvedValue(item);
+    const templates=vi.spyOn(infra.agentPostRepository,'templates').mockResolvedValue([{id:'template-audio',languageSkills,logoMediaId:'private-logo-reference'}] as never);
+    const draft=vi.spyOn(runtime,'runDraft').mockResolvedValue({text:'પુસ્તકાલય ખુલ્યું.',model:'fixture'} as never);
+    const before=provider.synthesize.mock.calls.length;
+    try {
+      const dto={workspaceId:'default',brandId:'brand_default',profileId,contentItemId:item.id,language:'gu',sample:true,projectTemplateId:'template-audio'};
+      const response=await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(201);
+      expect(response.body).toMatchObject({text:'પુસ્તકાલય ખુલ્યું.',reviewRequired:true});
+      const packet=JSON.parse(draft.mock.calls[0]![0].messages[1]!.content as string);
+      expect(packet.maxCharacters).toBe(100);expect(packet.claims).toHaveLength(1);
+      expect(packet.projectLanguageSkills.every((s:{language:string})=>s.language==='gu')).toBe(true);
+      expect(JSON.stringify(packet)).not.toContain('private-logo-reference');expect(JSON.stringify(packet)).not.toContain('sk_audio');
+      await request(app.getHttpServer()).post('/v1/audio/draft-script').send({...dto,projectTemplateId:'foreign'}).expect(400);
+      get.mockResolvedValue({...item,brandId:'foreign'});
+      await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(404);
+      get.mockResolvedValue({...item,claims:[]});
+      await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(400);
+      expect(draft).toHaveBeenCalledTimes(1);expect(provider.synthesize.mock.calls.length).toBe(before);
+    } finally {get.mockRestore();templates.mockRestore();draft.mockRestore();}
   });
   it('saves Gujarati narration with provenance, permits downloads, and deduplicates paid calls',async()=>{
     await request(app.getHttpServer()).get(`/v1/audio/profiles/${profileId}/catalogue?workspaceId=default&brandId=brand_default`).expect(200);

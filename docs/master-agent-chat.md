@@ -574,3 +574,9 @@ The real corrected NASA run reached `ready`: corrected copy passed review, Codex
 New chat publishing previews now require both passed copy and image reviews bound to the current copy and source hashes. Missing legacy reviews, stale reviews and failed image-text comparisons are rejected; the final media hash and original-logo reference must also match. Existing receipts remain readable. Five additional API cases verify these requirements before account validation or scheduling.
 
 Live filter checks covered 109 discovered leads: seven had source-reported dates within the last 24 hours, while 102 had unknown publication dates. Publication and discovery ordering passed; the NASA website section returned 20 correctly scoped leads. Enabled official-source collections reported healthy completed runs, including scheduled runs. These checks establish behavior for configured sources, not universal news coverage. Live social publishing remains unverified because only mock accounts are configured.
+
+### 2026-09-17: project narration handoff
+
+Implemented a reusable `PostVoiceAction` beside generated post copy: edit the script in a small chat bubble, then open Audio with the same workspace, brand, news item and project profile. Audio separates text drafting from billed synthesis, groups recordings by local date and exposes project/profile filters. Shared `FormSection` components keep provider settings and language guidance compact. Project templates hold selected language-skill snapshots for the writer, reviewer and narration draft. See [Audio workflow and security](audio.md#post-to-voice-workflow).
+
+Acceptance: verify the desktop UI, run isolated provider mocks and cross-brand tests, then perform at most one Gujarati and one Hindi live sample of at most 100 characters each after a valid provider secret is connected. Music generation and MP4 composition remain separate planned capabilities.

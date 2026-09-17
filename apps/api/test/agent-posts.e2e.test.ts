@@ -10,7 +10,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { completeResearch, type SourceSignal } from "@originpost/domain";
+import { completeResearch, languageSkills, type SourceSignal } from "@originpost/domain";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { INFRASTRUCTURE } from "../src/common/tokens.js";
@@ -164,12 +164,14 @@ describe("news post workflow with external providers substituted", () => {
           referenceMediaIds: [],
           styleInstructions: "Clean editorial illustration",
           skills: ["clear-language"],
+          languageSkills: languageSkills.filter(s=>s.id==="english-news"||s.id==="gujarati-news"),
           exampleCaption: "A short, specific opening. What changes for you?",
           footer: "City news",
         },
       })
       .expect(201);
     templateId = template.body.id;
+    expect(template.body.languageSkills).toHaveLength(2);
   });
   afterAll(async () => {
     vi.restoreAllMocks();

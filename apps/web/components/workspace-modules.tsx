@@ -515,7 +515,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
 
   if (module === "organizations") return <OrganizationModule auth={auth} workspaceId={workspaceId} brands={brands} onChanged={onOrganizationChanged} />;
   if (module === "boards") return <BoardsWorkspace auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onOpenContent ? { onOpenContent } : {})} />;
-  if (module === "audio") return <AudioStudio key={`${workspaceId}:${activeBrandId}:${auth.user.id}`} auth={auth} workspaceId={workspaceId} brandId={activeBrandId} />;
+  if (module === "audio") return <AudioStudio key={`${workspaceId}:${activeBrandId}:${auth.user.id}`} auth={auth} workspaceId={workspaceId} brandId={activeBrandId} brandName={brands.find(b=>b.id===activeBrandId)?.name ?? "Current brand"} />;
   if (module === "library") return <MediaLibrary auth={auth} workspaceId={workspaceId} brandId={activeBrandId} />;
   if (module === "creative") return <CreativeStudio auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(creativeContentItemId ? { initialContentItemId: creativeContentItemId } : {})} {...(onOpenContent ? { onOpenContent } : {})} />;
   if (module === "analytics") return <AnalyticsDashboard auth={auth} workspaceId={workspaceId} brandId={activeBrandId} brands={brands} />;

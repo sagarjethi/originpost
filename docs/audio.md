@@ -47,3 +47,19 @@ Speech generation makes one TTS call using only the reviewed script. It does not
 Profiles and runs have PostgreSQL and in-memory repository implementations. PostgreSQL uses optimistic profile versions, a unique workspace/request identity and row locks for budgets. Generation is synchronous with a 90-second provider timeout and a 20 MB output limit. An interrupted run remains `generating` for operator investigation; there is no automatic paid retry. This conservative first adapter does not include a distributed worker/reconciliation service, video/audio mixing, arbitrary plugin execution, or live voice cloning. Generated MP3s use the existing media store, malware gate, protected downloads and synthetic provenance.
 
 Run `pnpm db:migrate` before starting the new API. Existing installations gain no provider key or permission automatically. See [primary-source research and rollout plan](research/2026-09-17-audio-providers.md).
+
+## Post-to-voice workflow
+
+Generated news posts expose **Create voice**, a compact editable script bubble beside the copy. **Choose a voice** opens Audio with the original news item and project profile. The URL carries identifiers only; the edited script uses a user/workspace/brand/run-scoped session-storage handoff that expires after 15 minutes and is removed when consumed. If storage is unavailable, Audio recovers persisted post copy. A mismatched workspace or brand is rejected rather than silently reassigned.
+
+Audio shows the originating news headline, profile and date. Recordings can be filtered by project board, project profile and local calendar date; results are grouped by date and link back to the news item. New runs retain their project template ID even if the provider's default profile changes. Downloads reuse the existing protected media route.
+
+Project profiles now store bounded, versioned Gujarati/Hindi/English language guidance. Both post writer and independent copy reviewer receive only matching locale skills. Narration drafting uses the same selected project profile with up to 12 supported claims and eight associated sources. The evidence packet is limited to 16,000 characters. It does not include the logo or provider credentials. Imported skills remain declarative guidance; they grant no tools or permissions.
+
+**Draft script from this post** invokes the configured text runtime once; it does not synthesize speech. The editor reviews the script and separately selects **Generate narration**. The harness is intentionally explicit: scoped evidence → selected language guidance → editable draft → rights/review check → idempotent synthesis → protected media and linked run. It never switches providers or retries paid synthesis automatically.
+
+Provider configuration lives in an owner-only dialog with shared collapsible form sections. New UI connections default to 100 characters per request and two requests per UTC day. Short-sample mode is also checked by the API before usage reservation. For this acceptance run, allow at most two samples total: one Gujarati and one Hindi, each no more than 100 characters. Read-only authentication/model discovery and mocked tests come first. A valid ElevenLabs secret is required for live testing; a key ID is not sufficient.
+
+### Security and review
+
+Server authorization validates the workspace, brand, content item and project template independently of the browser. Provider secrets remain encrypted and absent from script packets, URLs and client responses. Text drafts require editor review; a successful model call is not a factual or pronunciation approval. Secret scans and repository hooks remain mandatory before commit and push. No script, key or private screenshot belongs in Git.

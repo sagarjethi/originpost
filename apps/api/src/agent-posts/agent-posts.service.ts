@@ -1,3 +1,4 @@
+import { selectedLanguageSkills } from '@originpost/domain';
 import { canUseLocalCodex, hasLiveAgentResearch } from "@originpost/domain";
 import {
   Inject,
@@ -854,6 +855,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
               sources: item.sources.filter((s) => sourceIds.has(s.id)),
               style: t.styleInstructions,
               writingSkills: agentPostSkillInstructions(t.skills),
+              languageSkills: selectedLanguageSkills(t.language,t.languageSkills),
               styleExampleOnly: t.exampleCaption ?? "",
               exampleRule:
                 "Use the example only for tone and structure. Never copy its facts, names, numbers, claims, or branding.",
@@ -881,6 +883,7 @@ export class AgentPostsService implements OnModuleInit, OnApplicationShutdown {
         sources: item.sources,
         copy: run.copy,
         language: t.language,
+        languageSkills: selectedLanguageSkills(t.language,t.languageSkills),
       };
       const result = await this.runtimes.runCopyReview({
         workspaceId: w,

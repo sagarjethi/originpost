@@ -7,9 +7,11 @@ export interface AudioSkill {
 export interface AudioProfile {
   id: string; workspaceId: string; brandId: string; version: number; provider: 'elevenlabs'; name: string; model: string;
   enabled: boolean; allowedRoles: Actor['role'][]; maxCharacters: number; dailyRequests: number;
+  projectTemplateId?: string;
   skills: AudioSkill[]; credentialConfigured: boolean; createdBy: string; updatedAt: string;
 }
 export interface AudioRun {
+  projectTemplateId?: string;
   id: string; workspaceId: string; brandId: string; profileId: string; profileVersion: number; contentItemId?: string;
   requestHash: string; idempotencyHash: string; textHash: string; characterCount: number; model: string; voiceId: string;
   language: string; skillId?: string; skillVersion?: string; status: 'generating' | 'ready' | 'failed';

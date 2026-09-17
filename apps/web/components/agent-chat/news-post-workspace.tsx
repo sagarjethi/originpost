@@ -15,7 +15,9 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
-import { agentPostSkills } from "@originpost/domain";
+import { PostVoiceAction } from "../voice/post-voice-action";
+import { FormSection } from "../forms/form-section";
+import { agentPostSkills, languageSkills, languageCode, type AudioSkill } from "@originpost/domain";
 import { AgentPostPublishing } from "./agent-post-publishing";
 import { AgentConnections } from "./agent-connections";
 import styles from "./news-post-workspace.module.css";
@@ -24,6 +26,7 @@ type Board = { id: string; name: string; status: string };
 type Template = {
   boardId?: string;
   skills?: string[];
+  languageSkills?: AudioSkill[];
   exampleCaption?: string;
   id: string;
   name: string;
@@ -120,6 +123,7 @@ const initial = {
   boardId: "",
   skills: ["clear-language", "source-first"] as string[],
   exampleCaption: "",
+  languageSkills: [] as AudioSkill[],
   name: "News post",
   language: "English",
   format: "portrait",
@@ -1232,6 +1236,7 @@ export function NewsPostWorkspace({
                     <small>POST COPY</small>
                     <h2>{selectedRun.copy.headline}</h2>
                     <p>{selectedRun.copy.caption}</p>
+                    <PostVoiceAction key={selectedRun.id} userId={auth.user.id} workspaceId={workspaceId} brandId={brandId} runId={selectedRun.id} caption={selectedRun.copy.caption}/>
                     {imageUrl && (
                       <a
                         href={imageUrl}
@@ -1825,6 +1830,10 @@ export function NewsPostWorkspace({
               ))}
             </div>
           </fieldset>
+          <FormSection title="Project language skills" description="Save reusable guidance for post copy and voice scripts.">
+            <div className={styles.skillGrid}>{languageSkills.filter(s=>s.language===languageCode(form.language)).map(skill=><label key={skill.id} className={styles.skillCard}><input type="checkbox" checked={form.languageSkills.some(s=>s.id===skill.id)} disabled={!form.languageSkills.some(s=>s.id===skill.id)&&form.languageSkills.length>=6} onChange={e=>setForm({...form,languageSkills:e.target.checked?[...form.languageSkills,skill]:form.languageSkills.filter(s=>s.id!==skill.id)})}/><span><strong>{skill.name}</strong><small>v{skill.version}</small></span></label>)}</div>
+            {form.languageSkills.map(skill=><label key={skill.id}>{skill.name} · {skill.language}<textarea rows={3} maxLength={2000} value={skill.instructions} onChange={e=>setForm({...form,languageSkills:form.languageSkills.map(s=>s.id===skill.id?{...s,instructions:e.target.value}:s)})}/><button type="button" onClick={()=>setForm({...form,languageSkills:form.languageSkills.filter(s=>s.id!==skill.id)})}>Remove skill</button></label>)}
+          </FormSection>
           <label>
             Example caption to learn the style
             <textarea
