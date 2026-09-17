@@ -1,4 +1,4 @@
-FROM node:24.21.0-alpine AS build
+FROM node:26.8-alpine AS build
 
 RUN corepack enable
 WORKDIR /app
@@ -24,7 +24,7 @@ RUN apk add --no-cache ffmpeg font-noto font-noto-gujarati font-noto-devanagari
 EXPOSE 4000
 CMD ["node", "apps/api/dist/main.js"]
 
-FROM node:24.21.0-bookworm-slim AS worker
+FROM node:26.8-bookworm-slim AS worker
 RUN corepack enable
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx --yes playwright@1.63.0 install --with-deps chromium && chmod -R a+rX /ms-playwright
