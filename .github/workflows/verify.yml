@@ -49,6 +49,17 @@ jobs:
         run: |
           pnpm --filter @originpost/worker exec playwright install --with-deps chromium
           sudo apt-get install -y ffmpeg fonts-noto-core
+      - name: Allow sandboxed Chromium on Ubuntu
+        run: |
+          # Scope user namespaces to Playwright's browser, preserving its sandbox.
+          sudo tee /etc/apparmor.d/originpost-playwright >/dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile originpost-playwright "$HOME/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell" flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/originpost-playwright
       - run: pnpm release:check
       - run: pnpm db:migrate
       - name: Test PostgreSQL persistence and concurrency

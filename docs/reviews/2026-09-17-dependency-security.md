@@ -9,6 +9,7 @@ Integrates the reviewed audio/UI work with dependency PRs #2, #3 and #4. PR #1's
 - Update developer prerequisites to Node 22.12+, with Node 24 LTS recommended.
 - Refresh transitive qs to 6.16.0, fixing the two moderate advisories left behind by the grouped dependency PRs.
 - Gate all dependencies at moderate severity, including development tools copied into the current Docker runtime. Keep staged/history secret scanning enabled.
+- Add an Ubuntu AppArmor profile scoped to the Playwright headless browser so Chromium can retain its user-namespace sandbox in CI.
 - Install Chromium, ffmpeg and Noto fonts in CI so browser capture and media inspection tests run on clean runners.
 - Run PostgreSQL repository tests explicitly in CI after migrations, with an isolated CI database; previously the normal test run skipped these without TEST_DATABASE_URL.
 
@@ -29,3 +30,5 @@ Integrates the reviewed audio/UI work with dependency PRs #2, #3 and #4. PR #1's
 - [ioredis 6 release](https://github.com/redis/ioredis/releases/tag/v6.0.0)
 - [qs security advisory](https://github.com/ljharb/qs/security/advisories/GHSA-4mjr-xmp4-gh2g)
 - [Checkout 7 release](https://github.com/actions/checkout/releases/tag/v7.0.0)
+
+- [Chromium AppArmor guidance](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)
