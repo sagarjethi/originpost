@@ -4,6 +4,16 @@ Self-hosted social content software: collect sources, create a post, review it, 
 
 **Status: alpha.** Local setup works without social or AI credentials. Live publishing needs your provider setup and account approval.
 
+![OriginPost desktop dashboard](docs/images/admin-desktop.jpg)
+
+*Desktop screenshot with local test records; not evidence of live publishing.*
+
+[Project overview](docs/project-overview.md) · [Developer setup](docs/local-developer-setup.md) · [Architecture](docs/architecture.md)
+
+## How it works
+
+![Find sources, create, review, publish, and keep proof](docs/images/source-to-post.svg)
+
 ## 1. Install
 
 Requirements: **Node.js 22+, Docker, and pnpm 10.28.2**. Run from the repository root:
@@ -82,9 +92,11 @@ Before public or live use:
 
 Missing provider setup blocks that feature, not local exploration.
 
-## Everyday workflow
+## Your brand and workspace
 
-**Sources → Agent → Review → Schedule → Proof.** Team: Organizations. Media: Library. Integrations: Developer API.
+![Illustrative template with your logo, visual, headline, and social handle](docs/images/template-guide.svg)
+
+Set your own logo, templates, language, and social handles per brand. Team: Organizations. Media: Library. Integrations: Developer API.
 
 [Agent and templates](docs/agent-chat-ui.md) · [News sources](docs/source-signal-desk.md) · [Verified capabilities](docs/research/2026-09-15-workflow-acceptance.md)
 
