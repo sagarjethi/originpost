@@ -38,6 +38,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
   const [error,setError]=useState(''); const [notice,setNotice]=useState(''); const [settings,setSettings]=useState(false);
   const [editing,setEditing]=useState<AudioProfile|null>(null); const [skills,setSkills]=useState<AudioSkill[]>(starterSkills);
   const [preview,setPreview]=useState<{url:string;id:string}|null>(null);
+  const pendingDraft=useRef<{body:string;id:string}|null>(null);
   const pendingRequest=useRef<{body:string;id:string}|null>(null);
   const profile=view.profiles.find(p=>p.id===profileId);
   const model=catalogue.models.find(m=>m.id===profile?.model);
@@ -82,7 +83,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     await act('save',async()=>{
       const key=String(data.get('apiKey') ?? '').trim();
       const projectTemplateId=String(data.get('projectTemplateId')??'');
-      const body={workspaceId,brandId,...(projectTemplateId?{projectTemplateId}:{}),version:editing?.version ?? 0,provider:'elevenlabs',name:String(data.get('name')),model:String(data.get('model')),enabled:data.get('enabled')==='on',allowedRoles:data.getAll('roles'),maxCharacters:Number(data.get('maxCharacters')),dailyRequests:Number(data.get('dailyRequests')),skills,...(key?{apiKey:key}:{})};
+      const body={workspaceId,brandId,...(projectTemplateId?{projectTemplateId}:{}),version:editing?.version ?? 0,provider:'elevenlabs',name:String(data.get('name')),model:String(data.get('model')),enabled:data.get('enabled')==='on',allowedRoles:data.getAll('roles'),maxCharacters:Number(data.get('maxCharacters')),dailyRequests:Number(data.get('dailyRequests')),dailyDraftRequests:Number(data.get('dailyDraftRequests')),skills,...(key?{apiKey:key}:{})};
       const result=await request(`/v1/audio/profiles${editing?`/${encodeURIComponent(editing.id)}`:''}`,{method:editing?'PATCH':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
       form.reset();setSettings(false);setCatalogue({models:[],voices:[]});await load();setProfileId(result.id);setNotice('Provider saved. Load voices to verify access before generating.');
     });
@@ -98,8 +99,18 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
       else setNotice(run.status==='ready'?'Narration saved to Library. Listen and review before using it in a post.':'This request is already running. Refresh to check its result; it will not be generated again.');
     });
   }
+  function selectNewsItem(id:string) {
+    const run=newsRuns.filter(n=>n.contentItemId===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    setContentItemId(id);setContextRun(run ?? null);setText(run?.copy?.caption ?? '');setRights(false);setPreview(null);
+    if(run){setLanguage(languageCode(run.template.language));setSkillId('');setSample((run.copy?.caption.length ?? 0)<=100);}
+  }
   async function draftScript() {
-    const result=await request('/v1/audio/draft-script',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({workspaceId,brandId,profileId,contentItemId,language,sample,...(skillId?{skillId}:{}),...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{})})});
+    const draft={workspaceId,brandId,profileId,contentItemId,language,sample,...(skillId?{skillId}:{}),...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{})};
+    const identity=JSON.stringify({...draft,profileVersion:profile?.version});
+    if(pendingDraft.current?.body!==identity)pendingDraft.current={body:identity,id:crypto.randomUUID()};
+    const result=await request('/v1/audio/draft-script',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...draft,requestId:pendingDraft.current.id})});
+    if(result.status==='failed')throw new Error(result.error ?? 'Script drafting failed. This request will not retry automatically.');
+    if(result.status==='generating'){setNotice('This script request is already running. Checking again reuses the same request without an extra charge.');return;}
     setText(result.text);setRights(false);setNotice('Script drafted from supported facts. Review the wording before generating voice.');
   }
   const associatedPost=(run:AudioRun)=>newsRuns.find(n=>n.contentItemId===run.contentItemId);
@@ -121,11 +132,12 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
   }
   return <section className={styles.studio}>
     <header className={styles.hero}><div><p className={styles.eyebrow}>{brandName ?? "Current brand"} / VOICE & NARRATION</p><h1>Give your story a voice.</h1><p>Create narration in ગુજરાતી, हिंदी, English, and your model’s other languages.</p></div><AudioLines size={54} strokeWidth={1.2}/></header>
-    <div className={styles.toolbar}><span><ShieldCheck size={17}/> Keys stay encrypted on the server</span><div><button disabled={!!busy} onClick={()=>void act('refresh',load)}><RefreshCw size={15}/>Refresh</button>{owner&&<button onClick={()=>edit(null)}><KeyRound size={15}/>Connect provider</button>}</div></div>
+    <div className={styles.toolbar}><span><ShieldCheck size={17}/> Keys stay encrypted on the server</span><div><button disabled={!!busy} onClick={()=>void act('refresh',load)}><RefreshCw size={15}/>Refresh</button>{owner&&<button disabled={!!busy} onClick={()=>edit(null)}><KeyRound size={15}/>Connect provider</button>}</div></div>
     {error&&<p className={styles.error} role="alert">{error}</p>}{notice&&<p className={styles.notice} role="status">{notice}</p>}
     {contextRun&&<div className={styles.context}><div><small>{contextRun.template.name} · {new Date(contextRun.createdAt).toLocaleDateString()}</small><strong>{contextRun.copy?.headline ?? 'News post'}</strong><span>The script and recording stay linked to this news item.</span></div><a href={`/agent?conversation=${encodeURIComponent(contextRun.id)}`}>Back to agent ↗</a></div>}
     {loading?<p role="status">Loading audio workspace…</p>:<div className={styles.layout}>
       <form className={styles.card} onSubmit={generate}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>01 / CREATE</p><h2>Build a narration</h2></div><span>MP3 · 128 kbps</span></div>
+        <fieldset className={styles.composerFields} disabled={!!busy}>
         {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p>{contextRun&&<label>Voice script<textarea rows={5} maxLength={3000} value={text} onChange={e=>setText(e.target.value)}/><small>{text.length} characters · Saved post copy, editable before generation.</small></label>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>
           <label>Provider<select value={profileId} onChange={e=>setProfileId(e.target.value)} disabled={!!busy}>{view.profiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}{p.enabled?'':' · Disabled'}</option>)}</select></label>
           <div className={styles.row}><button type="button" disabled={!!busy||!profile} onClick={()=>void act('catalogue',()=>catalogueLoad())}>{busy==='catalogue'?'Checking…':'Load voices & check connection'}</button>{owner&&<button type="button" onClick={()=>edit(profile ?? null)}><Settings2 size={15}/>Settings</button>}</div>
@@ -135,12 +147,12 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
           {selectedSkill&&<p className={styles.guidance} lang={language}>{selectedSkill.instructions}</p>}
           <div className={styles.row}><label className={styles.check}><input type="checkbox" checked={sample} onChange={e=>{setSample(e.target.checked);setRights(false);}}/>Short sample · 100 characters</label>{shortAudioSamples[language]&&<button type="button" disabled={!!busy} onClick={()=>{setText(shortAudioSamples[language]!);setSample(true);setRights(false);}}>Use sample</button>}</div>
           <label>Script<textarea value={text} onChange={e=>{setText(e.target.value);setRights(false);}} maxLength={limit} rows={5} lang={language} placeholder={language==='gu'?'તમારા ચકાસેલા સમાચાર અહીં લખો…':language==='hi'?'अपनी जांची हुई खबर यहां लिखें…':'Paste your reviewed narration here…'}/></label><small>{text.length.toLocaleString()} / {limit.toLocaleString()} characters · Only this script is sent to the voice provider.</small>
-          <label>News item<select value={contentItemId} onChange={e=>{setContentItemId(e.target.value);setRights(false);}}><option value="">Save in this brand’s Library</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label>
-          <button type="button" disabled={!!busy||!contentItemId||!profile?.enabled||!role||!profile.allowedRoles.includes(role)} onClick={()=>void act("draft",draftScript)}>{busy==='draft'?'Drafting…':'Draft script from this post'}</button><small>Drafting uses the configured text model. Voice generation is a separate action.</small>
+          <label>News item<select value={contentItemId} onChange={e=>selectNewsItem(e.target.value)}><option value="">Save in this brand’s Library</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label>
+          <button type="button" disabled={!!busy||!contentItemId||!profile?.enabled||!role||!profile.allowedRoles.includes(role)} onClick={()=>void act("draft",draftScript)}>{busy==='draft'?'Drafting…':'Draft script from this post'}</button><small>Drafting uses the configured text model and its daily draft limit. Repeated clicks reuse the same request. Voice generation is separate.</small>
           <label className={styles.check}><input type="checkbox" checked={rights} onChange={e=>setRights(e.target.checked)}/>I have permission to use this script and voice, and have reviewed the wording.</label>
           <button className={styles.primary} disabled={!!busy||!canGenerate||!voiceId||!text.trim()||text.length>limit||!rights}>{busy==='generate'?'Generating narration…':'Generate narration'}</button>
           <small>Provider usage is billed to your account. Repeated clicks reuse the same request. Editing the script creates a new request.</small>
-        </>}
+        </>}</fieldset>
       </form>
       <aside className={styles.card}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>02 / LISTEN & REUSE</p><h2>Your recordings</h2></div><a href="/library">Library ↗</a></div>
         {preview&&<div className={styles.playback}><audio controls src={preview.url}/><a href={preview.url} download><Download size={15}/>Download MP3</a></div>}
@@ -157,8 +169,8 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
       <label>Connection name<input name="name" required maxLength={100} defaultValue={editing?.name ?? 'ElevenLabs narration'}/></label>
       <label>API key<input name="apiKey" type="password" autoComplete="new-password" required={!editing} minLength={19} maxLength={1000} pattern="sk_[a-zA-Z0-9_-]{16,}" placeholder={editing?'Leave blank to keep the current key':'Secret key starting with sk_ (not the key ID)'}/></label>
       <label>Default project profile<select name="projectTemplateId" defaultValue={editing?.projectTemplateId ?? contextRun?.template.id ?? ''}><option value="">No default project profile</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name} · {t.language}</option>)}</select><small>Reuse saved language skills. Your logo remains part of the image workflow.</small></label>
-      <FormSection title="Model, limits & access" description="Eleven v3 · 100 characters · 2 requests per day by default">
-      <div className={styles.fields}><label>Model ID<input name="model" required pattern="[a-zA-Z0-9_-]{1,100}" defaultValue={editing?.model ?? 'eleven_v3'}/></label><label>Characters per request<input name="maxCharacters" type="number" min={1} max={3000} defaultValue={editing?.maxCharacters ?? 100}/></label><label>Requests per day (UTC)<input name="dailyRequests" type="number" min={1} max={1000} defaultValue={editing?.dailyRequests ?? 2}/></label></div>
+      <FormSection title="Model, limits & access" description="Eleven v3 · 100 characters · separate voice and script limits">
+      <div className={styles.fields}><label>Model ID<input name="model" required pattern="[a-zA-Z0-9_-]{1,100}" defaultValue={editing?.model ?? 'eleven_v3'}/></label><label>Characters per request<input name="maxCharacters" type="number" min={1} max={3000} defaultValue={editing?.maxCharacters ?? 100}/></label><label>Voice requests per day (UTC)<input name="dailyRequests" type="number" min={1} max={1000} defaultValue={editing?.dailyRequests ?? 2}/></label><label>Script drafts per day (UTC)<input name="dailyDraftRequests" type="number" min={1} max={1000} defaultValue={editing?.dailyDraftRequests ?? 10}/></label></div>
       <fieldset><legend>Who may generate audio?</legend>{(['owner','manager','creator'] as const).map(r=><label className={styles.check} key={r}><input name="roles" type="checkbox" value={r} defaultChecked={(editing?.allowedRoles ?? ['owner']).includes(r)}/>{r}</label>)}</fieldset>
       <label className={styles.check}><input name="enabled" type="checkbox" defaultChecked={editing?.enabled ?? true}/>Enable this provider</label>
       </FormSection>

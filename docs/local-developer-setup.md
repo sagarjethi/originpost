@@ -1,6 +1,6 @@
 # Local developer setup
 
-Run these commands from the OriginPost repository root. Node.js 22 or newer and a running Docker engine are required. The repository pins pnpm 10.28.2; the commands below also work when the globally installed pnpm is older or Corepack is unavailable.
+Run these commands from the OriginPost repository root. Node.js 22.12 or newer (Node 24 LTS recommended) and a running Docker engine are required. The repository pins pnpm 10.28.2; the commands below also work when the globally installed pnpm is older or Corepack is unavailable.
 
 ## Install and verify
 

@@ -7,7 +7,6 @@ import {
   Sparkles,
   MessageSquare,
   Check,
-  ChevronLeft,
   Image as ImageIcon,
   LoaderCircle,
   Plus,

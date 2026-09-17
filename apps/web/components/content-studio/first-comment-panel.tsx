@@ -35,7 +35,6 @@ export function FirstCommentPanel({ auth, workspaceId, contentItemId, targets }:
   const pollCount = useRef(0);
   const role = auth.memberships.find((entry) => entry.workspaceId === workspaceId)?.role as FirstCommentRole | undefined;
   const permission = firstCommentPermission(role);
-  const selectedTarget = eligibleTargets.find((target) => target.id === targetId);
   const targetRecords = records.filter((record) => record.intent.targetId === targetId);
 
   const load = useCallback(async (showLoading = true) => {

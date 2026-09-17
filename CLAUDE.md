@@ -43,7 +43,7 @@ OriginPost is a general-purpose, self-hosted social content workspace: sources â
 ## Setup and development
 
 - Start with [README.md](README.md), [.env.example](.env.example), and [developer setup](docs/local-developer-setup.md).
-- Use Node.js 22+ and the pinned pnpm 10.28.2. If needed, prefix commands with `npx --yes pnpm@10.28.2`.
+- Use Node.js 22.12+ (Node 24 LTS recommended) and the pinned pnpm 10.28.2. If needed, prefix commands with `npx --yes pnpm@10.28.2`.
 - Preserve existing `.env` values and database volumes. Run either the Docker application services or local development processes, not duplicate API/worker instances.
 - Keep browser API requests on relative `/v1` or `/public/v1` routes. `ORIGINPOST_API_UPSTREAM` is server-only and is set before the web build.
 - Rebuild shared packages and restart API/worker processes after relevant source edits. Add migrations for schema changes; do not rewrite already-applied migrations.

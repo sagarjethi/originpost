@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Bot, Building2, Cable, Camera, Check, CheckSquare, Clock3, Copy, Database, Download, FileAudio, FileImage, FileText, FileVideo, Folder, FolderPlus, HardDrive, LockKeyhole, MessagesSquare, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, Share2, ShieldCheck, Star, Tags, Trash2, Upload, Users, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, Building2, Cable, Camera, Check, CheckSquare, Clock3, Copy, Database, Download, FileAudio, FileImage, FileText, FileVideo, Folder, FolderPlus, HardDrive, LockKeyhole, MessagesSquare, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, Share2, ShieldCheck, Star, Trash2, Upload, Users, X, Zap } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
 import { workspaceInvitationActionPath, workspaceInvitationsPath } from "@/lib/workspace-invitations";

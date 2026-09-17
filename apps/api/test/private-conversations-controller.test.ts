@@ -9,6 +9,10 @@ import { PrivateConversationsController } from "../src/private-conversations/pri
 import { PrivateConversationsService } from "../src/private-conversations/private-conversations.service.js";
 import { startE2eApp } from "./test-app.js";
 
+// These workflow assertions inspect calls made by earlier steps in this file.
+// Vitest 5 clears mock history by default; retain it only for these fixtures.
+vi.setConfig({ clearMocks: false });
+
 describe("PrivateConversationsController", () => {
   let app: NestFastifyApplication;
   const service = {

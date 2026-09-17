@@ -4,7 +4,7 @@
 
 Candidate: [the publisher's Gujarati homepage](https://newsonair.gov.in/gu/).
 
-Installed local Chrome opened the public page in a fresh desktop profile at 1440×1000. The page displayed Gujarati national, regional, business, sport and weather headlines with dates from 14 September 2026. The snapshot and extracted visible text are retained privately under `data/gujarati-source-acceptance/`; they are research evidence, not reusable Wing News media.
+Installed local Chrome opened the public page in a fresh desktop profile at 1440×1000. The page displayed Gujarati national, regional, business, sport and weather headlines with dates from 14 September 2026. The snapshot and extracted visible text are retained privately under `data/gujarati-source-acceptance/`; they are research evidence, not reusable publisher media.
 
 The web-search copy returned older page content. It must not be used to establish this page's current headlines or freshness. This is a concrete reason to compare a current browser capture with any indexed search result before enabling a source.
 

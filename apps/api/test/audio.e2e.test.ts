@@ -65,9 +65,12 @@ describe('secure audio workflow',()=>{
     const draft=vi.spyOn(runtime,'runDraft').mockResolvedValue({text:'પુસ્તકાલય ખુલ્યું.',model:'fixture'} as never);
     const before=provider.synthesize.mock.calls.length;
     try {
-      const dto={workspaceId:'default',brandId:'brand_default',profileId,contentItemId:item.id,language:'gu',sample:true,projectTemplateId:'template-audio'};
+      const dto={workspaceId:'default',brandId:'brand_default',profileId,requestId:'draft-script-test-001',contentItemId:item.id,language:'gu',sample:true,projectTemplateId:'template-audio'};
       const response=await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(201);
-      expect(response.body).toMatchObject({text:'પુસ્તકાલય ખુલ્યું.',reviewRequired:true});
+      expect(response.body).toMatchObject({status:'ready',text:'પુસ્તકાલય ખુલ્યું.',reviewRequired:true});
+      const replay=await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(201);
+      expect(replay.body).toMatchObject({id:response.body.id,replayed:true,text:response.body.text});
+      await request(app.getHttpServer()).post('/v1/audio/draft-script').send({...dto,language:'hi'}).expect(409);
       const packet=JSON.parse(draft.mock.calls[0]![0].messages[1]!.content as string);
       expect(packet.maxCharacters).toBe(100);expect(packet.claims).toHaveLength(1);
       expect(packet.projectLanguageSkills.every((s:{language:string})=>s.language==='gu')).toBe(true);
@@ -79,6 +82,27 @@ describe('secure audio workflow',()=>{
       await request(app.getHttpServer()).post('/v1/audio/draft-script').send(dto).expect(400);
       expect(draft).toHaveBeenCalledTimes(1);expect(provider.synthesize.mock.calls.length).toBe(before);
     } finally {get.mockRestore();templates.mockRestore();draft.mockRestore();}
+  });
+  it('reserves script budgets across concurrent calls and retains failures without retry',async()=>{
+    const infra=app.get<OriginPostInfrastructure>(INFRASTRUCTURE),runtime=app.get(AgentRuntimeService);
+    const configured=await service.save('default',undefined,{...settings(),dailyDraftRequests:1},owner);
+    const get=vi.spyOn(infra.repository,'get').mockResolvedValue({id:'draft-budget-news',brandId:'brand_default',claims:[{id:'c1',text:'Library opened',status:'supported',sourceIds:[]}],sources:[]} as unknown as ContentItem);
+    let release!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    const draft=vi.spyOn(runtime,'runDraft').mockImplementation(async()=>{await gate;throw new Error('upstream private details');});
+    const dto={workspaceId:'default',brandId:'brand_default',profileId:configured.id,contentItemId:'draft-budget-news',language:'gu',sample:true,requestId:'draft-budget-request-001'};
+    try {
+      const first=service.draft('default',dto,owner);
+      await vi.waitFor(()=>expect(draft).toHaveBeenCalledTimes(1));
+      expect(await service.draft('default',dto,owner)).toMatchObject({status:'generating',replayed:true});
+      await expect(service.draft('default',{...dto,requestId:'draft-budget-request-002'},owner)).rejects.toThrow('daily script-draft limit');
+      release();
+      const failed=await first;expect(failed.status).toBe('failed');expect(JSON.stringify(failed)).not.toContain('upstream private');
+      expect(await service.draft('default',dto,owner)).toMatchObject({id:failed.id,status:'failed',replayed:true});
+      expect(draft).toHaveBeenCalledTimes(1);
+      expect((await infra.audioRepository.listRuns('default','brand_default')).some(r=>r.id===failed.id)).toBe(false);
+      for(const role of ['creator','viewer'] as const) await expect(service.draft('default',dto,{...owner,role})).rejects.toThrow();
+    } finally {release();get.mockRestore();draft.mockRestore();}
   });
   it('saves Gujarati narration with provenance, permits downloads, and deduplicates paid calls',async()=>{
     await request(app.getHttpServer()).get(`/v1/audio/profiles/${profileId}/catalogue?workspaceId=default&brandId=brand_default`).expect(200);

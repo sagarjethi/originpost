@@ -555,7 +555,7 @@ The personal Codex bridge and official social connections can now coexist in ses
 
 Added a top-headline layout, Story control-area margins, localized illustration labels and matching pixel-review expectations. Fixed swapped accent/supporting-color labels and the lower-headline preview position. Gujarati wrapping now accounts for combining marks; the rendered sample also exposed and resolved category/headline overlap.
 
-A local WING NEWS ગુજરાત template was saved with an inspected, exact crop of the supplied original logo. Independent review of the 1080×1920 placeholder found no material logo, spelling, overlap or safe-area defect. The crop matched the original pixels exactly. This is template acceptance only: the renderer uses Noto Gujarati fallback, and each real headline, image and disclosure still needs final review. No news publication was approved by this preview. Focused renderer/creative/agent-post tests: 34 passed; repository type checks: 14 tasks passed. The README retains the desktop admin screenshot only.
+A local Gujarati publisher template was saved with an inspected, exact crop of the supplied original logo. Independent review of the 1080×1920 placeholder found no material logo, spelling, overlap or safe-area defect. The crop matched the original pixels exactly. This is template acceptance only: the renderer uses Noto Gujarati fallback, and each real headline, image and disclosure still needs final review. No news publication was approved by this preview. Focused renderer/creative/agent-post tests: 34 passed; repository type checks: 14 tasks passed. The README retains the desktop admin screenshot only.
 
 ### 2026-09-15 — real image composition and recovery
 

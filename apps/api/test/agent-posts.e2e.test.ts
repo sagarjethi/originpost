@@ -23,6 +23,10 @@ import { ImageGenerationService } from "../src/image-generation/image-generation
 import { IMAGE_GENERATION_PROVIDER } from "../src/image-generation/image-generation.provider.js";
 import { startE2eApp } from "./test-app.js";
 
+// These workflow assertions inspect calls made by earlier steps in this file.
+// Vitest 5 clears mock history by default; retain it only for these fixtures.
+vi.setConfig({ clearMocks: false });
+
 describe("news post workflow with external providers substituted", () => {
   let app: NestFastifyApplication,
     infrastructure: OriginPostInfrastructure,

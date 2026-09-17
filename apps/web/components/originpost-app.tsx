@@ -2,7 +2,6 @@
 
 import { SourceEvidenceCard, type SourceEvidenceView } from "./source-evidence-card";
 import {
-  Archive,
   AlertCircle,
   Bot,
   CalendarDays,

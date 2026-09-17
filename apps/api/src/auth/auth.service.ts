@@ -103,7 +103,7 @@ export class AuthService implements OnModuleInit {
     return this.infrastructure.authRepository.findSessionByTokenHash(tokenHash, new Date().toISOString());
   }
 
-  async me(userId: string, csrfToken: string | undefined, actor?: Actor, workspaceId = "default") {
+  async me(userId: string, csrfToken: string | undefined, actor?: Actor) {
     if (this.mode() === "single-user") {
       const local = actor ?? { id: userId, name: "Local Owner", role: "owner" as const };
       const workspaces = await this.infrastructure.organizationRepository.listWorkspaces();

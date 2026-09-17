@@ -1,7 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { InstagramCollaboratorCapability, InstagramCollaboratorCandidate, InstagramPublishSettings } from "@originpost/domain";
 import { approveInstagramPublishSettings, assertInstagramReelCoverForDraft, can, DomainError, instagramCollaboratorCapability, normalizeInstagramPublisherUsername, recordInstagramCollaboratorApproval, type Actor, type InstagramReelCoverSelection, type MediaAsset } from "@originpost/domain";
-import type { InstagramOfficialConnector } from "@originpost/connectors";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
 
