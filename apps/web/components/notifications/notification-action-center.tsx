@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Bell, BellRing, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, Info, RefreshCw, ShieldAlert, X } from "lucide-react";
+import { AlertCircle, Bell, BellRing, Check, CheckCheck, ChevronRight, CircleAlert, Info, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
 

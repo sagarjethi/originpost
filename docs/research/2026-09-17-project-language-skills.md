@@ -8,11 +8,11 @@ OriginPost already documents workspace/brand-scoped templates containing languag
 
 Recommended saved fields: preferred locale (`gu`, `hi`, `en`, with other supported locales available), audience/region, short house-writing rules, reader preset, approved example, preferred terminology, voice/model defaults, and enabled skill references with pinned revisions. Keep one-off news facts in each run, not in the permanent profile. A past example teaches tone; its names and numbers never become facts for a new story.
 
-Store original-logo and style-reference media IDs, their versions/hashes, and existing placement/crop rules. Reuse validated bytes through the current deterministic composition path; never redraw the logo with an image model. Keep each publisher's brand separate. The Wing News asset rules belong to its brand profile, not every OriginPost installation. [Creative Studio](../creative-studio.md)
+Store original-logo and style-reference media IDs, their versions/hashes, and existing placement/crop rules. Reuse validated bytes through the current deterministic composition path; never redraw the logo with an image model. Keep each publisher's brand separate. Publisher-specific asset rules belong to its brand profile, not every OriginPost installation. [Creative Studio](../creative-studio.md)
 
 ## Language rules and the locked ledger
 
-The installed creator skill requires a verified fact packet before drafting and a shared pre-layer lock file for the author and reviewer. Its Gujarati language reference favors everyday spoken-standard Gujarati, one idea per line, natural grammar and limited necessary English. Preserve official names and useful familiar acronyms, translate avoidable jargon, keep numbers with units, and read aloud before accepting copy. Local primary sources: [creator skill](/Users/sagarjethi/.codex/skills/create-gujarati-news-posts/SKILL.md) and its `references/gujarati-language-and-code-mix.md` (installed at `/Users/sagarjethi/.codex/skills/create-gujarati-news-posts/`). These installation paths are provenance, not portable production dependencies; any shipped rule pack needs its own reviewed, versioned repository copy.
+The installed creator skill requires a verified fact packet before drafting and a shared pre-layer lock file for the author and reviewer. Its Gujarati language reference favors everyday spoken-standard Gujarati, one idea per line, natural grammar and limited necessary English. Preserve official names and useful familiar acronyms, translate avoidable jargon, keep numbers with units, and read aloud before accepting copy. Local primary sources: the locally installed `create-gujarati-news-posts` skill and its `references/gujarati-language-and-code-mix.md`. Local skills are research inputs, not portable production dependencies; any shipped rule pack needs its own reviewed, versioned repository copy.
 
 The shared ledger should hold:
 
@@ -41,7 +41,7 @@ Measure selected-context length, provider-reported input/output tokens where ava
 
 ## Author and reviewer separation
 
-The creator skill calls for independent fact, language and visual checks. OriginPost already runs a separate copy-review session over frozen evidence and finished copy; this may use the same configured model, so it is a separate pass rather than independent reporting. Preserve that honest distinction. Give the reviewer the same locked ledger and exact candidate; do not substitute the author's self-assessment for review. [Installed creator workflow](/Users/sagarjethi/.codex/skills/create-gujarati-news-posts/SKILL.md), [implemented copy review](../agent-chat-ui.md)
+The creator skill calls for independent fact, language and visual checks. OriginPost already runs a separate copy-review session over frozen evidence and finished copy; this may use the same configured model, so it is a separate pass rather than independent reporting. Preserve that honest distinction. Give the reviewer the same locked ledger and exact candidate; do not substitute the author's self-assessment for review. [implemented copy review](../agent-chat-ui.md)
 
 Skill generation should produce a proposed version, a concise diff and two fixtures. Enable the approved version per project; do not let a generated or downloaded skill grant itself tools, publish permissions, cross-project memory or secret access. Runtime requests must resolve the saved profile server-side and reject stale or cross-brand references.
 

@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Camera,
   CalendarClock,
-  CalendarDays,
   CalendarX2,
   ChevronLeft,
   ChevronRight,

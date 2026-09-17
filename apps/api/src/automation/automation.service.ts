@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
-import { normalizeContentImportRow, type Actor, type AutomationApiKey, type AutomationEvent, type AutomationImportRow, type AutomationImportSession, type AutomationScope, type AutomationWebhookSubscription, type ContentItem } from "@originpost/domain";
+import { normalizeContentImportRow, type Actor, type AutomationApiKey, type AutomationEvent, type AutomationImportRow, type AutomationImportSession, type AutomationScope, type AutomationWebhookSubscription } from "@originpost/domain";
 import { INFRASTRUCTURE } from "../common/tokens.js";
 import type { OriginPostInfrastructure } from "../infrastructure/infrastructure.types.js";
 import { ContentService } from "../content/content.service.js";

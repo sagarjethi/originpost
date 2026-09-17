@@ -63,3 +63,11 @@ Provider configuration lives in an owner-only dialog with shared collapsible for
 ### Security and review
 
 Server authorization validates the workspace, brand, content item and project template independently of the browser. Provider secrets remain encrypted and absent from script packets, URLs and client responses. Text drafts require editor review; a successful model call is not a factual or pronunciation approval. Secret scans and repository hooks remain mandatory before commit and push. No script, key or private screenshot belongs in Git.
+
+### Review hardening
+
+Script drafting has its own owner-configured daily quota (`dailyDraftRequests`, default 10) and durable replay ledger, separate from voice requests. Identical retries return the saved draft; concurrent and failed attempts count toward quota and never automatically retry. Migration 073 creates this ledger. The bounded generated script is stored privately for replay; source packets and credentials are not copied into it.
+
+Changing the selected news item resets its script, profile context, language and review state. The composer is disabled during an active request so a late draft cannot overwrite another story. Audio uses container-based layout changes: two columns when space permits and stacked panels in narrower workspace columns. No separate mobile product view is introduced.
+
+Both API and web TypeScript checks now reject unused locals and parameters. Existing commit/push secret hooks and the Verify CI workflow remain enabled; CI runs release, dependency, secret and test checks.

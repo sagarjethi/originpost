@@ -24,6 +24,7 @@ export class SaveAudioProfileDto extends AudioQueryDto {
   @IsArray() @ArrayMaxSize(3) @ArrayUnique() @IsIn(['owner','manager','creator'], { each: true }) allowedRoles: ('owner'|'manager'|'creator')[] = ['owner'];
   @IsInt() @Min(1) @Max(3000) maxCharacters = 1500;
   @IsInt() @Min(1) @Max(1000) dailyRequests = 10;
+  @IsInt() @Min(1) @Max(1000) dailyDraftRequests = 10;
   @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => AudioSkillDto) skills: AudioSkillDto[] = [];
 }
 export class GenerateAudioDto extends AudioQueryDto {
@@ -40,6 +41,7 @@ export class GenerateAudioDto extends AudioQueryDto {
 }
 
 export class DraftAudioScriptDto extends AudioQueryDto {
+  @IsString() @Length(16,100) requestId!: string;
   @IsOptional() @IsString() @Length(1,200) projectTemplateId?: string;
   @IsString() @Length(1,100) profileId!: string;
   @IsString() @Length(1,100) contentItemId!: string;

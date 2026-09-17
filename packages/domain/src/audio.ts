@@ -7,6 +7,7 @@ export interface AudioSkill {
 export interface AudioProfile {
   id: string; workspaceId: string; brandId: string; version: number; provider: 'elevenlabs'; name: string; model: string;
   enabled: boolean; allowedRoles: Actor['role'][]; maxCharacters: number; dailyRequests: number;
+  dailyDraftRequests?: number;
   projectTemplateId?: string;
   skills: AudioSkill[]; credentialConfigured: boolean; createdBy: string; updatedAt: string;
 }
@@ -17,7 +18,22 @@ export interface AudioRun {
   language: string; skillId?: string; skillVersion?: string; status: 'generating' | 'ready' | 'failed';
   mediaId?: string; error?: string; createdBy: string; createdAt: string; completedAt?: string;
 }
+export interface AudioDraftRun {
+  id: string; workspaceId: string; brandId: string; profileId: string; profileVersion: number;
+  contentItemId: string; projectTemplateId?: string; requestHash: string; idempotencyHash: string;
+  status: 'generating' | 'ready' | 'failed'; text?: string; characterCount?: number; error?: string;
+  createdBy: string; createdAt: string; completedAt?: string;
+}
+export function assertAudioDraftReplay(previous: AudioDraftRun, next: AudioDraftRun) {
+  if (previous.requestHash !== next.requestHash) throw new DomainError('This request key was already used for a different script draft.', 'audio_draft_idempotency_conflict', 409);
+}
+export function assertAudioDraftBudget(profile: AudioProfile | undefined, run: AudioDraftRun, used: number) {
+  if (!profile || profile.workspaceId !== run.workspaceId || profile.brandId !== run.brandId || !profile.enabled || profile.version !== run.profileVersion) throw new DomainError('Audio settings changed. Refresh before drafting.', 'audio_profile_changed', 409);
+  if (used >= (profile.dailyDraftRequests ?? 10)) throw new DomainError('This provider has reached its daily script-draft limit.', 'audio_draft_daily_limit', 429);
+}
 export interface AudioRepository {
+  reserveDraft(run: AudioDraftRun, event: AuditEvent): Promise<{ run: AudioDraftRun; created: boolean }>;
+  finishDraft(run: AudioDraftRun, event: AuditEvent): Promise<void>;
   listProfiles(workspaceId: string, brandId: string): Promise<AudioProfile[]>;
   getProfile(workspaceId: string, id: string): Promise<{ profile: AudioProfile; credential: EncryptedCredential } | null>;
   saveProfile(profile: AudioProfile, credential: EncryptedCredential, expectedVersion: number, event: AuditEvent): Promise<void>;
@@ -34,8 +50,20 @@ export function assertAudioBudget(profile: AudioProfile | undefined, run: AudioR
 }
 export class InMemoryAudioRepository implements AudioRepository {
   private profiles = new Map<string, { profile: AudioProfile; credential: EncryptedCredential }>();
+  private drafts = new Map<string, AudioDraftRun>();
   private runs = new Map<string, AudioRun>();
   readonly events: AuditEvent[] = [];
+  async reserveDraft(run: AudioDraftRun, event: AuditEvent) {
+    const previous = [...this.drafts.values()].find(x => x.workspaceId === run.workspaceId && x.idempotencyHash === run.idempotencyHash);
+    if (previous) { assertAudioDraftReplay(previous, run); return { run: structuredClone(previous), created: false }; }
+    const used = [...this.drafts.values()].filter(x => x.workspaceId === run.workspaceId && x.profileId === run.profileId && x.createdAt.slice(0, 10) === run.createdAt.slice(0, 10)).length;
+    assertAudioDraftBudget(this.profiles.get(run.profileId)?.profile, run, used);
+    this.drafts.set(run.id, structuredClone(run)); this.events.push(event); return { run, created: true };
+  }
+  async finishDraft(run: AudioDraftRun, event: AuditEvent) {
+    const current = this.drafts.get(run.id);
+    if (current?.workspaceId === run.workspaceId && current.status === 'generating') { this.drafts.set(run.id, structuredClone(run)); this.events.push(event); }
+  }
   async listProfiles(w: string, b: string) { return structuredClone([...this.profiles.values()].map(x => x.profile).filter(x => x.workspaceId === w && x.brandId === b)); }
   async getProfile(w: string, id: string) { const value = this.profiles.get(id); return value?.profile.workspaceId === w ? structuredClone(value) : null; }
   async saveProfile(profile: AudioProfile, credential: EncryptedCredential, version: number, event: AuditEvent) {

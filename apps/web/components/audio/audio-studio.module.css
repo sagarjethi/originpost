@@ -4,3 +4,14 @@
 .dialog{border:0;border-radius:18px;padding:0;width:min(680px,85vw);max-height:86vh;color:#253b32;box-shadow:0 24px 80px #10261930}.dialog::backdrop{background:#14271e70;backdrop-filter:blur(3px)}.dialog .settings{border:0;border-radius:0;padding:28px;gap:18px}.context{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:20px 24px;border:1px solid #cbdaca;border-radius:14px;background:#f5f8f0}.context>div{display:grid;gap:7px}.context strong{font-size:20px;line-height:1.5}.context span{font-size:13px;color:#526a58}.dateHeading{font-size:13px;color:#4b6352;border-bottom:1px solid #dce5da;padding-bottom:12px;margin:6px 0}.studio small{color:#596d5e}.studio .footnote,.settings>p{color:#5c6b59}
 
 .dialog .settings{padding:24px;gap:14px}.settings>p{margin:0}.dialog .primary{position:sticky;bottom:0;box-shadow:0 0 0 8px white}
+
+/* Keep the studio inside its workspace column, including narrow desktop windows. */
+.studio{container-type:inline-size;min-width:0;width:100%;box-sizing:border-box;padding:24px;gap:16px}
+.hero{padding:24px 28px;gap:20px}.hero h1{font-size:30px;letter-spacing:-1px;margin:6px 0 10px}.hero>svg{width:40px;height:40px;flex-shrink:0}
+.card{min-width:0;padding:22px;gap:15px}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.studio label{min-width:0}.studio select{text-overflow:ellipsis}.recording strong,.context strong{overflow-wrap:anywhere}
+@container (max-width:820px){.layout{grid-template-columns:minmax(0,1fr)}.hero h1{font-size:28px}.toolbar{flex-wrap:wrap}.context{align-items:flex-start}.context>a{flex-shrink:0}}
+@container (max-width:540px){.fields{grid-template-columns:minmax(0,1fr)}.hero{padding:20px}.hero>svg{display:none}.toolbar{align-items:flex-start;flex-direction:column}.context{flex-direction:column}.card{padding:18px}.row{flex-wrap:wrap}}
+
+.composerFields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:15px}
+
+.empty>label{width:100%}

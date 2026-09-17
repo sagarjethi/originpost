@@ -91,7 +91,7 @@ export class AuthController {
   }
 
   @WorkspaceOptional() @Get("me")
-  me(@Req() request: AuthenticatedRequest) { return this.auth.me(request.originpostUserId!, request.originpostCsrfToken, request.originpostActor, request.originpostWorkspaceId) }
+  me(@Req() request: AuthenticatedRequest) { return this.auth.me(request.originpostUserId!, request.originpostCsrfToken, request.originpostActor) }
 
   @WorkspaceOptional() @Post("logout") @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Req() request: AuthenticatedRequest, @Res({ passthrough: true }) reply: FastifyReply) {
