@@ -7,6 +7,7 @@ import { apiFetch, type AuthView } from '../../lib/api-client';
 import styles from './audio-studio.module.css';
 import { voiceDraftKey } from '../voice/post-voice-action';
 import { FormSection } from '../forms/form-section';
+import { WorkspaceLoading } from "../loading/workspace-loading";
 import { VoiceScriptEditor } from '../voice/voice-script-editor';
 
 type ProjectTemplate = {id:string;name:string;language:string;boardId?:string};
@@ -136,7 +137,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     <div className={styles.toolbar}><span><ShieldCheck size={17}/> Keys stay encrypted on the server</span><div><button disabled={!!busy} onClick={()=>void act('refresh',load)}><RefreshCw size={15}/>Refresh</button>{owner&&<button disabled={!!busy} onClick={()=>edit(null)}><KeyRound size={15}/>Connect provider</button>}</div></div>
     {error&&<p className={styles.error} role="alert">{error}</p>}{notice&&<p className={styles.notice} role="status">{notice}</p>}
     {contextRun&&<div className={styles.context}><div><small>{contextRun.template.name} · {new Date(contextRun.createdAt).toLocaleDateString()}</small><strong>{contextRun.copy?.headline ?? 'News post'}</strong><span>The script and recording stay linked to this news item.</span></div><a href={`/agent?conversation=${encodeURIComponent(contextRun.id)}`}>Back to agent ↗</a></div>}
-    {loading?<p role="status">Loading audio workspace…</p>:<div className={styles.layout}>
+    {loading?<WorkspaceLoading fullPage={false} title="Opening your audio studio" description="Loading voice profiles, news scripts and recordings."/>:<div className={styles.layout}>
       <form className={styles.card} onSubmit={generate}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>SCRIPT & VOICE</p><h2>Build a narration</h2></div><span>MP3 · 128 kbps</span></div>
         <fieldset className={styles.composerFields} disabled={!!busy}>
         {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p><VoiceScriptEditor value={text} onChange={setText} language={language} limit={100}/>{!contextRun&&<small>Prepare your script now. Connect a provider when you are ready to generate.</small>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
+import { WorkspaceLoading } from "../loading/workspace-loading";
 import { PostVoiceAction } from "../voice/post-voice-action";
 import { FormSection } from "../forms/form-section";
 import { agentPostSkills, languageSkills, languageCode, type AudioSkill } from "@originpost/domain";
@@ -884,7 +885,7 @@ export function NewsPostWorkspace({
               </div>
             </div>
           )}
-          {selectedRun ? (
+          {loading ? <WorkspaceLoading fullPage={false} title="Opening your agent workspace" description="Loading project chats, templates and saved work."/> : selectedRun ? (
             <article className={styles.result}>
               {earlierTurns.length > 0 && (
                 <details className={styles.earlierTurns}>
