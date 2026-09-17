@@ -19,3 +19,18 @@ redis-data/
 # Local Python test artifacts
 __pycache__/
 *.py[cod]
+
+# Private credentials and local setup artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.sqlite
+*.sqlite3
+*.dump
+credentials.json
+secrets.json
+cookies.json
+auth.json
+.originpost-setup.json

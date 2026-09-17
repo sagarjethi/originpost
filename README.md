@@ -91,6 +91,7 @@ For the person setting up the software: install Node.js 22+, pnpm 10+, and Docke
 cp .env.example .env
 docker compose up -d postgres redis minio
 pnpm install
+pnpm security:hooks
 pnpm db:migrate
 pnpm dev
 ```
@@ -98,6 +99,12 @@ pnpm dev
 Open [localhost:3000](http://localhost:3000). Keep `.env` private. Default local mode is for a trusted machine; use the deployment guide before making the service public.
 
 [Full setup and feature reference](docs/technical-overview.md) · [Connect social accounts](docs/channels.md) · [Deployment and release](docs/public-release.md) · [Architecture](docs/architecture.md)
+
+## Keeping secrets out of Git
+
+The mandatory policy is in [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md), and [agent.md](agent.md). Keep credentials, private data, cookies, database exports, and sensitive screenshots outside Git. Example configuration must contain fake placeholders only.
+
+Run `pnpm security:hooks` after every clone. The commit hook scans staged changes; the push hook scans all local Git history. Both block on private file paths, detected secrets, or an unavailable scanner. They require Node.js and either Gitleaks or Docker. Run `pnpm security:secrets` manually before a release. CI also scans full history. Never bypass a failed check; rotate any exposed credential and coordinate cleanup with the owner. Review files yourself as well, especially images and private data that scanners cannot reliably identify.
 
 ## License
 

@@ -11,8 +11,6 @@ paths = [
   '''(^|/)dist/''',
   '''(^|/)coverage/''',
   '''(^|/)\.turbo/''',
-  '''(^|/)\.env$''',
-  '''(^|/)\.env\.(local|development|production|test)$''',
 ]
 
 [[allowlists]]

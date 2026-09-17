@@ -29,11 +29,16 @@ jobs:
       DATABASE_URL: postgres://originpost:originpost@127.0.0.1:5432/originpost_test
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
+      - name: Check Git history for secrets
+        run: node scripts/secret-guard.mjs history
+      - run: node --test scripts/secret-guard.test.mjs
       - name: Create ephemeral Compose validation secrets
         run: |
           echo "REVIEW_LINK_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
