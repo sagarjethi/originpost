@@ -1455,3 +1455,5 @@
 @media (max-width: 800px) { .logoLayout { grid-template-columns: minmax(0, 1fr); } }
 
 .logoLayout:not(:has(figure)) { grid-template-columns: minmax(0, 1fr); }
+.logoLayout .templateCanvas > span { font-size: 13px; line-height: 1.35; }
+.logoLayout .templateCanvas small { display: block; margin-top: 7px; font-size: 7px; line-height: 1.5; overflow-wrap: anywhere; }
