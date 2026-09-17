@@ -1,3 +1,5 @@
+import { AudioModule } from './audio/audio.module.js';
+import { adminNetworkAllowed } from './common/admin-network.js';
 import { AgentPostsModule } from "./agent-posts/agent-posts.module.js";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
@@ -186,6 +188,7 @@ export function validateConfig(input: Record<string, unknown>) {
   if(deleteProbe[1]&&(!Number.isFinite(Date.parse(deleteProbe[1]))||!Number.isFinite(Date.parse(deleteProbe[2]!))||Date.parse(deleteProbe[2]!)<=Date.parse(deleteProbe[1])||Date.parse(deleteProbe[2]!)-Date.parse(deleteProbe[1])>30*24*60*60*1000))throw new Error("Facebook Page delete probe timestamps must be valid and expire within 30 days.");
   if(deleteProbe[7]&&!/^[a-f0-9]{64}$/.test(deleteProbe[7]))throw new Error("Facebook Page delete probe Page tasks hash must be lowercase SHA-256.");
   if (String(input.OAUTH_TEST_MODE ?? "false") === "true" && environment !== "test") throw new Error("OAUTH_TEST_MODE is available only when NODE_ENV=test.");
+  adminNetworkAllowed(String(input.ADMIN_ALLOWED_IPS ?? ''), '127.0.0.1');
   const cookieSecure = input.AUTH_COOKIE_SECURE === undefined ? environment === "production" : String(input.AUTH_COOKIE_SECURE) === "true";
   const sessionDays = Number(input.AUTH_SESSION_DAYS ?? 14);
   if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 90) throw new Error("AUTH_SESSION_DAYS must be between 1 and 90.");
@@ -258,6 +261,7 @@ export function validateConfig(input: Record<string, unknown>) {
     ContentModule,
     MonitoringModule,
     MediaModule,
+    AudioModule,
     SystemModule,
     ChannelsModule,
     NotificationsModule,

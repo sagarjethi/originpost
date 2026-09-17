@@ -23,6 +23,8 @@ services:
     build:
       context: .
       target: api
+      args:
+        ORIGINPOST_API_UPSTREAM: http://api:4000
     restart: unless-stopped
     command: ["sh", "-c", "pnpm db:migrate && node apps/api/dist/main.js"]
     environment:
@@ -71,6 +73,7 @@ services:
       FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT: ${FACEBOOK_ANALYTICS_CONTRACT_PROBE_EXPIRES_AT:-}
       YOUTUBE_CONNECTOR_MODE: ${YOUTUBE_CONNECTOR_MODE:-mock}
       ALLOW_LIVE_PUBLISH: ${ALLOW_LIVE_PUBLISH:-false}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-}
       AUTH_MODE: ${AUTH_MODE:-single-user}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-owner@example.com}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-OriginPost Owner}
@@ -167,6 +170,7 @@ services:
       S3_BUCKET: originpost-media
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-originpost}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-}
       AUTH_MODE: ${AUTH_MODE:-single-user}
       LOCAL_CODEX_BASE_URL: ${DOCKER_LOCAL_CODEX_BASE_URL:-}
       LOCAL_CODEX_RESEARCH_ENABLED: ${LOCAL_CODEX_RESEARCH_ENABLED:-false}

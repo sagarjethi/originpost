@@ -10,6 +10,7 @@ import { AutomationGateway } from "./automation/automation-gateway";
 import { BatchOperations } from "./batch-operations/batch-operations";
 import { SourceSignalDesk } from "./signals/source-signal-desk";
 import { ReuseStudio } from "./evergreen/reuse-studio";
+import { AudioStudio } from "./audio/audio-studio";
 import { AgentRuntimeSettings } from "./agents/agent-runtime-settings";
 import { CreativeStudio } from "./creative-studio/creative-studio";
 import { connectedAccountStatusPresentation, parseFacebookPageSelection, parseInstagramFacebookSelection, parseMetaMessagingSelection, parseProviderGrantViews, platformAccountKind, platformLabel, type FacebookPageSelection, type InstagramFacebookSelection, type MetaMessagingSelection, type ProviderGrantView, type PublishingPlatform } from "./platform-ui";
@@ -19,7 +20,7 @@ import { mediaMatchesOrganizationFilters, orderedMediaFolders, parseMediaTagInpu
 import { BoardsWorkspace } from "./boards/boards-workspace";
 import { OperationsHealthPanel } from "./operations/operations-health-panel";
 
-export type WorkspaceModule = "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
+export type WorkspaceModule = "audio" | "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
 
 type Monitor = {
   id: string;
@@ -514,6 +515,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
 
   if (module === "organizations") return <OrganizationModule auth={auth} workspaceId={workspaceId} brands={brands} onChanged={onOrganizationChanged} />;
   if (module === "boards") return <BoardsWorkspace auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onOpenContent ? { onOpenContent } : {})} />;
+  if (module === "audio") return <AudioStudio key={`${workspaceId}:${activeBrandId}:${auth.user.id}`} auth={auth} workspaceId={workspaceId} brandId={activeBrandId} />;
   if (module === "library") return <MediaLibrary auth={auth} workspaceId={workspaceId} brandId={activeBrandId} />;
   if (module === "creative") return <CreativeStudio auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(creativeContentItemId ? { initialContentItemId: creativeContentItemId } : {})} {...(onOpenContent ? { onOpenContent } : {})} />;
   if (module === "analytics") return <AnalyticsDashboard auth={auth} workspaceId={workspaceId} brandId={activeBrandId} brands={brands} />;
@@ -586,6 +588,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
     </> : null}
 
     {module === "channels" ? <>
+      <article className="panel" style={{padding:20,marginBottom:18}}><h2>One brand, all your publishing accounts</h2><p>Select your project’s brand in the workspace switcher, then connect Instagram, Facebook Pages, and YouTube below. Each connection belongs to that brand. Choose those accounts as destinations when reviewing a post.</p><p>Only the workspace owner can connect or disconnect accounts. Provider secrets stay encrypted on the server. Open <a href="/audio">Audio</a> to create narration for the same brand.</p></article>
       <div className="channel-connect-grid" aria-label="Connect publishing channels">
         <article className="channel-connect-card instagram-card panel">
           <div className="channel-connect-head">

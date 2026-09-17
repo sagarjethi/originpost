@@ -115,7 +115,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
         const redisUrl = config.get<string>("REDIS_URL");
         const privateMessageEncryptionKey = config.get<string>("PRIVATE_MESSAGE_ENCRYPTION_KEY")?.trim();
         const privateMessageHashKey = config.get<string>("PRIVATE_MESSAGE_HASH_KEY")?.trim();
-        const { repository, postingQueueRepository, analyticsRepository, analyticsReportRepository, automationRepository, batchPlanRepository, creativeStudioRepository, imageGenerationRepository, agentPostRepository, shareCaptureRepository, sourceSignalRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentRuntimeRepository, agentBoardRepository, agentBoardTaskRepository, authRepository, organizationRepository, oauthRepository, connectedAccountRepository, providerLifecycleRepository, mediaRepository, mediaOrganizationRepository, monitorRepository, notificationRepository, operationalIncidentRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository, privateConversationRepository, mode } = await createContentRepository({
+        const { repository, postingQueueRepository, analyticsRepository, analyticsReportRepository, automationRepository, batchPlanRepository, creativeStudioRepository, audioRepository, imageGenerationRepository, agentPostRepository, shareCaptureRepository, sourceSignalRepository, engagementRepository, firstCommentRepository, evergreenRepository, agentRuntimeRepository, agentBoardRepository, agentBoardTaskRepository, authRepository, organizationRepository, oauthRepository, connectedAccountRepository, providerLifecycleRepository, mediaRepository, mediaOrganizationRepository, monitorRepository, notificationRepository, operationalIncidentRepository, outboxRepository, providerPublishOperationRepository, remoteCorrectionRepository, instagramCollaboratorRepository, privateConversationRepository, mode } = await createContentRepository({
           ...(databaseUrl ? { databaseUrl } : {}),
           ...(privateMessageEncryptionKey ? { privateMessageEncryptionKey } : {}),
           ...(privateMessageHashKey ? { privateMessageHashKey } : {}),
@@ -151,6 +151,7 @@ class InfrastructureLifecycle implements OnApplicationShutdown {
           automationRepository,
           batchPlanRepository,
           creativeStudioRepository,
+          audioRepository,
           imageGenerationRepository,
           agentPostRepository,
           shareCaptureRepository,

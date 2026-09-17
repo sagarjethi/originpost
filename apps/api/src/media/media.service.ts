@@ -388,18 +388,21 @@ export class MediaService {
     }
   }
 
-  async createGeneratedImage(input: GeneratedImageInput, actor: Actor) {
+  async createGeneratedImage(input: GeneratedImageInput, actor: Actor) { return this.createGeneratedMedia(input,actor); }
+  async createGeneratedAudio(input: Omit<GeneratedImageInput, 'contentType'> & { contentType: 'audio/mpeg' }, actor: Actor) { return this.createGeneratedMedia(input,actor); }
+  private async createGeneratedMedia(input: Omit<GeneratedImageInput, 'contentType'> & { contentType: 'image/jpeg' | 'image/png' | 'audio/mpeg' }, actor: Actor) {
+    const kind = input.contentType === 'audio/mpeg' ? 'audio' : 'image';
     if (!can(actor.role, "content:edit")) throw new ForbiddenException("You cannot create media.");
     if (input.bytes.byteLength < 1 || input.bytes.byteLength > 64 * 1024 * 1024) throw new BadRequestException("The rendered image exceeds the safe 64 MB limit.");
     const contentItem = input.contentItemId ? await this.infrastructure.repository.get(input.workspaceId, input.contentItemId) : null;
     if (input.contentItemId && (!contentItem || contentItem.brandId !== input.brandId)) throw new NotFoundException("Content item not found in this brand.");
-    const extension = input.contentType === "image/jpeg" ? ".jpg" : ".png";
+    const extension = kind === "audio" ? ".mp3" : input.contentType === "image/jpeg" ? ".jpg" : ".png";
     const fileName = safeFileName(input.fileName.toLowerCase().endsWith(extension) ? input.fileName : `${input.fileName}${extension}`);
     const sha256 = createHash("sha256").update(input.bytes).digest("hex");
     const createdAt = new Date().toISOString();
     const existing = await this.infrastructure.mediaRepository.get(input.workspaceId, input.id);
     if (existing) {
-      const sameLineage = existing.brandId === input.brandId && existing.contentItemId === input.contentItemId && existing.sha256 === sha256 && existing.kind === "image" && existing.contentType === input.contentType
+      const sameLineage = existing.brandId === input.brandId && existing.contentItemId === input.contentItemId && existing.sha256 === sha256 && existing.kind === kind && existing.contentType === input.contentType
         && JSON.stringify(existing.syntheticLineage ?? null) === JSON.stringify(input.syntheticLineage ?? null);
       if (!sameLineage) throw new ConflictException("This generated media ID already belongs to another generation operation.");
       if (existing.status === "ready") return publicAsset(existing);
@@ -412,7 +415,7 @@ export class MediaService {
       brandId: input.brandId,
       version: 1,
       ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}),
-      kind: "image",
+      kind,
       purpose: "creative",
       fileName,
       contentType: input.contentType,
@@ -437,6 +440,11 @@ export class MediaService {
       writtenObjectKey = stored.objectKey;
       malware = await this.scanFinalized(pending, stored.objectKey);
       if (!malwareAccepted(malware)) throw new Error(malwareFailure(malware));
+      if (kind === 'audio') {
+        const ready: MediaAsset = { ...pending, ...malwareFields(malware), version: pending.version + 1, objectKey: stored.objectKey, status: 'ready', readyAt: new Date().toISOString(), inspectionStatus: 'not_applicable', detectedContentType: input.contentType };
+        await this.infrastructure.mediaRepository.save(ready,audit(ready,actor,'media.generated-ready',{origin:input.origin,synthetic:true,sha256,malwareScanStatus:ready.malwareScanStatus}));
+        return publicAsset(ready);
+      }
       const inspection = await this.inspectFinalized(pending, stored.objectKey);
       if (inspection.status !== "ready" || inspection.detectedContentType !== input.contentType) throw new Error(inspection.status === "failed" || inspection.status === "unavailable" ? inspection.errorSummary : "The generated image could not be inspected.");
       const ready: MediaAsset = {

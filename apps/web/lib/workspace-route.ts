@@ -1,4 +1,4 @@
-export type WorkspaceRouteModule = "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
+export type WorkspaceRouteModule = "audio" | "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
 export type WorkspaceContentFilter = "all" | "new" | "review" | "scheduled" | "action";
 
 export type WorkspaceRoute = {
@@ -17,6 +17,7 @@ export const workspaceRoutes: readonly WorkspaceRoute[] = [
   { nav: "Calendar", path: "/calendar", module: null, defaultFilter: "scheduled" },
   { nav: "Engagement", path: "/engagement", module: "engagement", defaultFilter: "all" },
   { nav: "Analytics", path: "/analytics", module: "analytics", defaultFilter: "all" },
+  { nav: "Audio", path: "/audio", module: "audio", defaultFilter: "all" },
   { nav: "Library", path: "/library", module: "library", defaultFilter: "all" },
   { nav: "Research", path: "/research", module: null, defaultFilter: "all" },
   { nav: "Signals", path: "/signals", module: "signals", defaultFilter: "all" },

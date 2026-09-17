@@ -8,3 +8,25 @@ node_modules
 .env
 coverage
 *.log
+# Never bake local configuration, credentials, or private media into images.
+**/.env
+**/.env.*
+!**/.env.example
+data
+uploads
+postgres-data
+minio-data
+redis-data
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.keystore
+**/*.sqlite
+**/*.sqlite3
+**/*.dump
+**/credentials.json
+**/secrets.json
+**/cookies.json
+**/auth.json
+.originpost-setup.json

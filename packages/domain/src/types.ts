@@ -503,7 +503,7 @@ export interface MediaAsset {
   syntheticLineage?: {
     kind: "ai-generation";
     generationId: string;
-    provider: "openai";
+    provider: "openai" | "elevenlabs";
     model: string;
     promptSha256: string;
     generatedAt?: string;

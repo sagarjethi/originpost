@@ -43,3 +43,4 @@ export * from "./workflow.js";
 export * from "./agent-post.js";
 
 export * from "./local-codex-scope.js";
+export * from './audio.js';

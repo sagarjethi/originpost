@@ -135,6 +135,7 @@ const primaryNavGroups = [
   { label: "Outcomes", items: [
     { label: "Analytics", icon: ChartBreakoutSquareIcon },
     { label: "Library", icon: FolderLibraryIcon },
+    { label: "Audio", icon: ActivitySparkIcon },
   ] },
 ];
 

@@ -1,3 +1,4 @@
+import { adminNetworkAllowed, isCredentialMutation } from './admin-network.js';
 import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
@@ -69,6 +70,7 @@ export class AuthContextGuard implements CanActivate {
 
     const mode = this.config.get<string>("AUTH_MODE") ?? "single-user";
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    if (isCredentialMutation(request.method,request.url) && !adminNetworkAllowed(this.config.get<string>('ADMIN_ALLOWED_IPS'),request.ip)) throw new ForbiddenException('Configuration changes are restricted to approved administrator networks.');
     const explicitWorkspace = requestedWorkspace(request);
     if (mode === "single-user") {
       request.originpostWorkspaceId = explicitWorkspace ?? "default";

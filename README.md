@@ -83,6 +83,12 @@ The uploaded image is recorded as editor-attested AI imagery, not a verified pro
 
 This is an **alpha**. Local test connections are simulations and are labeled as such. A successful code build does not mean live accounts or providers are connected. See [what has been verified and what still needs setup](docs/research/2026-09-15-workflow-acceptance.md).
 
+## Connect accounts and create audio
+
+Choose a project’s brand, then use **Channels** to connect Instagram, Facebook Pages and YouTube through OAuth. Open **Audio** to connect ElevenLabs, choose a language and voice, and turn a reviewed script into an MP3. Gujarati, Hindi and English writing skills are included; additional languages come from your model’s capabilities. Owners control keys, generation roles and limits. Recordings stay with that brand in Library.
+
+[Audio, permissions and social setup guide](docs/audio.md)
+
 ## Run it locally
 
 For the person setting up the software: install Node.js 22+, pnpm 10+, and Docker, then run:

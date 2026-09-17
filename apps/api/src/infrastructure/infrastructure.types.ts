@@ -12,6 +12,7 @@ export interface OriginPostInfrastructure {
   automationRepository: AutomationRepository;
   batchPlanRepository: BatchPlanRepository;
   creativeStudioRepository: CreativeStudioRepository;
+  audioRepository: import("@originpost/domain").AudioRepository;
   imageGenerationRepository: ImageGenerationRepository;
   agentPostRepository: import("@originpost/domain").AgentPostRepository;
   shareCaptureRepository: ShareCaptureRepository;
