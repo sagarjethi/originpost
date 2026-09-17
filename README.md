@@ -16,7 +16,7 @@ Self-hosted social content software: collect sources, create a post, review it, 
 
 ## 1. Install
 
-Requirements: **Node.js 22+, Docker, and pnpm 10.28.2**. Run from the repository root:
+Requirements: **Node.js 22.12+ (Node 24 LTS recommended), Docker, and pnpm 10.28.2**. Run from the repository root:
 
 ```sh
 # First installation only; preserve an existing .env.

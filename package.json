@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.2",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "build": "turbo run build",
@@ -19,7 +19,7 @@
     "ops:check": "node --check apps/api/scripts/backup-compose.mjs && node --check apps/api/scripts/restore-drill.mjs && node --check scripts/runtime-media-malware-smoke.mjs",
     "check": "pnpm typecheck && pnpm ops:check && pnpm test && pnpm build",
     "release:audit": "node scripts/public-release-audit.mjs",
-    "security:audit": "pnpm audit --prod --audit-level high",
+    "security:audit": "pnpm audit --audit-level moderate",
     "security:secrets": "node scripts/secret-guard.mjs history",
     "release:check": "pnpm check && pnpm release:audit && pnpm security:audit && pnpm security:secrets && docker compose config --quiet",
     "local:codex": "node scripts/local-codex/start.mjs",
