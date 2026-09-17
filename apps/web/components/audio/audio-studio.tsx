@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AudioLines, Download, KeyRound, RefreshCw, Settings2, ShieldCheck } from 'lucide-react';
-import { languageSkills as starterSkills, languageCode, shortAudioSamples, type AudioProfile, type AudioRun, type AudioSkill } from '@originpost/domain';
+import { spokenScript, languageSkills as starterSkills, languageCode, shortAudioSamples, type AudioProfile, type AudioRun, type AudioSkill } from '@originpost/domain';
 import { apiFetch, type AuthView } from '../../lib/api-client';
 import styles from './audio-studio.module.css';
 import { voiceDraftKey } from '../voice/post-voice-action';
@@ -62,8 +62,8 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     let active=true;
     void request(`/v1/agent-posts/${encodeURIComponent(runId)}?${new URLSearchParams({workspaceId,brandId})}`).then((run:NewsRun)=>{
       if(!active)return;
-      let script=run.copy?.caption ?? '';
-      try { const key=voiceDraftKey(auth.user.id,workspaceId,brandId,runId),raw=sessionStorage.getItem(key);sessionStorage.removeItem(key);if(raw){const saved=JSON.parse(raw);if(saved.expiresAt>Date.now()&&typeof saved.text==='string'&&saved.text.length<=3000)script=saved.text;} } catch { /* Recover persisted copy if the ephemeral draft is unavailable. */ }
+      let script=spokenScript(run.copy?.caption ?? '');
+      try { const key=voiceDraftKey(auth.user.id,workspaceId,brandId,runId),raw=sessionStorage.getItem(key);sessionStorage.removeItem(key);if(raw){const saved=JSON.parse(raw);if(saved.expiresAt>Date.now()&&typeof saved.text==='string'&&saved.text.length<=3000)script=spokenScript(saved.text);} } catch { /* Recover persisted copy if the ephemeral draft is unavailable. */ }
       setContextRun(run);setContentItemId(run.contentItemId);setLanguage(languageCode(run.template.language));setText(script);setSample(script.length<=100);setRights(false);
     }).catch(e=>{if(active)setError(e.message);});
     return ()=>{active=false;};
@@ -90,7 +90,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
   }
   async function generate(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();await act('generate',async()=>{
-      const draft={workspaceId,brandId,profileId,voiceId,language,text,sample,...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{}),rightsConfirmed:rights,...(skillId?{skillId}:{}),...(contentItemId?{contentItemId}:{})};
+      const draft={workspaceId,brandId,profileId,voiceId,language,text:spokenScript(text),sample,...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{}),rightsConfirmed:rights,...(skillId?{skillId}:{}),...(contentItemId?{contentItemId}:{})};
       const identity=JSON.stringify({...draft,profileVersion:profile?.version});
       if(pendingRequest.current?.body!==identity)pendingRequest.current={body:identity,id:crypto.randomUUID()};
       const run=await request('/v1/audio/generations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...draft,requestId:pendingRequest.current.id})}) as AudioRun;
@@ -101,8 +101,8 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
   }
   function selectNewsItem(id:string) {
     const run=newsRuns.filter(n=>n.contentItemId===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
-    setContentItemId(id);setContextRun(run ?? null);setText(run?.copy?.caption ?? '');setRights(false);setPreview(null);
-    if(run){setLanguage(languageCode(run.template.language));setSkillId('');setSample((run.copy?.caption.length ?? 0)<=100);}
+    setContentItemId(id);setContextRun(run ?? null);setText(spokenScript(run?.copy?.caption ?? ''));setRights(false);setPreview(null);
+    if(run){setLanguage(languageCode(run.template.language));setSkillId('');setSample(spokenScript(run.copy?.caption ?? '').length<=100);}
   }
   async function draftScript() {
     const draft={workspaceId,brandId,profileId,contentItemId,language,sample,...(skillId?{skillId}:{}),...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{})};
@@ -111,7 +111,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     const result=await request('/v1/audio/draft-script',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...draft,requestId:pendingDraft.current.id})});
     if(result.status==='failed')throw new Error(result.error ?? 'Script drafting failed. This request will not retry automatically.');
     if(result.status==='generating'){setNotice('This script request is already running. Checking again reuses the same request without an extra charge.');return;}
-    setText(result.text);setRights(false);setNotice('Script drafted from supported facts. Review the wording before generating voice.');
+    setText(spokenScript(result.text));setRights(false);setNotice('Script drafted from supported facts. Review the wording before generating voice.');
   }
   const associatedPost=(run:AudioRun)=>newsRuns.find(n=>n.contentItemId===run.contentItemId);
   const runTemplate=(run:AudioRun)=>templates.find(t=>t.id===run.projectTemplateId) ?? associatedPost(run)?.template;
@@ -138,7 +138,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     {loading?<p role="status">Loading audio workspace…</p>:<div className={styles.layout}>
       <form className={styles.card} onSubmit={generate}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>01 / CREATE</p><h2>Build a narration</h2></div><span>MP3 · 128 kbps</span></div>
         <fieldset className={styles.composerFields} disabled={!!busy}>
-        {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p>{contextRun&&<label>Voice script<textarea rows={5} maxLength={3000} value={text} onChange={e=>setText(e.target.value)}/><small>{text.length} characters · Saved post copy, editable before generation.</small></label>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>
+        {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p>{contextRun&&<label>Voice script<textarea rows={5} maxLength={3000} value={text} onChange={e=>setText(e.target.value)} onBlur={()=>setText(spokenScript(text))}/><small>{text.length} characters · Spoken copy · links and hashtag footers removed.</small></label>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>
           <label>Provider<select value={profileId} onChange={e=>setProfileId(e.target.value)} disabled={!!busy}>{view.profiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}{p.enabled?'':' · Disabled'}</option>)}</select></label>
           <div className={styles.row}><button type="button" disabled={!!busy||!profile} onClick={()=>void act('catalogue',()=>catalogueLoad())}>{busy==='catalogue'?'Checking…':'Load voices & check connection'}</button>{owner&&<button type="button" onClick={()=>edit(profile ?? null)}><Settings2 size={15}/>Settings</button>}</div>
           <div className={styles.fields}><label>Language<select value={language} onChange={e=>{setLanguage(e.target.value);setSkillId('');}}>{languages.map(l=><option key={l.code} value={l.code}>{l.code==='gu'?'ગુજરાતી · Gujarati':l.code==='hi'?'हिंदी · Hindi':l.name}</option>)}</select></label><label>Voice<select value={voiceId} onChange={e=>setVoiceId(e.target.value)}><option value="">Load and select a voice</option>{catalogue.voices.map(v=><option key={v.id} value={v.id}>{v.name} · {v.category}</option>)}</select></label></div>
@@ -146,7 +146,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
           <label>Reading style & skill<select value={skillId} onChange={e=>setSkillId(e.target.value)}><option value="">Your own reviewed script</option>{profile?.skills.filter(s=>s.language===language).map(s=><option key={s.id} value={s.id}>{s.name} · v{s.version}</option>)}</select></label>
           {selectedSkill&&<p className={styles.guidance} lang={language}>{selectedSkill.instructions}</p>}
           <div className={styles.row}><label className={styles.check}><input type="checkbox" checked={sample} onChange={e=>{setSample(e.target.checked);setRights(false);}}/>Short sample · 100 characters</label>{shortAudioSamples[language]&&<button type="button" disabled={!!busy} onClick={()=>{setText(shortAudioSamples[language]!);setSample(true);setRights(false);}}>Use sample</button>}</div>
-          <label>Script<textarea value={text} onChange={e=>{setText(e.target.value);setRights(false);}} maxLength={limit} rows={5} lang={language} placeholder={language==='gu'?'તમારા ચકાસેલા સમાચાર અહીં લખો…':language==='hi'?'अपनी जांची हुई खबर यहां लिखें…':'Paste your reviewed narration here…'}/></label><small>{text.length.toLocaleString()} / {limit.toLocaleString()} characters · Only this script is sent to the voice provider.</small>
+          <label>Script<textarea value={text} onChange={e=>{setText(e.target.value);setRights(false);}} onBlur={()=>setText(spokenScript(text))} maxLength={limit} rows={5} lang={language} placeholder={language==='gu'?'તમારા ચકાસેલા સમાચાર અહીં લખો…':language==='hi'?'अपनी जांची हुई खबर यहां लिखें…':'Paste your reviewed narration here…'}/></label><small>{text.length.toLocaleString()} / {limit.toLocaleString()} characters · Spoken text only. Links and hashtag footers are removed.</small>
           <label>News item<select value={contentItemId} onChange={e=>selectNewsItem(e.target.value)}><option value="">Save in this brand’s Library</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label>
           <button type="button" disabled={!!busy||!contentItemId||!profile?.enabled||!role||!profile.allowedRoles.includes(role)} onClick={()=>void act("draft",draftScript)}>{busy==='draft'?'Drafting…':'Draft script from this post'}</button><small>Drafting uses the configured text model and its daily draft limit. Repeated clicks reuse the same request. Voice generation is separate.</small>
           <label className={styles.check}><input type="checkbox" checked={rights} onChange={e=>setRights(e.target.checked)}/>I have permission to use this script and voice, and have reviewed the wording.</label>
@@ -162,12 +162,14 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
         <p className={styles.footnote}>Narration is labeled as AI-generated. Add it to a video before publishing to Instagram or YouTube; those platforms do not accept an MP3 as a video post.</p>
       </aside>
     </div>}
-    {owner&&<dialog ref={dialogRef} className={styles.dialog} onCancel={()=>setSettings(false)} onClose={()=>setSettings(false)} aria-labelledby="audio-settings-heading">{settings&&<form className={styles.settings} onSubmit={save} key={editing?.id ?? 'new'}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>OWNER SETTINGS</p><h2 id="audio-settings-heading">{editing?'Edit audio provider':'Connect ElevenLabs'}</h2></div><button type="button" onClick={()=>setSettings(false)}>Close</button></div>
-      <p>Only owners can manage keys and grant generation access.</p>
+    {owner&&<dialog ref={dialogRef} className={styles.dialog} onCancel={()=>setSettings(false)} onClose={()=>setSettings(false)} aria-labelledby="audio-settings-heading">{settings&&<form className={styles.settings} onSubmit={save} key={editing?.id ?? 'new'}><header className={styles.settingsHeader}><div><p className={styles.eyebrow}>OWNER SETTINGS</p><h2 id="audio-settings-heading">{editing?'Edit audio provider':'Connect ElevenLabs'}</h2></div><button type="button" onClick={()=>setSettings(false)} aria-label="Close audio settings">Close</button></header>
+      <div className={styles.settingsBody}>
+      <p className={styles.settingsHint}><ShieldCheck size={16}/> Only owners can manage keys and generation access.</p>
       {!view.encryptionConfigured&&<p className={styles.error}>Configure CREDENTIAL_ENCRYPTION_KEY on the server before saving a provider key.</p>}
       {error&&<p className={styles.error} role="alert">{error}</p>}
-      <label>Connection name<input name="name" required maxLength={100} defaultValue={editing?.name ?? 'ElevenLabs narration'}/></label>
-      <label>API key<input name="apiKey" type="password" autoComplete="new-password" required={!editing} minLength={19} maxLength={1000} pattern="sk_[a-zA-Z0-9_-]{16,}" placeholder={editing?'Leave blank to keep the current key':'Secret key starting with sk_ (not the key ID)'}/></label>
+      <div className={styles.fields}><label>Connection name<input name="name" required maxLength={100} defaultValue={editing?.name ?? 'ElevenLabs narration'}/></label>
+      <label>Provider<input value="ElevenLabs" readOnly/></label></div>
+      <label>API key<input name="apiKey" type="password" autoComplete="new-password" required={!editing} minLength={19} maxLength={1000} pattern="sk_[a-zA-Z0-9_-]{16,}" spellCheck={false} autoCapitalize="none" placeholder={editing?'Leave blank to keep the current key':'Secret key starting with sk_ (not the key ID)'}/></label>
       <label>Default project profile<select name="projectTemplateId" defaultValue={editing?.projectTemplateId ?? contextRun?.template.id ?? ''}><option value="">No default project profile</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name} · {t.language}</option>)}</select><small>Reuse saved language skills. Your logo remains part of the image workflow.</small></label>
       <FormSection title="Model, limits & access" description="Eleven v3 · 100 characters · separate voice and script limits">
       <div className={styles.fields}><label>Model ID<input name="model" required pattern="[a-zA-Z0-9_-]{1,100}" defaultValue={editing?.model ?? 'eleven_v3'}/></label><label>Characters per request<input name="maxCharacters" type="number" min={1} max={3000} defaultValue={editing?.maxCharacters ?? 100}/></label><label>Voice requests per day (UTC)<input name="dailyRequests" type="number" min={1} max={1000} defaultValue={editing?.dailyRequests ?? 2}/></label><label>Script drafts per day (UTC)<input name="dailyDraftRequests" type="number" min={1} max={1000} defaultValue={editing?.dailyDraftRequests ?? 10}/></label></div>
@@ -178,10 +180,11 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
       <div className={styles.sectionHead}><h3>Reusable writing skills</h3><button type="button" onClick={()=>void act('export',exportSkills)}>Download skill pack</button></div>
       <p>Versioned writing guidance and character limits. No executable tools, remote downloads, or hidden agent instructions are installed. Review imported guidance before saving.</p>
       <label>Import reviewed skill pack<input type="file" accept="application/json,.json" onChange={e=>{const file=e.target.files?.[0];if(file)void act('import',()=>importSkills(file));e.target.value='';}}/></label>
-      {skills.map((skill,index)=><details key={skill.id}><summary>{skill.name} · {skill.language} · v{skill.version}</summary><label>Instructions<textarea rows={3} maxLength={2000} value={skill.instructions} onChange={e=>setSkills(current=>current.map((s,i)=>i===index?{...s,instructions:e.target.value}:s))}/></label><label>Version<input value={skill.version} onChange={e=>setSkills(current=>current.map((s,i)=>i===index?{...s,version:e.target.value}:s))}/></label></details>)}
+      {skills.map((skill,index)=><details className={styles.skillDetails} key={skill.id}><summary>{skill.name} · {skill.language} · v{skill.version}</summary><label>Instructions<textarea rows={3} maxLength={2000} value={skill.instructions} onChange={e=>setSkills(current=>current.map((s,i)=>i===index?{...s,instructions:e.target.value}:s))}/></label><label>Version<input value={skill.version} onChange={e=>setSkills(current=>current.map((s,i)=>i===index?{...s,version:e.target.value}:s))}/></label></details>)}
       </FormSection>
+      </div><footer className={styles.settingsFooter}><a href="https://elevenlabs.io/app/voice-library" target="_blank" rel="noreferrer">Voice library ↗</a>
       <button className={styles.primary} disabled={!!busy||!view.encryptionConfigured}>{busy==='save'?'Saving…':'Save protected settings'}</button>
-      <a href="https://elevenlabs.io/app/voice-library" target="_blank" rel="noreferrer">Manage available voices in ElevenLabs ↗</a>
+      </footer>
     </form>}</dialog>}
   </section>;
 }

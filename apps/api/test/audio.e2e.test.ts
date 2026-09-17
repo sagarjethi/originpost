@@ -28,7 +28,7 @@ describe('secure audio workflow',()=>{
   });
   afterAll(async()=>{await app.close();});
   const settings=()=>Object.assign(new SaveAudioProfileDto(),{workspaceId:'default',brandId:'brand_default',name:'Narration test',model:'eleven_v3',apiKey:'sk_audio_provider_test_placeholder',dailyRequests:1});
-  const generation=(id=profileId)=>Object.assign(new GenerateAudioDto(),{workspaceId:'default',brandId:'brand_default',profileId:id,voiceId:'fixture_voice',language:'gu',text:'આ ચકાસેલા સમાચાર છે.',requestId:'audio-test-request-001',rightsConfirmed:true});
+  const generation=(id=profileId)=>Object.assign(new GenerateAudioDto(),{workspaceId:'default',brandId:'brand_default',profileId:id,voiceId:'fixture_voice',language:'gu',text:'આ ચકાસેલા સમાચાર છે.\n#સમાચાર https://example.org/news',requestId:'audio-test-request-001',rightsConfirmed:true});
   it('encrypts keys, only returns metadata, and validates configuration DTOs',async()=>{
     const created=await request(app.getHttpServer()).post('/v1/audio/profiles').send(settings()).expect(201);profileId=created.body.id;
     const list=await request(app.getHttpServer()).get('/v1/audio?workspaceId=default&brandId=brand_default').expect(200);
@@ -62,7 +62,7 @@ describe('secure audio workflow',()=>{
     const item={id:'audio-news',brandId:'brand_default',claims:[{id:'c1',text:'The library opened.',status:'supported',sourceIds:['s1']},{id:'c2',text:'Unverified claim',status:'disputed',sourceIds:[]}],sources:[{id:'s1',title:'Council',url:'https://example.org/library'}]} as ContentItem;
     const get=vi.spyOn(infra.repository,'get').mockResolvedValue(item);
     const templates=vi.spyOn(infra.agentPostRepository,'templates').mockResolvedValue([{id:'template-audio',languageSkills,logoMediaId:'private-logo-reference'}] as never);
-    const draft=vi.spyOn(runtime,'runDraft').mockResolvedValue({text:'પુસ્તકાલય ખુલ્યું.',model:'fixture'} as never);
+    const draft=vi.spyOn(runtime,'runDraft').mockResolvedValue({text:'પુસ્તકાલય ખુલ્યું.\nhttps://example.org/library\n#સમાચાર',model:'fixture'} as never);
     const before=provider.synthesize.mock.calls.length;
     try {
       const dto={workspaceId:'default',brandId:'brand_default',profileId,requestId:'draft-script-test-001',contentItemId:item.id,language:'gu',sample:true,projectTemplateId:'template-audio'};
@@ -72,6 +72,7 @@ describe('secure audio workflow',()=>{
       expect(replay.body).toMatchObject({id:response.body.id,replayed:true,text:response.body.text});
       await request(app.getHttpServer()).post('/v1/audio/draft-script').send({...dto,language:'hi'}).expect(409);
       const packet=JSON.parse(draft.mock.calls[0]![0].messages[1]!.content as string);
+      expect(draft.mock.calls[0]![0].messages[0]!.content).toContain('Never include URLs, hashtags');
       expect(packet.maxCharacters).toBe(100);expect(packet.claims).toHaveLength(1);
       expect(packet.projectLanguageSkills.every((s:{language:string})=>s.language==='gu')).toBe(true);
       expect(JSON.stringify(packet)).not.toContain('private-logo-reference');expect(JSON.stringify(packet)).not.toContain('sk_audio');
@@ -107,6 +108,7 @@ describe('secure audio workflow',()=>{
   it('saves Gujarati narration with provenance, permits downloads, and deduplicates paid calls',async()=>{
     await request(app.getHttpServer()).get(`/v1/audio/profiles/${profileId}/catalogue?workspaceId=default&brandId=brand_default`).expect(200);
     const first=await request(app.getHttpServer()).post('/v1/audio/generations').send(generation()).expect(201);
+    expect(provider.synthesize).toHaveBeenLastCalledWith(expect.any(String),expect.objectContaining({text:'આ ચકાસેલા સમાચાર છે.'}));
     expect(first.body.status).toBe('ready');expect(first.body).not.toHaveProperty('text');expect(provider.synthesize).toHaveBeenCalledTimes(1);
     const replay=await request(app.getHttpServer()).post('/v1/audio/generations').send(generation()).expect(201);
     expect(replay.body.id).toBe(first.body.id);expect(replay.body.replayed).toBe(true);expect(provider.synthesize).toHaveBeenCalledTimes(1);
