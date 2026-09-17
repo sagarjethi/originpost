@@ -1,5 +1,6 @@
 "use client";
 
+import { WorkspaceLoading } from "./loading/workspace-loading";
 import { SourceEvidenceCard, type SourceEvidenceView } from "./source-evidence-card";
 import {
   AlertCircle,
@@ -617,7 +618,7 @@ export function OriginPostApp() {
     }
   }
 
-  if (authLoading) return <main className="login-shell"><section className="login-card panel"><div className="brand-mark"><span>O</span></div><h1>Opening OriginPost…</h1><p>Checking your private self-hosted workspace.</p></section></main>;
+  if (authLoading) return <WorkspaceLoading />;
   if (!auth && authMode === "sessions") return <main className="login-shell"><form className="login-card panel" onSubmit={signIn}><div className="brand-mark"><span>O</span></div><p className="eyebrow">SELF-HOSTED WORKSPACE</p><h1>Sign in to OriginPost</h1><p>Use the account created by your workspace owner.</p>{loginError ? <div className="module-alert">{loginError}</div> : null}{oidcConfig.enabled ? <a className="secondary-button" href={`${apiBasePath}/auth/oidc/start`}>Continue with {oidcConfig.displayName}</a> : null}<label>Email<input name="email" type="email" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required minLength={12} /></label><button className="new-button" disabled={loginBusy}>{loginBusy ? "Signing in…" : "Sign in with password"}</button></form></main>;
   if (!auth) return <main className="login-shell"><section className="login-card panel"><div className="brand-mark"><span>O</span></div><h1>OriginPost is unavailable</h1><p>{loginError || "Check that the API is running."}</p></section></main>;
 
