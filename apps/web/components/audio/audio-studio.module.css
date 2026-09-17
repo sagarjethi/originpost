@@ -25,3 +25,5 @@
 .settingsHint{display:flex;align-items:center;gap:8px;margin:0;color:#596d5e;font-size:12px;line-height:1.5}.settingsHint svg{flex-shrink:0}
 .settingsFooter{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px;border-top:1px solid #e0e6dc;background:#fafbf9;flex-shrink:0}
 .settings fieldset{flex-wrap:wrap;gap:16px}.settingsBody p{margin:0;font-size:13px;line-height:1.6}
+
+.budget{margin:0;padding:10px 12px;border:1px solid #e0e7dc;border-radius:9px;background:#f6f8f2;font-size:12px;line-height:1.6;color:#435d49}.budget span{display:block;color:#6a796d}
