@@ -16,6 +16,7 @@ import {
 import { apiFetch, type AuthView } from "@/lib/api-client";
 import { WorkspaceLoading } from "../loading/workspace-loading";
 import { PostVoiceAction } from "../voice/post-voice-action";
+import { SettingsSection } from "../forms/settings-section";
 import { FormSection } from "../forms/form-section";
 import { agentPostSkills, languageSkills, languageCode, type AudioSkill } from "@originpost/domain";
 import { AgentPostPublishing } from "./agent-post-publishing";
@@ -1524,7 +1525,7 @@ export function NewsPostWorkspace({
       </dialog>
       <dialog
         ref={settingsRef}
-        className={styles.dialog}
+        className={`${styles.dialog} ${styles.templateDialog}`}
         onCancel={closeSettings}
         onClose={() => setSettings(false)}
         aria-labelledby="template-heading"
@@ -1547,10 +1548,12 @@ export function NewsPostWorkspace({
               <X size={20} />
             </button>
           </header>
+          <div className={styles.templateBody}>
           <p className={styles.note}>
             Saved for this brand. Each post keeps the exact template version it
             started with.
           </p>
+          <SettingsSection title="Template essentials" description="Choose the project, language and canvas for your posts.">
           <label>
             Project board
             <select
@@ -1601,6 +1604,8 @@ export function NewsPostWorkspace({
               </select>
             </label>
           </div>
+          </SettingsSection>
+          <SettingsSection title="Logo & layout" description="Use your original logo and set its position on the canvas.">
           <label>
             Approved logo
             <select
@@ -1636,6 +1641,7 @@ export function NewsPostWorkspace({
               after image generation.
             </small>
           </label>
+          <div className={styles.logoLayout}>
           {logoUrl && <TemplateLogoPreview url={logoUrl} template={form} />}
           <div className={styles.formGrid}>
             <label>
@@ -1716,6 +1722,8 @@ export function NewsPostWorkspace({
               </select>
             </label>
           </div>
+          </div>
+          </SettingsSection>
           <fieldset>
             <legend>Style references · up to three</legend>
             <p className={styles.note}>
@@ -1834,6 +1842,7 @@ export function NewsPostWorkspace({
             <div className={styles.skillGrid}>{languageSkills.filter(s=>s.language===languageCode(form.language)).map(skill=><label key={skill.id} className={styles.skillCard}><input type="checkbox" checked={form.languageSkills.some(s=>s.id===skill.id)} disabled={!form.languageSkills.some(s=>s.id===skill.id)&&form.languageSkills.length>=6} onChange={e=>setForm({...form,languageSkills:e.target.checked?[...form.languageSkills,skill]:form.languageSkills.filter(s=>s.id!==skill.id)})}/><span><strong>{skill.name}</strong><small>v{skill.version}</small></span></label>)}</div>
             {form.languageSkills.map(skill=><label key={skill.id}>{skill.name} · {skill.language}<textarea rows={3} maxLength={2000} value={skill.instructions} onChange={e=>setForm({...form,languageSkills:form.languageSkills.map(s=>s.id===skill.id?{...s,instructions:e.target.value}:s)})}/><button type="button" onClick={()=>setForm({...form,languageSkills:form.languageSkills.filter(s=>s.id!==skill.id)})}>Remove skill</button></label>)}
           </FormSection>
+          <SettingsSection title="Writing direction" description="Save the tone and instructions you want to reuse.">
           <label>
             Example caption to learn the style
             <textarea
@@ -1857,6 +1866,8 @@ export function NewsPostWorkspace({
               rows={3}
             />
           </label>
+          </SettingsSection>
+          <SettingsSection title="Brand details" description="Keep your attribution, disclosure and colors consistent.">
           <label>
             Footer / social handle
             <input
@@ -1898,12 +1909,14 @@ export function NewsPostWorkspace({
               ))}
             </div>
           </fieldset>
+          </SettingsSection>
+          </div>
           {error && (
             <p className={styles.error} role="alert">
               {error}
             </p>
           )}
-          <footer>
+          <footer className={styles.templateFooter}>
             <p>Original logo pixels are composed after generation.</p>
             <button
               type="submit"

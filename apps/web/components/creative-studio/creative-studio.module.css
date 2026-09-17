@@ -34,3 +34,11 @@
 @media(max-width:390px){.page{padding-left:8px;padding-right:8px}.heroActions button{width:100%}.projectRail,.workbench,.editor,.previewColumn,.section{max-width:100%;min-width:0}.paletteGrid{grid-template-columns:repeat(3,minmax(0,1fr))}.field input,.field textarea,.field select{max-width:100%}}
 
 .canvas[data-format="story"] .previewCopy{left:11.12%;right:11.12%;bottom:18.75%}.canvas[data-format="story"].headline-top .previewCopy{top:27%;bottom:auto}.editorial .previewCopy{top:22%;right:44%;bottom:auto}
+
+/* At laptop widths, give the editor room before adding a third column. */
+@media (min-width: 1181px) and (max-width: 1500px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .projectRail { position: static; }
+  .projectList { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 180px; overflow-y: auto; }
+  .workbench { grid-template-columns: minmax(0, 1fr) 320px; }
+}
