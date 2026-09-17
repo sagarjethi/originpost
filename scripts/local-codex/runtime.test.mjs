@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   commandArgs,
+  checkRuntime,
+  supportedVersion,
   parseRequest,
   runCompletion,
   runResearch,
@@ -56,11 +58,14 @@ test("builds a fixed tool-disabled ephemeral command without putting prompts on 
     "read-only",
     'web_search="disabled"',
     "project_doc_max_bytes=0",
+    "suppress_unstable_features_warning=true",
   ])
     assert.ok(args.includes(flag));
   for (const feature of [
     "shell_tool",
     "unified_exec",
+    "unified_exec_tty",
+    "shell_snapshot",
     "apps",
     "plugins",
     "hooks",
@@ -360,4 +365,14 @@ test("research enables only web actions, emits evidence events and cleans tempor
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("requires the exact reviewed CLI version and a successful login status", async () => {
+  const calls = [];
+  const execute = async (_executable, args) => { calls.push(args); return args[0] === "--version" ? supportedVersion + "\n" : ""; };
+  assert.equal(await checkRuntime("/test/codex", execute), supportedVersion);
+  assert.deepEqual(calls, [["--version"], ["login", "status"]]);
+  await assert.rejects(checkRuntime("/test/codex", async () => "codex-cli 0.155.0"), /revalidate the tool boundary/);
+  await assert.rejects(checkRuntime("/test/codex", async (_exe, args) => { if (args[0] === "--version") return supportedVersion; throw new Error("not signed in"); }), /not signed in/);
 });

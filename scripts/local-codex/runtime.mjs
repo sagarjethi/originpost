@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Reviewed against the installed CLI. New CLI releases require a new canary.
-export const supportedVersion = "codex-cli 0.153.4";
+export const supportedVersion = "codex-cli 0.154.0-alpha.6.2";
 const disabled = [
   "apps",
   "plugins",
@@ -12,6 +12,8 @@ const disabled = [
   "hooks",
   "shell_tool",
   "unified_exec",
+  "unified_exec_tty",
+  "shell_snapshot",
   "browser_use",
   "browser_use_external",
   "browser_use_full_cdp_access",
@@ -54,6 +56,8 @@ export function commandArgs(model, cwd, images, research = false) {
     research ? 'web_search="live"' : 'web_search="disabled"',
     "-c",
     "project_doc_max_bytes=0",
+    "-c",
+    "suppress_unstable_features_warning=true",
     "-c",
     "features.skip_host_skill_discovery=true",
     ...disabled.flatMap((name) => ["--disable", name]),
@@ -190,16 +194,16 @@ function processResult(
     child.stdin.end(input ?? "");
   });
 }
-export async function checkRuntime(executable) {
+export async function checkRuntime(executable, execute = processResult) {
   const version = (
-    await processResult(executable, ["--version"], { timeoutMs: 10000 })
+    await execute(executable, ["--version"], { timeoutMs: 10000 })
   ).trim();
   if (version !== supportedVersion)
     throw new Error(
       `Use reviewed ${supportedVersion}; revalidate the tool boundary before upgrading.`,
     );
   // login status uses stderr for its human status on some releases; success is the documented exit signal.
-  await processResult(executable, ["login", "status"], { timeoutMs: 10000 });
+  await execute(executable, ["login", "status"], { timeoutMs: 10000 });
   return version;
 }
 export function completionFromEvents(output, model, research = false) {

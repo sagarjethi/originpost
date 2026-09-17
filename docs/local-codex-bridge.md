@@ -14,7 +14,7 @@ OriginPost checks → editor approval
 
 ## Start the connection
 
-The reviewed executable is **Codex CLI 0.153.4**. Sign in through `codex login`, then verify with `codex login status`. This bridge refuses other versions until its tool boundary is reviewed again.
+The reviewed executable is **Codex CLI 0.154.0-alpha.6.2** (checked 17 September 2026). Sign in through `codex login`, then verify with `codex login status`. This bridge refuses other versions until its tool boundary is reviewed again.
 
 Keep a private environment file outside the repository containing:
 
@@ -80,3 +80,22 @@ The Docker API successfully tested the bridge through `host.docker.internal`, sa
 
 
 A live research request through the Docker API and worker also passed on 15 September 2026. Codex opened NASA’s official RSS directory; the worker independently fetched it, matched a short exact quote, and stored the body hash and final URL. Reading the item back from PostgreSQL preserved its original zero-confidence lead and a new matched receipt for the same URL. The supported claim referenced the new source, and the saved item passed the Codex research gate. No publication date was invented, and approvals and publishing targets remained zero. This verifies the research connection and evidence persistence; it does not establish broad source coverage, image accuracy or a successful social publication. A worker/API encryption-key format mismatch found during this check was fixed and covered for both hex and base64 keys.
+
+
+### CLI compatibility recheck — 17 September 2026
+
+The installed CLI had advanced beyond the prior exact version pin, so the bridge
+correctly refused startup. The new exact version was checked with the local CLI
+help and real text, image and web-research calls before updating the pin. A private
+canary-file request returned UNAVAILABLE; Gujarati headline transcription matched
+the composed card, and the research call recorded two web actions. These are
+bounded compatibility checks, not a general proof of model or source accuracy.
+
+The command continues to ignore user configuration, use an ephemeral read-only
+working directory, disable shell/apps/plugins/code-mode tools and reject unknown
+or tool-bearing output events. Shell snapshots and interactive exec are explicitly
+disabled. The known unstable-feature startup notice is suppressed in the invocation
+because host skill discovery is intentionally disabled; actual error events remain
+rejected. Disabling the separate code-mode host produced a startup error and was
+not retained. The code-mode tool itself remains disabled. Eleven automated bridge
+tests pass, including exact-version rejection and login failure.
