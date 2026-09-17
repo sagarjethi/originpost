@@ -45,6 +45,10 @@ jobs:
           echo "MEDIA_DELIVERY_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
           echo "S3_SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
+      - name: Install browser and media test dependencies
+        run: |
+          pnpm --filter @originpost/worker exec playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg fonts-noto-core
       - run: pnpm release:check
       - run: pnpm db:migrate
       - name: Test PostgreSQL persistence and concurrency

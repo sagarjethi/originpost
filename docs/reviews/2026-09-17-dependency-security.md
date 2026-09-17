@@ -9,6 +9,7 @@ Integrates the reviewed audio/UI work with dependency PRs #2, #3 and #4. PR #1's
 - Update developer prerequisites to Node 22.12+, with Node 24 LTS recommended.
 - Refresh transitive qs to 6.16.0, fixing the two moderate advisories left behind by the grouped dependency PRs.
 - Gate all dependencies at moderate severity, including development tools copied into the current Docker runtime. Keep staged/history secret scanning enabled.
+- Install Chromium, ffmpeg and Noto fonts in CI so browser capture and media inspection tests run on clean runners.
 - Run PostgreSQL repository tests explicitly in CI after migrations, with an isolated CI database; previously the normal test run skipped these without TEST_DATABASE_URL.
 
 ## Validation
