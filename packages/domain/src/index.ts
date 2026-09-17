@@ -45,3 +45,4 @@ export * from "./agent-post.js";
 export * from "./local-codex-scope.js";
 export * from './audio.js';
 export * from './language-skills.js';
+export * from './spoken-script.js';

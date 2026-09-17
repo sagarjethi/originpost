@@ -71,3 +71,9 @@ Script drafting has its own owner-configured daily quota (`dailyDraftRequests`, 
 Changing the selected news item resets its script, profile context, language and review state. The composer is disabled during an active request so a late draft cannot overwrite another story. Audio uses container-based layout changes: two columns when space permits and stacked panels in narrower workspace columns. No separate mobile product view is introduced.
 
 Both API and web TypeScript checks now reject unused locals and parameters. Existing commit/push secret hooks and the Verify CI workflow remain enabled; CI runs release, dependency, secret and test checks.
+
+### Spoken scripts and connection settings
+
+Voice handoffs clean the saved social caption before editing: URLs, hashtag-only footers, and empty link/source labels are omitted. Inline hashtag words and textual source attribution are preserved to avoid removing facts. Linked prose stays readable, and attribution within sentences, names, numbers, and uncertainty remain. The text-model instructions request short spoken sentences without publishing metadata, stage directions, or music cues. The same shared cleanup runs before saving generated scripts and before speech synthesis; quotas and request hashes use the cleaned narration. Empty cleaned scripts are rejected without a voice request.
+
+The connection dialog keeps its header and save controls visible while advanced settings scroll. Workspace settings now link directly to Channels and Audio for the selected brand. Social publishing still uses the existing owner-only OAuth flow and draft approval; entering an Instagram handle alone cannot grant publishing access. See [Channels](channels.md) for operator setup and live-publishing requirements.
