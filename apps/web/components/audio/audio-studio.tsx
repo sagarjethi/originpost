@@ -7,6 +7,7 @@ import { apiFetch, type AuthView } from '../../lib/api-client';
 import styles from './audio-studio.module.css';
 import { voiceDraftKey } from '../voice/post-voice-action';
 import { FormSection } from '../forms/form-section';
+import { VoiceScriptEditor } from '../voice/voice-script-editor';
 
 type ProjectTemplate = {id:string;name:string;language:string;boardId?:string};
 type NewsRun = {id:string;contentItemId:string;createdAt:string;template:ProjectTemplate;copy?:{headline:string;caption:string}};
@@ -64,7 +65,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
       if(!active)return;
       let script=spokenScript(run.copy?.caption ?? '');
       try { const key=voiceDraftKey(auth.user.id,workspaceId,brandId,runId),raw=sessionStorage.getItem(key);sessionStorage.removeItem(key);if(raw){const saved=JSON.parse(raw);if(saved.expiresAt>Date.now()&&typeof saved.text==='string'&&saved.text.length<=3000)script=spokenScript(saved.text);} } catch { /* Recover persisted copy if the ephemeral draft is unavailable. */ }
-      setContextRun(run);setContentItemId(run.contentItemId);setLanguage(languageCode(run.template.language));setText(script);setSample(script.length<=100);setRights(false);
+      setContextRun(run);setContentItemId(run.contentItemId);setLanguage(languageCode(run.template.language));setText(script);setSample(true);setRights(false);
     }).catch(e=>{if(active)setError(e.message);});
     return ()=>{active=false;};
   },[request,workspaceId,brandId,auth.user.id]);
@@ -102,7 +103,7 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
   function selectNewsItem(id:string) {
     const run=newsRuns.filter(n=>n.contentItemId===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
     setContentItemId(id);setContextRun(run ?? null);setText(spokenScript(run?.copy?.caption ?? ''));setRights(false);setPreview(null);
-    if(run){setLanguage(languageCode(run.template.language));setSkillId('');setSample(spokenScript(run.copy?.caption ?? '').length<=100);}
+    if(run){setLanguage(languageCode(run.template.language));setSkillId('');setSample(true);}
   }
   async function draftScript() {
     const draft={workspaceId,brandId,profileId,contentItemId,language,sample,...(skillId?{skillId}:{}),...(contextRun?.contentItemId===contentItemId?{projectTemplateId:contextRun.template.id}:{})};
@@ -136,25 +137,26 @@ export function AudioStudio({auth,workspaceId,brandId,brandName}:{auth:AuthView;
     {error&&<p className={styles.error} role="alert">{error}</p>}{notice&&<p className={styles.notice} role="status">{notice}</p>}
     {contextRun&&<div className={styles.context}><div><small>{contextRun.template.name} · {new Date(contextRun.createdAt).toLocaleDateString()}</small><strong>{contextRun.copy?.headline ?? 'News post'}</strong><span>The script and recording stay linked to this news item.</span></div><a href={`/agent?conversation=${encodeURIComponent(contextRun.id)}`}>Back to agent ↗</a></div>}
     {loading?<p role="status">Loading audio workspace…</p>:<div className={styles.layout}>
-      <form className={styles.card} onSubmit={generate}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>01 / CREATE</p><h2>Build a narration</h2></div><span>MP3 · 128 kbps</span></div>
+      <form className={styles.card} onSubmit={generate}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>SCRIPT & VOICE</p><h2>Build a narration</h2></div><span>MP3 · 128 kbps</span></div>
         <fieldset className={styles.composerFields} disabled={!!busy}>
-        {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p>{contextRun&&<label>Voice script<textarea rows={5} maxLength={3000} value={text} onChange={e=>setText(e.target.value)} onBlur={()=>setText(spokenScript(text))}/><small>{text.length} characters · Spoken copy · links and hashtag footers removed.</small></label>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>
+        {!view.profiles.length?<div className={styles.empty}><AudioLines size={32}/><h3>Connect your first voice provider</h3><p>{owner?'Add an ElevenLabs key, choose a model, and decide who can generate.':'Ask the workspace owner to connect an audio provider and enable your role.'}</p><VoiceScriptEditor value={text} onChange={setText} language={language} limit={100}/>{!contextRun&&<small>Prepare your script now. Connect a provider when you are ready to generate.</small>}{owner&&<button type="button" onClick={()=>edit(null)}>Configure ElevenLabs</button>}</div>:<>
           <label>Provider<select value={profileId} onChange={e=>setProfileId(e.target.value)} disabled={!!busy}>{view.profiles.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}{p.enabled?'':' · Disabled'}</option>)}</select></label>
           <div className={styles.row}><button type="button" disabled={!!busy||!profile} onClick={()=>void act('catalogue',()=>catalogueLoad())}>{busy==='catalogue'?'Checking…':'Load voices & check connection'}</button>{owner&&<button type="button" onClick={()=>edit(profile ?? null)}><Settings2 size={15}/>Settings</button>}</div>
+          {profile&&<p className={styles.budget}>Daily limits · {profile.dailyRequests} voice requests · {profile.dailyDraftRequests ?? 10} script drafts <span>Resets at 00:00 UTC</span></p>}
           <div className={styles.fields}><label>Language<select value={language} onChange={e=>{setLanguage(e.target.value);setSkillId('');}}>{languages.map(l=><option key={l.code} value={l.code}>{l.code==='gu'?'ગુજરાતી · Gujarati':l.code==='hi'?'हिंदी · Hindi':l.name}</option>)}</select></label><label>Voice<select value={voiceId} onChange={e=>setVoiceId(e.target.value)}><option value="">Load and select a voice</option>{catalogue.voices.map(v=><option key={v.id} value={v.id}>{v.name} · {v.category}</option>)}</select></label></div>
           {catalogue.nextCursor&&<button type="button" disabled={!!busy} onClick={()=>void act('catalogue',()=>catalogueLoad(true))}>Load more voices</button>}
           <label>Reading style & skill<select value={skillId} onChange={e=>setSkillId(e.target.value)}><option value="">Your own reviewed script</option>{profile?.skills.filter(s=>s.language===language).map(s=><option key={s.id} value={s.id}>{s.name} · v{s.version}</option>)}</select></label>
           {selectedSkill&&<p className={styles.guidance} lang={language}>{selectedSkill.instructions}</p>}
           <div className={styles.row}><label className={styles.check}><input type="checkbox" checked={sample} onChange={e=>{setSample(e.target.checked);setRights(false);}}/>Short sample · 100 characters</label>{shortAudioSamples[language]&&<button type="button" disabled={!!busy} onClick={()=>{setText(shortAudioSamples[language]!);setSample(true);setRights(false);}}>Use sample</button>}</div>
-          <label>Script<textarea value={text} onChange={e=>{setText(e.target.value);setRights(false);}} onBlur={()=>setText(spokenScript(text))} maxLength={limit} rows={5} lang={language} placeholder={language==='gu'?'તમારા ચકાસેલા સમાચાર અહીં લખો…':language==='hi'?'अपनी जांची हुई खबर यहां लिखें…':'Paste your reviewed narration here…'}/></label><small>{text.length.toLocaleString()} / {limit.toLocaleString()} characters · Spoken text only. Links and hashtag footers are removed.</small>
+          <VoiceScriptEditor value={text} onChange={value=>{setText(value);setRights(false);}} limit={limit} language={language}/>
           <label>News item<select value={contentItemId} onChange={e=>selectNewsItem(e.target.value)}><option value="">Save in this brand’s Library</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label>
           <button type="button" disabled={!!busy||!contentItemId||!profile?.enabled||!role||!profile.allowedRoles.includes(role)} onClick={()=>void act("draft",draftScript)}>{busy==='draft'?'Drafting…':'Draft script from this post'}</button><small>Drafting uses the configured text model and its daily draft limit. Repeated clicks reuse the same request. Voice generation is separate.</small>
           <label className={styles.check}><input type="checkbox" checked={rights} onChange={e=>setRights(e.target.checked)}/>I have permission to use this script and voice, and have reviewed the wording.</label>
-          <button className={styles.primary} disabled={!!busy||!canGenerate||!voiceId||!text.trim()||text.length>limit||!rights}>{busy==='generate'?'Generating narration…':'Generate narration'}</button>
+          <button className={styles.primary} disabled={!!busy||!canGenerate||!voiceId||!spokenScript(text)||spokenScript(text).length>limit||!rights}>{busy==='generate'?'Generating narration…':'Generate narration'}</button>
           <small>Provider usage is billed to your account. Repeated clicks reuse the same request. Editing the script creates a new request.</small>
         </>}</fieldset>
       </form>
-      <aside className={styles.card}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>02 / LISTEN & REUSE</p><h2>Your recordings</h2></div><a href="/library">Library ↗</a></div>
+      <aside className={styles.card}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>LISTEN & REUSE</p><h2>Your recordings</h2></div><a href="/library">Library ↗</a></div>
         {preview&&<div className={styles.playback}><audio controls src={preview.url}/><a href={preview.url} download><Download size={15}/>Download MP3</a></div>}
         <label>Project<select value={boardFilter} onChange={e=>setBoardFilter(e.target.value)}><option value="">All projects in this brand</option>{boards.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
         <div className={styles.fields}><label>Project profile<select value={projectFilter} onChange={e=>setProjectFilter(e.target.value)}><option value="">All project profiles</option>{[...new Map([...templates,...newsRuns.map(n=>n.template)].map(t=>[t.id,t])).values()].map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label><label>Date<input type="date" value={dateFilter} onChange={e=>setDateFilter(e.target.value)}/></label></div>
