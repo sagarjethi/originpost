@@ -18,6 +18,8 @@ import { instagramStoryCapabilityCopy, type InstagramStoryCapabilityView } from 
 import { PostingQueueProfilePanel } from "./posting-queues/posting-queue-profile";
 import { mediaMatchesOrganizationFilters, orderedMediaFolders, parseMediaTagInput } from "./media-library/media-organization-utils";
 import { BoardsWorkspace } from "./boards/boards-workspace";
+import { WorkspacePageHeader } from "./workspace/workspace-page-header";
+import organizationStyles from "./workspace/organization.module.css";
 import { OperationsHealthPanel } from "./operations/operations-health-panel";
 
 export type WorkspaceModule = "audio" | "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
@@ -535,14 +537,11 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
       : "Research and writing providers plug into one clear boundary. Workspaces decide which provider may run.";
 
   return <section className="module-page">
-    <div className="module-hero">
-      <div><p className="eyebrow">WORKSPACE MODULE</p><h1>{title}</h1><p>{description}</p></div>
-      <div className="module-actions">
+    <WorkspacePageHeader eyebrow="Connections" title={title} description={description}>
         <button className="secondary-button" onClick={() => void load()}><RefreshCw size={15} /> Refresh</button>
         {module === "automations" ? <button className="new-button" onClick={() => setMonitorFormOpen((value) => !value)}><Plus size={15} /> New monitor</button> : null}
         {module === "channels" && canManageChannels ? <button className="secondary-button" onClick={() => setAccountFormOpen((value) => !value)}><Plus size={15} /> Add test account</button> : null}
-      </div>
-    </div>
+    </WorkspacePageHeader>
 
     {error ? <div className="module-alert" role="alert">{error}</div> : null}
     {channelMessage ? <div className="module-alert success" role="status">{channelMessage}</div> : null}
@@ -588,7 +587,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
     </> : null}
 
     {module === "channels" ? <>
-      <article className="panel" style={{padding:20,marginBottom:18}}><h2>One brand, all your publishing accounts</h2><p>Select your project’s brand in the workspace switcher, then connect Instagram, Facebook Pages, and YouTube below. Each connection belongs to that brand. Choose those accounts as destinations when reviewing a post.</p><p>Only the workspace owner can connect or disconnect accounts. Provider secrets stay encrypted on the server. Open <a href="/audio">Audio</a> to create narration for the same brand.</p></article>
+      <article className="panel channel-intro"><h2>One brand, all your publishing accounts</h2><p>Select your project’s brand in the workspace switcher, then connect Instagram, Facebook Pages, and YouTube below. Each connection belongs to that brand. Choose those accounts as destinations when reviewing a post.</p><p>Only the workspace owner can connect or disconnect accounts. Provider secrets stay encrypted on the server. Open <a href="/audio">Audio</a> to create narration for the same brand.</p></article>
       <div className="channel-connect-grid" aria-label="Connect publishing channels">
         <article className="channel-connect-card instagram-card panel">
           <div className="channel-connect-head">
@@ -946,7 +945,7 @@ function MediaLibrary({ auth, workspaceId, brandId }: { auth: AuthView; workspac
   }
 
   return <section className="module-page">
-    <div className="module-hero media-library-hero"><div><p className="eyebrow">ASSET LIBRARY</p><h1>Files &amp; media</h1><p>Upload, find, organize, and reuse every source, proof, image, video, audio file, and document.</p></div><div className="module-actions"><button className="secondary-button" onClick={() => void load()}><RefreshCw size={15} /> Refresh</button>{canUpload ? <button className="new-button" onClick={() => setFormOpen((value) => !value)}><Upload size={15} /> Upload files</button> : null}</div></div>
+    <WorkspacePageHeader eyebrow="Asset library" title="Files & media" description="Upload, organize and reuse your source images, videos, audio and documents."><button className="secondary-button" onClick={() => void load()}><RefreshCw size={15} /> Refresh</button>{canUpload ? <button className="new-button" onClick={() => setFormOpen((value) => !value)}><Upload size={15} /> Upload files</button> : null}</WorkspacePageHeader>
     {error ? <div className="module-alert">{error}</div> : null}
     {formOpen ? <form className="media-upload panel" onSubmit={uploadMedia}>
       <label className="file-drop"><Upload size={22} /><strong>Choose an image, video, audio file, or PDF</strong><small>The file stays private. OriginPost checks its exact size and SHA-256 after upload.</small><input name="file" type="file" required accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp4,audio/wav,audio/webm,application/pdf" /></label>
@@ -1134,16 +1133,16 @@ function OrganizationModule({ auth, workspaceId, brands, onChanged }: { auth: Au
   }
 
   const shownMembers = auth.mode === "sessions" ? members : [{ workspaceId, userId: auth.user.id, email: auth.user.email, displayName: auth.user.displayName, role: "owner" as const, status: "active" as const, createdAt: "", updatedAt: "" }];
-  return <section className="module-page">
-    <div className="module-hero"><div><p className="eyebrow">WORKSPACE MODULE</p><h1>Organization</h1><p>Keep brands, people, channels, approval rules, and agent access inside one workspace boundary.</p></div><div className="module-actions"><button className="secondary-button" onClick={() => setWorkspaceFormOpen((value) => !value)}><Building2 size={15} /> New workspace</button>{isOwner ? <button className="new-button" onClick={() => setBrandFormOpen((value) => !value)}><Plus size={15} /> Add brand</button> : null}{auth.mode === "sessions" && isOwner ? <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Users size={15} /> Invite member</button> : null}</div></div>
-    {error ? <div className="module-alert">{error}</div> : null}
+  return <section className={`module-page ${organizationStyles.page}`}>
+    <WorkspacePageHeader eyebrow="Workspace settings" title="Organization" description="Manage your brands, team access and publishing connections."><button className="secondary-button" onClick={() => setWorkspaceFormOpen((value) => !value)}><Building2 size={15} /> New workspace</button>{isOwner ? <button className="new-button" onClick={() => setBrandFormOpen((value) => !value)}><Plus size={15} /> Add brand</button> : null}{auth.mode === "sessions" && isOwner ? <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Users size={15} /> Invite member</button> : null}</WorkspacePageHeader>
+    {error ? <div className="module-alert" role="alert">{error}</div> : null}
     {auth.mode === "single-user" ? <div className="module-alert neutral">Session login is off. Enable it in your self-hosted settings before adding team members.</div> : null}
     {workspaceFormOpen ? <form className="account-form panel" onSubmit={createWorkspace}><div className="account-form-intro"><div><strong>Create a separate workspace</strong><p>Content, media, channels, monitors, proof, and members stay isolated from this workspace.</p></div><Building2 size={22} /></div><div><label>Workspace name<input name="name" required minLength={2} maxLength={100} placeholder="Regional newsroom" /></label><label>First brand<input name="defaultBrandName" required minLength={2} maxLength={100} placeholder="Main publishing brand" /></label></div><div><label>Primary language<input name="primaryLanguage" defaultValue="English" required /></label><label>Time zone<input name="timezone" defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone} required /></label></div><div className="media-actions"><p>You become the owner. A default brand is created with the workspace.</p><button className="new-button">Create workspace</button></div></form> : null}
     {brandFormOpen ? <form className="account-form panel" onSubmit={createNewBrand}><div className="account-form-intro"><div><strong>Add a publishing brand</strong><p>Use this identity to separate its voice and content inside the active workspace.</p></div><Building2 size={22} /></div><div><label>Brand name<input name="name" required minLength={2} maxLength={100} /></label><label>Primary language<input name="primaryLanguage" defaultValue="English" required /></label></div><div><label>Time zone<input name="timezone" defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone} required /></label><label>Short description<input name="description" maxLength={500} /></label></div><div className="media-actions"><p>Brand slugs are generated safely from the name.</p><button className="new-button">Create brand</button></div></form> : null}
     {inviteOpen ? <form className="account-form panel" onSubmit={invite}><div className="account-form-intro"><div><strong>Invite a workspace member</strong><p>Create an expiring link bound to this exact workspace, email, and role.</p></div><ShieldCheck size={22} /></div><div><label>Email<input name="email" type="email" required maxLength={254} autoComplete="email" /></label><label>Role<select name="role" defaultValue="viewer"><option value="viewer">Viewer</option><option value="creator">Creator</option><option value="manager">Manager</option><option value="owner">Owner</option></select></label></div><div><label>Link expires<select name="expiresInDays" defaultValue="7"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label></div><div className="media-actions"><p>OriginPost does not send email in this release. Copy the one-time link and share it through a trusted channel.</p><button className="new-button">Create invitation</button></div></form> : null}
     {inviteLink ? <div className="account-form panel" role="status"><div className="account-form-intro"><div><strong>Invitation link ready</strong><p>{inviteLinkMessage}</p></div><ShieldCheck size={22} /></div><label>One-time invitation link<input value={inviteLink} readOnly onFocus={(event) => event.currentTarget.select()} /></label><div className="media-actions"><p>The raw token exists only in this response and your browser memory.</p><button type="button" className="new-button" onClick={() => void copyInviteLink()}><Copy size={14} /> Copy link</button><button type="button" className="secondary-button" onClick={() => { setInviteLink(""); setInviteLinkMessage(""); }}>Hide link</button></div></div> : null}
     <div className="org-grid">
-      <article className="org-card panel"><span className="org-mark">MW</span><div><p className="eyebrow">ACTIVE WORKSPACE</p><h2>{currentMembership?.workspaceName ?? "My workspace"}</h2><p>Self-hosted Community alpha</p></div><em>{currentMembership?.role ?? "owner"}</em></article>
+      <article className="org-card panel"><span className="org-mark">{(currentMembership?.workspaceName ?? "My workspace").split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><p className="eyebrow">ACTIVE WORKSPACE</p><h2>{currentMembership?.workspaceName ?? "My workspace"}</h2><p>Self-hosted Community alpha</p></div><em>{currentMembership?.role ?? "owner"}</em></article>
       <article className="org-card panel"><span className="module-state online"><Users size={18} /></span><div><p className="eyebrow">ACCESS MODEL</p><h2>Simple team roles</h2><p>Owner, manager, creator, and viewer</p></div><em>4 roles</em></article>
       <article className="org-card panel"><span className="module-state"><Building2 size={18} /></span><div><p className="eyebrow">BRAND BOUNDARY</p><h2>Workspace scoped</h2><p>Content, monitors, channels, and proof stay separated.</p></div><em>Protected</em></article>
     </div>

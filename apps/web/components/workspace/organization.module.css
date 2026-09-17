@@ -1,0 +1,22 @@
+.page { display: flex; flex-direction: column; gap: 18px; }
+.page > * { min-width: 0; }
+.page :global(.org-grid) { margin: 0; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); }
+.page :global(.org-card) { grid-template-columns: 42px minmax(0, 1fr); align-content: start; align-items: start; gap: 12px; padding: 20px; }
+.page :global(.org-card) > div { min-width: 0; }
+.page :global(.org-card h2) { font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+.page :global(.org-card .eyebrow) { margin: 0 0 7px; font-size: 10px; line-height: 1.5; }
+.page :global(.org-card) div > p:last-child { font-size: 12px; line-height: 1.6; }
+.page :global(.org-card em) { grid-column: 2; justify-self: start; }
+.page :global(.module-alert), .page :global(.account-form) { margin-top: 0; }
+.page :global(.monitor-row) { align-items: start; gap: 14px; padding: 18px 20px; }
+.page :global(.monitor-row strong) { font-size: 13px; }
+.page :global(.monitor-row p) { overflow: visible; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; margin: 5px 0; }
+.page :global(.monitor-row small) { overflow-wrap: anywhere; }
+.page :global(.monitor-row > a) { align-self: center; white-space: nowrap; text-decoration: none; }
+.page :global(.module-list-head p) { font-size: 12px; line-height: 1.6; }
+.page :global(.module-list-head > span) { flex-shrink: 0; }
+.page :global(.account-form input), .page :global(.account-form select) { width: 100%; min-width: 0; }
+.page :global(.account-form label) { font-size: 12px; min-width: 0; }
+.page :global(.monitor-time) { min-width: 0; }
+
+.page > :global(.module-list) { margin-top: 0; }

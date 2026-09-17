@@ -1,0 +1,5 @@
+.section { min-width: 0; margin: 0; border: 1px solid var(--line, #dfe5dd); border-radius: 12px; padding: 18px; background: #fff; }
+.section > legend { padding: 0 6px; font-size: 13px; font-weight: 700; color: var(--ink, #354438); }
+.description { margin: 0 0 16px; font-size: 12px; line-height: 1.6; color: var(--muted, #6c796e); }
+.fields { display: grid; min-width: 0; gap: 16px; }
+.fields > * { min-width: 0; }

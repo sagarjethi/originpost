@@ -29,3 +29,8 @@
 .runComposer textarea{font:inherit;font-size:11px;line-height:1.55}
 @media(max-width:760px){.taskHandoff{grid-template-columns:1fr}.taskHandoff button{width:100%}.releaseTask{grid-template-columns:1fr}.releaseTask button{width:100%}}
 @media(max-width:760px){.tasksHead{align-items:stretch;flex-direction:column}.tasksHead>div:first-child{align-items:flex-start}.tasksHead>div:last-child{justify-content:space-between}.tasksHead button{min-height:40px;white-space:nowrap}.tasksHead p{max-width:none}.taskAssignment label{align-items:stretch;flex-direction:column}.taskAssignment select{min-width:0;width:100%}.commentForm{grid-template-columns:minmax(0,1fr)}.commentForm button{min-height:40px}}
+
+.detailHead > div:first-child { min-width: 0; }
+.detailHead h2 { overflow-wrap: anywhere; }
+.detailActions { flex-shrink: 0; flex-wrap: wrap; }
+.detailActions button { white-space: nowrap; }

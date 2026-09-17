@@ -1433,3 +1433,25 @@
 .leadContext p { margin: 6px 0; color: var(--muted, #626b66); }
 .leadContext ul { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 6px 0; padding-left: 18px; }
 .leadContext a { color: inherit; text-decoration: underline; }
+
+/* Keep the template's actions visible while its grouped fields scroll. */
+.templateDialog { width: min(900px, calc(100vw - 40px)); padding: 0; overflow: hidden; }
+.templateDialog form { max-height: calc(100dvh - 40px); display: flex; flex-direction: column; gap: 0; }
+.templateDialog form > header { flex: none; padding: 20px 24px; border-bottom: 1px solid #dfe5d8; gap: 20px; }
+.templateDialog h2 { font-family: inherit; font-size: 22px; font-weight: 600; margin: 6px 0 0; }
+.templateBody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 22px; padding: 20px 24px; }
+.templateBody > .note { margin: 0; }
+.templateDialog label { min-width: 0; font-size: 12px; }
+.templateDialog fieldset { margin: 0; padding: 18px; background: white; }
+.templateDialog legend { font-size: 13px; font-weight: 700; }
+.templateDialog .formGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.templateDialog input[type="file"]::file-selector-button { border: 0; border-radius: 5px; padding: 6px 10px; margin-right: 10px; background: #edf1e8; color: #394631; font: inherit; cursor: pointer; }
+.logoLayout { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
+.logoLayout .templatePreview { padding: 16px; border: 1px solid #e1e7da; border-radius: 10px; background: #f5f7f1; }
+.logoLayout .templateCanvas { max-width: 170px; }
+.templateDialog .templateFooter { flex: none; padding: 14px 24px; border-top: 1px solid #dfe5d8; background: white; }
+.templateFooter p { margin: 0; }
+.templateDialog form > .error { flex: none; margin: 0; padding: 10px 24px; max-height: 80px; overflow: auto; }
+@media (max-width: 800px) { .logoLayout { grid-template-columns: minmax(0, 1fr); } }
+
+.logoLayout:not(:has(figure)) { grid-template-columns: minmax(0, 1fr); }

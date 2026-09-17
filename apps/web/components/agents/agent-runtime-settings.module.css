@@ -8,3 +8,12 @@
 .visionForm button { min-height: 38px; border: 1px solid #c4d2c2; border-radius: 7px; padding: 8px 12px; background: #f4f7f0; color: #294631; cursor: pointer; }
 .visionForm button:disabled { opacity: .5; cursor: not-allowed; }
 .visionForm input:focus-visible,.visionForm button:focus-visible { outline: 2px solid #6c8c68; outline-offset: 2px; }
+
+/* This section lives below the shared page header. */
+.module { margin-top: 18px; }
+.heading { min-height: 0; align-items: center; flex-wrap: wrap; padding: 20px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+.heading > div { flex: 1 1 360px; min-width: 0; }
+.heading p { color: var(--teal); font-size: 10px; }
+.heading h2 { font-family: inherit; font-size: 20px; line-height: 1.35; }
+.heading span { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.heading button { border-color: var(--line); background: #fff; color: var(--ink); white-space: nowrap; }
