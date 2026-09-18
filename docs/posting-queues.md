@@ -15,7 +15,7 @@ Saving a profile never moves targets that were already scheduled. Before saving,
 
 ## Schedule next available
 
-Creators, managers, and owners can use **Add to next account slot** from the exact approved draft. The command requires:
+Managers and owners can use **Add to next account slot** from the exact approved draft. Creators can save drafts but cannot reserve publishing slots. The command requires:
 
 - the current Content Item version in `If-Match`;
 - an `Idempotency-Key`;

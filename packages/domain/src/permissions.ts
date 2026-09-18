@@ -51,7 +51,7 @@ const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
     "analytics:manage",
     "automation:manage",
   ]),
-  creator: new Set(["content:read", "content:create", "content:edit", "content:queue", "engagement:read", "engagement:draft"]),
+  creator: new Set(["content:read", "content:create", "content:edit", "engagement:read", "engagement:draft"]),
   viewer: new Set(["content:read", "engagement:read"]),
 };
 

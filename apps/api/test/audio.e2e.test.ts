@@ -128,6 +128,22 @@ describe('secure audio workflow',()=>{
     const calls=provider.synthesize.mock.calls.length;await service.generate('default',dto,actor);expect(provider.synthesize.mock.calls.length).toBe(calls);
     await expect(service.save('default',configured.id,{...settings(),version:0},owner)).rejects.toThrow(/Refresh/);
   });
+  it('only exposes approved generation profiles to members, without admin configuration', async () => {
+    const creator={...owner,id:'shared-creator',role:'creator' as const};
+    const shared=await service.save('default',undefined,{...settings(),allowedRoles:['creator']},owner);
+    await service.save('default',undefined,{...settings(),allowedRoles:['creator'],enabled:false},owner);
+    const view=await service.list('default','brand_default',creator);
+    expect(view.profiles.some(p=>p.id===shared.id)).toBe(true);
+    expect(view.profiles.every(p=>p.enabled && p.allowedRoles.includes('creator'))).toBe(true);
+    expect(view).not.toHaveProperty('encryptionConfigured');
+    expect(view).not.toHaveProperty('adminIpRestricted');
+    for (const profile of view.profiles) {
+      for (const field of ['provider','credentialConfigured','createdBy','updatedAt','credential','apiKey']) expect(profile).not.toHaveProperty(field);
+    }
+    expect((await service.list('default','brand_default',{...creator,role:'viewer'})).profiles).toEqual([]);
+    await expect(service.save('default',shared.id,{...settings(),version:shared.version},creator)).rejects.toThrow(/owner/);
+    await expect(service.catalogue('default','brand_default',profileId,creator)).rejects.toThrow(/role/);
+  });
   it('restricts credential mutations by peer network, ignoring spoofed forwarded headers',async()=>{
     const config=app.get(ConfigService),original=config.get.bind(config);
     const spy=vi.spyOn(config,'get').mockImplementation(((key:string)=>key==='ADMIN_ALLOWED_IPS'?'203.0.113.4':original(key)) as typeof config.get);

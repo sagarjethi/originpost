@@ -35,7 +35,7 @@ describe("account posting queues", () => {
       return item;
     }
     const [left, right] = await Promise.all([approvedItem("content-left"), approvedItem("content-right")]);
-    const base = (item: typeof left, key: string) => ({ workspaceId: item.workspaceId, brandId: item.brandId, contentItemId: item.id, expectedContentVersion: item.version, expectedProfileVersion: 1, idempotencyKey: key, requestSha256: key.padEnd(64, "0").slice(0, 64), actor: creator, schedule: { platform: "instagram" as const, accountId: account.id, draftId: item.drafts[0]!.id, deliveryMode: "manual_handoff" as const } });
+    const base = (item: typeof left, key: string) => ({ workspaceId: item.workspaceId, brandId: item.brandId, contentItemId: item.id, expectedContentVersion: item.version, expectedProfileVersion: 1, idempotencyKey: key, requestSha256: key.padEnd(64, "0").slice(0, 64), actor: owner, schedule: { platform: "instagram" as const, accountId: account.id, draftId: item.drafts[0]!.id, deliveryMode: "manual_handoff" as const } });
     const [first, second] = await Promise.all([queues.scheduleNext(base(left, "request-a")), queues.scheduleNext(base(right, "request-b"))]);
     expect([first.target.scheduledFor, second.target.scheduledFor].sort()).toEqual(["2026-09-07T09:00:00.000Z", "2026-09-07T10:00:00.000Z"]);
     const moved = rescheduleTarget(first.item, first.target.id, { scheduledFor: "2026-09-08T12:00:00.000Z", timezone: "UTC" }, owner, "2026-09-06T00:01:00.000Z");
@@ -46,12 +46,12 @@ describe("account posting queues", () => {
     expect(replay.target.id).toBe(first.target.id);
   });
 
-  it("allows a creator only through the queue-specific scheduling command", () => {
+  it("blocks creators from publishing through the queue-specific scheduling command", () => {
     let item = createContentItem({ workspaceId: "workspace-1", brandId: "brand-1", title: "Approved", summary: "summary", actor: owner }).item;
     item = addSource(item, { kind: "url", title: "Source", url: "https://example.com/approved", rights: "reference-only", confidence: 95 }, owner, "2026-09-01T00:00:00.000Z").item;
     item = addDraft(item, { platform: "facebook", format: "text", title: "Approved", caption: "caption", mediaIds: [] }, owner, "2026-09-01T00:00:00.000Z").item;
     item = transition(item, "review", owner, "review", "2026-09-01T00:01:00.000Z").item;
     item = recordApproval(item, owner, "approved", "ready", item.drafts[0]!.id, "2026-09-01T00:02:00.000Z").item;
-    expect(scheduleTargetFromQueue(item, creator, { platform: "facebook", accountId: "facebook-1", draftId: item.drafts[0]!.id, scheduledFor: "2026-09-02T09:00:00.000Z", deliveryMode: "manual_handoff" }, "2026-09-01T00:03:00.000Z").item.targets).toHaveLength(1);
+    expect(() => scheduleTargetFromQueue(item, creator, { platform: "facebook", accountId: "facebook-1", draftId: item.drafts[0]!.id, scheduledFor: "2026-09-02T09:00:00.000Z", deliveryMode: "manual_handoff" }, "2026-09-01T00:03:00.000Z")).toThrow(/cannot add approved content/);
   });
 });

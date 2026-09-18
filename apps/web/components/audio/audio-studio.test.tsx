@@ -13,4 +13,11 @@ describe('audio workspace access presentation',()=>{
    const html=renderToStaticMarkup(<AudioStudio auth={auth} workspaceId="w" brandId="b"/>);
    expect(html).not.toContain('Connect provider');
  });
+ it('gives shared creators a narration interface without connection administration',()=>{
+   const auth={...base,memberships:[{workspaceId:'w',workspaceName:'W',workspaceSlug:'w',userId:'user',role:'creator' as const}]};
+   const html=renderToStaticMarkup(<AudioStudio auth={auth} workspaceId="w" brandId="b"/>);
+   expect(html).toContain('workspace-approved voices');
+   expect(html).not.toContain('Connect provider');
+   expect(html).not.toContain('API key');
+ });
 });
