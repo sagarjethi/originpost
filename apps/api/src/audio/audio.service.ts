@@ -26,7 +26,21 @@ export class AudioService {
   }
   private key(credential: Parameters<typeof openEncryptedCredential>[0]) { const key=decodeCredentialEncryptionKey(this.config.get<string>('CREDENTIAL_ENCRYPTION_KEY')); if (!key) throw new BadRequestException('Credential encryption is not configured.'); try { return openEncryptedCredential(credential,key); } catch { throw new BadRequestException('The protected key cannot be opened. The owner must reconnect it.'); } }
   private use(profile: AudioProfile,actor: Actor) { if (!profile.enabled || !profile.allowedRoles.includes(actor.role) || !can(actor.role,'content:edit') || (actor.actorType && actor.actorType !== 'human')) throw new ForbiddenException('This audio provider is disabled or your role cannot use it.'); }
-  async list(w: string,b: string,actor: Actor) { this.read(actor); await this.brand(w,b); return { profiles: await this.infra.audioRepository.listProfiles(w,b), runs: await this.infra.audioRepository.listRuns(w,b), encryptionConfigured:this.vault.configured(), adminIpRestricted:Boolean(this.config.get<string>('ADMIN_ALLOWED_IPS')?.trim()) }; }
+  async list(w: string,b: string,actor: Actor) {
+    this.read(actor); await this.brand(w,b);
+    const profiles = await this.infra.audioRepository.listProfiles(w,b);
+    const runs = await this.infra.audioRepository.listRuns(w,b);
+    if (actor.role === 'owner' && (!actor.actorType || actor.actorType === 'human')) {
+      return { profiles, runs, encryptionConfigured:this.vault.configured(), adminIpRestricted:Boolean(this.config.get<string>('ADMIN_ALLOWED_IPS')?.trim()) };
+    }
+    const usable = profiles.filter(profile => profile.enabled && profile.allowedRoles.includes(actor.role) && can(actor.role,'content:edit') && (!actor.actorType || actor.actorType === 'human'));
+    return { profiles: usable.map(profile => ({
+      id:profile.id, version:profile.version, name:profile.name, model:profile.model,
+      enabled:true, allowedRoles:[actor.role], maxCharacters:profile.maxCharacters,
+      dailyRequests:profile.dailyRequests, dailyDraftRequests:profile.dailyDraftRequests,
+      projectTemplateId:profile.projectTemplateId, skills:profile.skills,
+    })), runs };
+  }
   async save(w: string,id: string | undefined,dto: SaveAudioProfileDto,actor: Actor) {
     this.owner(actor); await this.brand(w,dto.brandId);
     const current = id ? await this.context(w,dto.brandId,id,actor) : null;

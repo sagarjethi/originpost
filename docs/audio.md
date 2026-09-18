@@ -79,3 +79,9 @@ Voice handoffs clean the saved social caption before editing: URLs, hashtag-only
 The connection dialog keeps its header and save controls visible while advanced settings scroll. Workspace settings now link directly to Channels and Audio for the selected brand. Social publishing still uses the existing owner-only OAuth flow and draft approval; entering an Instagram handle alone cannot grant publishing access. See [Channels](channels.md) for operator setup and live-publishing requirements.
 
 The agent voice bubble and Audio studio share one script editor. Counters use the cleaned narration sent to the backend and show the exact excess over the active limit, without truncating imported text to that limit. Imported news defaults to 100-character sample mode; users must explicitly turn sample mode off for a longer recording, and provider/skill limits still apply. Scripts can be prepared before connecting a provider. Daily voice and script limits are displayed as configured maxima, not remaining allowances.
+
+## Shared creator access
+
+Invite teammates with individual session accounts and the Creator role. The owner can grant that role access in Audio settings; only enabled, explicitly granted profiles are returned to creators. Members receive generation fields and limits, without credential state, administrator IP configuration or connection administration. AI runtime configuration and usage logs are owner-only. API keys never leave the server.
+
+Creators can save post drafts and approved narration in the workspace. They cannot approve, schedule, queue or publish a post, including putting an approved draft into an automatic account slot. Use Organizations to manage memberships. Single-user mode treats every request as the owner and must not be shared as a team login.

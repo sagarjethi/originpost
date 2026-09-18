@@ -11,6 +11,10 @@ export interface AudioProfile {
   projectTemplateId?: string;
   skills: AudioSkill[]; credentialConfigured: boolean; createdBy: string; updatedAt: string;
 }
+/** Only the fields a member needs to create narration; no credential or administrator metadata. */
+export type AudioUsageProfile = Pick<AudioProfile,
+  'id' | 'version' | 'name' | 'model' | 'enabled' | 'allowedRoles' | 'maxCharacters' |
+  'dailyRequests' | 'dailyDraftRequests' | 'projectTemplateId' | 'skills'>;
 export interface AudioRun {
   projectTemplateId?: string;
   id: string; workspaceId: string; brandId: string; profileId: string; profileVersion: number; contentItemId?: string;

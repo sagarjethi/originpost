@@ -15,6 +15,14 @@ describe("workspace AI runtime",()=>{
   let app:NestFastifyApplication;
   beforeAll(async()=>{Object.assign(process.env,{NODE_ENV:"test",AUTH_MODE:"single-user",DATABASE_URL:"",REDIS_URL:"",BOOTSTRAP_USER_ID:"runtime-owner",BOOTSTRAP_USER_NAME:"Runtime Owner",REVIEW_LINK_SECRET:"runtime-review-secret-with-more-than-32-characters",MEDIA_DELIVERY_SECRET:"runtime-media-secret-with-more-than-32-characters",CREDENTIAL_ENCRYPTION_KEY:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",AUTOMATION_DELIVERY_ENABLED:"false"});const fixture=await Test.createTestingModule({imports:[AppModule]}).compile();app=fixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter({logger:false}));configureApp(app,app.get(ConfigService));await startE2eApp(app);});
   afterAll(async()=>{vi.unstubAllGlobals();await app.close();});
+  it("keeps provider configuration and usage logs owner-only", async () => {
+    const service=app.get(AgentRuntimeService);
+    for (const role of ['manager','creator','viewer'] as const) {
+      const actor={id:'shared-user',name:'Shared user',role};
+      await expect(service.list('default',{brandId:'brand_default',limit:10},actor)).rejects.toThrow(/owner/);
+      await expect(service.runs('default','runtime-id',10,actor)).rejects.toThrow(/owner/);
+    }
+  });
   it("routes Local Codex only through a configured single-owner endpoint", async () => {
     const config=app.get(ConfigService), original=config.get.bind(config);
     let route:string|undefined, authMode="single-user", ownerWorkspace:string|undefined, ownerUser:string|undefined;
