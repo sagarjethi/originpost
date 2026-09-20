@@ -1,10 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { InstallationSettings, canShowInstallation, installationPatch } from "./installation-settings";
+import { InstallationSettings, canShowInstallation, installationPatch, appSetupStatus, type InstallationView } from "./installation-settings";
 import type { AuthView } from "../../lib/api-client";
 
 const auth = (role: "owner" | "creator", workspaceId = "workspace"): AuthView => ({ mode: "sessions", user: { id: "user", email: "owner@example.test", displayName: "Owner" }, memberships: [{ workspaceId, workspaceSlug: workspaceId, workspaceName: "Workspace", userId: "user", role }] });
 describe("installation setup access and credentials", () => {
+  it("does not confuse a saved app with an active app or connected account", () => {
+    const view: InstallationView = { version: 1, restartRequired: true, values: {}, secrets: { META_APP_SECRET: true }, activeValues: {}, activeSecrets: {}, checks: { sessions: true, encryption: true, networkRestricted: false }, callbacks: { instagram: "", facebook: "", instagramFacebook: "", youtube: "" } };
+    expect(appSetupStatus(view, "Instagram & Facebook")).toBe("Saved · activation pending");
+    expect(appSetupStatus({ ...view, restartRequired: false }, "Instagram & Facebook")).toBe("App setup needed");
+    expect(appSetupStatus({ ...view, restartRequired: false, activeSecrets: { META_APP_SECRET: true } }, "Instagram & Facebook")).toBe("App settings active");
+  });
   it("does not borrow ownership from another workspace", () => {
     expect(canShowInstallation(auth("owner", "other"), "workspace")).toBe(false);
     expect(canShowInstallation(auth("owner"), "workspace")).toBe(true);

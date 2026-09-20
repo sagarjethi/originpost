@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Bot, Building2, Cable, Camera, Check, CheckSquare, Clock3, Copy, Database, Download, FileAudio, FileImage, FileText, FileVideo, Folder, FolderPlus, HardDrive, LockKeyhole, MessagesSquare, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, Share2, ShieldCheck, Star, Trash2, Upload, Users, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, Building2, Cable, Camera, Check, CheckSquare, Clock3, Copy, Database, Download, FileAudio, FileImage, FileText, FileVideo, Folder, FolderPlus, HardDrive, MessagesSquare, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, Share2, ShieldCheck, Star, Trash2, Upload, Users, X, Zap } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
 import { workspaceInvitationActionPath, workspaceInvitationsPath } from "@/lib/workspace-invitations";
@@ -20,6 +20,8 @@ import { mediaMatchesOrganizationFilters, orderedMediaFolders, parseMediaTagInpu
 import { BoardsWorkspace } from "./boards/boards-workspace";
 import { WorkspacePageHeader } from "./workspace/workspace-page-header";
 import organizationStyles from "./workspace/organization.module.css";
+import channelStyles from "./workspace/channels.module.css";
+import { ChannelConnectionButton, instagramConnectionRoute } from "./workspace/channel-connection";
 import { OperationsHealthPanel } from "./operations/operations-health-panel";
 
 export type WorkspaceModule = "audio" | "boards" | "signals" | "evergreen" | "analytics" | "engagement" | "automations" | "batches" | "organizations" | "channels" | "plugins" | "library" | "creative" | "developer";
@@ -122,8 +124,10 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
   const [metaMessagingSelection, setMetaMessagingSelection] = useState<MetaMessagingSelection | null>(null);
   const [selectedMetaMessagingTargetKeys, setSelectedMetaMessagingTargetKeys] = useState<string[]>([]);
   const [metaMessagingSelectionBusy, setMetaMessagingSelectionBusy] = useState(false);
-  const membership = auth.memberships.find((entry) => entry.workspaceId === workspaceId) ?? auth.memberships[0];
+  const membership = auth.memberships.find((entry) => entry.workspaceId === workspaceId);
   const canManageChannels = membership?.role === "owner";
+  const instagramRoute = instagramConnectionRoute(oauthStatus);
+  const instagramReady = instagramRoute !== null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -529,18 +533,17 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
 
   const eligibleMetaMessagingAccounts = connectedAccounts.filter((account) => (account.platform === "facebook" || account.platform === "instagram") && account.status !== "disconnected");
   const enabledMetaMessagingAccounts = eligibleMetaMessagingAccounts.filter((account) => account.capabilities.includes("private_message_read") && account.capabilities.includes("private_message_send"));
-  const title = module === "automations" ? "Source monitoring" : module === "channels" ? "Publishing channels" : "Agent plugins";
+  const title = module === "automations" ? "Source monitoring" : module === "channels" ? "Social accounts" : "Agent plugins";
   const description = module === "automations"
     ? "Check chosen topics on a schedule. New findings arrive in the content inbox with their source links."
     : module === "channels"
       ? "Connect the accounts you publish to. OriginPost checks access, permissions, and account health before anything is scheduled."
       : "Research and writing providers plug into one clear boundary. Workspaces decide which provider may run.";
 
-  return <section className="module-page">
+  return <section className={`module-page${module === "channels" ? " social-accounts-page" : ""}`}>
     <WorkspacePageHeader eyebrow="Connections" title={title} description={description}>
         <button className="secondary-button" onClick={() => void load()}><RefreshCw size={15} /> Refresh</button>
         {module === "automations" ? <button className="new-button" onClick={() => setMonitorFormOpen((value) => !value)}><Plus size={15} /> New monitor</button> : null}
-        {module === "channels" && canManageChannels ? <button className="secondary-button" onClick={() => setAccountFormOpen((value) => !value)}><Plus size={15} /> Add test account</button> : null}
     </WorkspacePageHeader>
 
     {error ? <div className="module-alert" role="alert">{error}</div> : null}
@@ -587,51 +590,53 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
     </> : null}
 
     {module === "channels" ? <>
-      <article className="panel channel-intro"><h2>One brand, all your publishing accounts</h2><p>Select your project’s brand in the workspace switcher, then connect Instagram, Facebook Pages, and YouTube below. Each connection belongs to that brand. Choose those accounts as destinations when reviewing a post.</p><p>Only the workspace owner can connect or disconnect accounts. Provider secrets stay encrypted on the server. Open <a href="/audio">Audio</a> to create narration for the same brand.</p></article>
+      <article className="panel channel-intro"><h2>{brands.find((brand) => brand.id === activeBrandId)?.name ?? "Selected brand"}</h2><p>Connect the accounts for this brand. Choose where to publish when your post is ready.</p>{!canManageChannels ? <p>Your workspace owner manages connections.</p> : null}</article>
       <div className="channel-connect-grid" aria-label="Connect publishing channels">
         <article className="channel-connect-card instagram-card panel">
           <div className="channel-connect-head">
             <span className="channel-platform-icon"><Camera size={22} /></span>
-            <span className={`channel-config-state ${oauthStatus?.instagram.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.instagram.configured ? "Ready to connect" : "OAuth is off"}</span>
+            <span className={`channel-config-state ${instagramReady ? "ready" : "off"}`}><i />{loading ? "Checking setup" : instagramReady ? "Ready to connect" : "Setup needed"}</span>
           </div>
-          <div className="channel-connect-copy"><p className="eyebrow">INSTAGRAM</p><h2>Publish posts, Reels, and Stories</h2><p>Connect a professional account through Meta. OriginPost verifies publishing access and the account type before Story auto publish.</p></div>
+          <div className="channel-connect-copy"><p className="eyebrow">INSTAGRAM</p><h2>Publish posts, Reels, and Stories</h2><p>Connect a professional account. Publishing formats depend on its permissions.</p></div>
           <div className="channel-connect-meta"><span><strong>{connectedAccounts.filter((account) => account.platform === "instagram" && account.status !== "disconnected").length}</strong> connected</span><span>Posts · carousels · Reels · Stories</span></div>
-          {!oauthStatus?.instagram.configured ? <div className="channel-off-state"><LockKeyhole size={17} /><div><strong>Server setup needed</strong><p>Add the Meta app ID, app secret, and encryption key. No sign-in is started until then.</p></div></div> : null}
-          <button className="channel-connect-button" disabled={!canManageChannels || !oauthStatus?.instagram.configured} onClick={() => void connectInstagram()}>Connect Instagram <ArrowRight size={16} /></button>
-          <button className="secondary-button" disabled={!canManageChannels || !oauthStatus?.instagramFacebook.configured} onClick={() => void connectInstagramFacebook()}>Use Facebook Login</button>
+          {!loading && !instagramReady ? <p className={channelStyles.help}>An administrator needs to set up Meta first.</p> : instagramRoute === "instagramFacebook" ? <p className={channelStyles.help}>Connect through Facebook using the Page linked to your Instagram account.</p> : null}
+          <ChannelConnectionButton ready={instagramReady} loading={loading} canManage={canManageChannels} label="Connect Instagram" onConnect={() => void (instagramRoute === "instagramFacebook" ? connectInstagramFacebook() : connectInstagram())} />
+          {oauthStatus?.instagram.configured && oauthStatus?.instagramFacebook.configured ? <button className="secondary-button" disabled={!canManageChannels || loading} onClick={() => void connectInstagramFacebook()}>Connect through Facebook instead</button> : null}
         </article>
 
         <article className="channel-connect-card facebook-card panel">
           <div className="channel-connect-head">
             <span className="channel-platform-icon"><Share2 size={22} /></span>
-            <span className={`channel-config-state ${oauthStatus?.facebook.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.facebook.configured ? "Ready to connect" : "OAuth is off"}</span>
+            <span className={`channel-config-state ${oauthStatus?.facebook.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.facebook.configured ? "Ready to connect" : "Setup needed"}</span>
           </div>
-          <div className="channel-connect-copy"><p className="eyebrow">FACEBOOK PAGES</p><h2>Publish Page updates</h2><p>Sign in with Meta, then choose the exact Pages this brand may use. Instagram accounts and Facebook Pages stay separate.</p></div>
+          <div className="channel-connect-copy"><p className="eyebrow">FACEBOOK PAGES</p><h2>Publish Page updates</h2><p>Sign in with Facebook and choose the Pages you manage.</p></div>
           <div className="channel-connect-meta"><span><strong>{connectedAccounts.filter((account) => account.platform === "facebook" && account.status !== "disconnected").length}</strong> connected</span><span>Text · single image</span></div>
-          {!oauthStatus?.facebook.configured ? <div className="channel-off-state"><LockKeyhole size={17} /><div><strong>Server setup needed</strong><p>Add the Meta app ID, app secret, and encryption key. No Page is selected until sign-in finishes.</p></div></div> : null}
-          <button className="channel-connect-button" disabled={!canManageChannels || !oauthStatus?.facebook.configured} onClick={() => void connectFacebook()}>Connect Facebook Pages <ArrowRight size={16} /></button>
+          {!loading && !oauthStatus?.facebook.configured ? <p className={channelStyles.help}>An administrator needs to set up Meta first.</p> : null}
+          <ChannelConnectionButton ready={Boolean(oauthStatus?.facebook.configured)} loading={loading} canManage={canManageChannels} label="Connect Facebook Pages" onConnect={() => void connectFacebook()} />
         </article>
 
         <article className="channel-connect-card youtube-card panel">
           <div className="channel-connect-head">
             <span className="channel-platform-icon"><Play size={24} fill="currentColor" /></span>
-            <span className={`channel-config-state ${oauthStatus?.youtube.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.youtube.configured ? "Ready to connect" : "OAuth is off"}</span>
+            <span className={`channel-config-state ${oauthStatus?.youtube.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.youtube.configured ? "Ready to connect" : "Setup needed"}</span>
           </div>
-          <div className="channel-connect-copy"><p className="eyebrow">YOUTUBE</p><h2>Upload videos and Shorts</h2><p>Connect a YouTube channel through Google. Final title, audience, disclosure, and visibility stay reviewable before scheduling.</p></div>
+          <div className="channel-connect-copy"><p className="eyebrow">YOUTUBE</p><h2>Upload videos and Shorts</h2><p>Sign in with Google and choose your channel. Review each video before publishing.</p></div>
           <div className="channel-connect-meta"><span><strong>{connectedAccounts.filter((account) => account.platform === "youtube" && account.status !== "disconnected").length}</strong> connected</span><span>Videos · Shorts</span></div>
-          {!oauthStatus?.youtube.configured ? <div className="channel-off-state"><LockKeyhole size={17} /><div><strong>Server setup needed</strong><p>Add the Google client ID, client secret, and encryption key. Publishing remains safely unavailable.</p></div></div> : null}
-          <button className="channel-connect-button" disabled={!canManageChannels || !oauthStatus?.youtube.configured} onClick={() => void connectYouTube()}>Connect YouTube <ArrowRight size={16} /></button>
+          {!loading && !oauthStatus?.youtube.configured ? <p className={channelStyles.help}>An administrator needs to set up Google first.</p> : null}
+          <ChannelConnectionButton ready={Boolean(oauthStatus?.youtube.configured)} loading={loading} canManage={canManageChannels} label="Connect YouTube" onConnect={() => void connectYouTube()} />
         </article>
       </div>
+      <p className={channelStyles.supportNote}><strong>X / Twitter</strong> publishing is not supported yet.</p>
+      <details className={channelStyles.advanced}><summary>Optional: Facebook and Instagram inboxes</summary>
       <article className="private-message-connect panel">
         <div className="private-message-connect-icon"><MessagesSquare size={23} /></div>
-        <div className="private-message-connect-copy"><p className="eyebrow">META PRIVATE MESSAGES</p><h2>Bring Facebook and Instagram DMs into one inbox</h2><p>This is a separate, explicit Meta re-consent. OriginPost requests messaging access only for accounts you already connected, checks each Page live, subscribes the approved webhook fields, and then starts an encrypted sync.</p><small>Normal replies are limited to Meta’s 24-hour customer-service window. OriginPost does not send unsolicited messages or enable the Human Agent extension.</small></div>
+        <div className="private-message-connect-copy"><p className="eyebrow">META PRIVATE MESSAGES</p><h2>Bring Facebook and Instagram DMs into one inbox</h2><p>Add messaging access to accounts you have connected. You choose which inboxes to include after signing in.</p><small>Normal replies are limited to Meta’s 24-hour customer-service window. OriginPost does not send unsolicited messages or enable the Human Agent extension.</small></div>
         <div className="private-message-connect-status">
           <span className={`channel-config-state ${oauthStatus?.metaMessaging.configured ? "ready" : "off"}`}><i />{loading ? "Checking setup" : oauthStatus?.metaMessaging.configured ? `${enabledMetaMessagingAccounts.length} of ${eligibleMetaMessagingAccounts.length} enabled` : "App Review setup needed"}</span>
           {!oauthStatus?.metaMessaging.configured ? <p>Configure official Meta messaging and record the approved App Review evidence before re-consent is available.</p> : eligibleMetaMessagingAccounts.length === 0 ? <p>Connect a Facebook Page or a Page-linked Instagram professional account first.</p> : <p>You will choose the exact inboxes after Meta sign-in. Existing publishing access stays unchanged.</p>}
           <button className="channel-connect-button" disabled={!canManageChannels || !oauthStatus?.metaMessaging.configured || eligibleMetaMessagingAccounts.length === 0} onClick={() => void connectMetaMessaging()}>{enabledMetaMessagingAccounts.length ? "Renew or add inbox access" : "Enable private messages"}<ArrowRight size={16} /></button>
         </div>
-      </article>
+      </article></details>
       {instagramFacebookSelectionBusy && !instagramFacebookSelection ? <div className="facebook-page-selection panel" role="status"><RefreshCw className="analytics-spin" size={22} /><div><strong>Loading eligible Instagram accounts…</strong><p>Only account identity is shown here. Access tokens stay encrypted on the server.</p></div></div> : instagramFacebookSelection ? <form className="facebook-page-selection panel" onSubmit={finishInstagramFacebookSelection}>
         <div className="facebook-selection-head"><span><Camera size={20} /></span><div><p className="eyebrow">CHOOSE INSTAGRAM ACCOUNTS</p><h2>Select professional accounts for this brand</h2><p>Each selected account stays linked to this one Meta authorization. Nothing is connected until you confirm.</p></div></div>
         <div className="facebook-page-options">{instagramFacebookSelection.accounts.map((account) => <label key={account.externalAccountId}><input type="checkbox" checked={selectedInstagramAccountIds.includes(account.externalAccountId)} onChange={() => setSelectedInstagramAccountIds((current) => current.includes(account.externalAccountId) ? current.filter((id) => id !== account.externalAccountId) : [...current, account.externalAccountId])} /><span><strong>{account.displayName}</strong><small>@{account.username} · via {account.pageName}</small></span></label>)}</div>
@@ -650,13 +655,15 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
         {facebookSelection.pages.length === 0 ? <div className="channel-off-state"><AlertTriangle size={17} /><div><strong>No eligible Pages found</strong><p>Ask a Page admin to grant access, then start the Meta connection again.</p></div></div> : null}
         <div className="facebook-selection-actions"><p>{facebookSelection.expiresAt ? `Selection expires ${new Date(facebookSelection.expiresAt).toLocaleString()}.` : "This selection is temporary."} No token or secret is shown in the browser.</p><button className="new-button" disabled={facebookSelectionBusy || selectedFacebookPageIds.length === 0}>{facebookSelectionBusy ? "Connecting…" : `Connect ${selectedFacebookPageIds.length || "selected"} Page${selectedFacebookPageIds.length === 1 ? "" : "s"}`}</button></div>
       </form> : null}
+      {canManageChannels ? <details className={channelStyles.advanced}><summary>Advanced account setup</summary><p>For testing or accounts managed outside OriginPost.</p><button className="secondary-button" onClick={() => setAccountFormOpen((value) => !value)}><Plus size={15} /> Add test account</button>
       {accountFormOpen ? <form className="account-form panel" onSubmit={createAccount}>
         <div className="account-form-intro"><div><strong>Add a test or externally managed account</strong><p>This advanced path accepts only a protected secret reference. Never paste an access token.</p></div><ShieldCheck size={22} /></div>
         <div><label>Network<select name="platform" defaultValue="instagram"><option value="instagram">Instagram</option><option value="facebook">Facebook Page</option><option value="youtube">YouTube Shorts</option></select></label><label>Account name<input name="displayName" required maxLength={100} placeholder="Main newsroom account" /></label></div>
         <div><label>Provider account ID<input name="externalAccountId" required maxLength={180} placeholder="ID from the provider" /></label><label>Protected credential reference<input name="credentialRef" maxLength={240} placeholder="env:INSTAGRAM_MAIN_CREDENTIAL" pattern="(env|vault|secret):[A-Za-z0-9._:/-]+" /></label></div>
         <div><label>Access expiry<input name="expiresAt" type="datetime-local" /></label><label className="account-check"><input name="permissionsGranted" type="checkbox" /> Provider granted profile and publishing access</label></div>
         <div className="media-actions"><p>You can save an incomplete setup. Connection Doctor will show what is missing.</p><button className="new-button"><Cable size={15} /> Save and check</button></div>
-      </form> : null}
+      </form> : null}</details> : null}
+      <details className={channelStyles.advanced}><summary>Account permissions and authorizations</summary>
       <div className="module-list panel channel-accounts" aria-label="Provider access">
         <div className="module-list-head"><div><h2>Provider access</h2><p>One authorization can safely own several publishing accounts. Provider authorizations and credentials are never shared between workspaces.</p></div><span>{loading ? "Loading…" : `${providerGrants.length} authorization${providerGrants.length === 1 ? "" : "s"}`}</span></div>
         {providerGrants.map((grant) => {
@@ -670,7 +677,8 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
         })}
         {!loading && providerGrants.length === 0 ? <div className="module-empty"><ShieldCheck size={24} /><strong>No managed provider authorizations yet</strong><p>New OAuth connections appear here. Existing test or legacy accounts remain visible under Account health.</p></div> : null}
       </div>
-      <PostingQueueProfilePanel auth={auth} workspaceId={workspaceId} brandId={activeBrandId} accounts={connectedAccounts.map(({ id, platform, displayName, status }) => ({ id, platform, displayName, status }))} />
+      </details>
+      {connectedAccounts.length > 0 ? <details className={channelStyles.advanced}><summary>Posting schedule defaults</summary><PostingQueueProfilePanel auth={auth} workspaceId={workspaceId} brandId={activeBrandId} accounts={connectedAccounts.map(({ id, platform, displayName, status }) => ({ id, platform, displayName, status }))} /></details> : null}
       <div className="module-list panel channel-accounts">
         <div className="module-list-head"><div><h2>Account health</h2><p>Identity, publishing access, expiry, and the exact step that needs attention.</p></div><span>{loading ? "Loading…" : `${connectedAccounts.length} account${connectedAccounts.length === 1 ? "" : "s"}`}</span></div>
         {connectedAccounts.map((account) => {
@@ -684,12 +692,13 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
         })}
         {!loading && connectedAccounts.length === 0 ? <div className="module-empty"><Cable size={24} /><strong>No publishing accounts yet</strong><p>Use one of the connect cards above. OriginPost will check the account before any post is queued.</p></div> : null}
       </div>
+      <details className={channelStyles.advanced}><summary>Technical connection details</summary>
       <div className="module-list-head connector-section-head"><div><h2>Installed connectors</h2><p>Safe adapter boundaries for each network.</p></div></div>
       <div className="connector-grid">{connectors.map((connector) => <article className="connector-card panel" key={connector.id}>
       <div className="connector-title"><span><Cable size={18} /></span><div><h2>{connector.name}</h2><p>{connector.platform} connector</p></div><em>{connector.apiMode}</em></div>
       <div className="capability-list"><p><Check size={14} /> {connector.capabilities.formats.join(", ")}</p><p className={!connector.capabilities.analytics ? "muted-capability" : ""}><Check size={14} /> {connector.capabilities.analytics ? "Analytics available" : "Analytics not available"}</p><p className={!connector.capabilities.tokenRefresh ? "muted-capability" : ""}><Check size={14} /> Token refresh</p></div>
       <div className="connector-foot"><span>{connector.limits.maxMedia} media max</span><span>{connector.limits.captionCharacters.toLocaleString()} caption characters</span></div>
-    </article>)}</div></> : null}
+    </article>)}</div></details></> : null}
 
     {module === "plugins" ? <>
       {auth.memberships.find(member => member.workspaceId === workspaceId)?.role === "owner"
@@ -792,7 +801,7 @@ function MediaLibrary({ auth, workspaceId, brandId }: { auth: AuthView; workspac
   const [folderFormOpen, setFolderFormOpen] = useState(false);
   const [pendingFolderDelete, setPendingFolderDelete] = useState("");
   const [error, setError] = useState("");
-  const membership = auth.memberships.find((entry) => entry.workspaceId === workspaceId) ?? auth.memberships[0];
+  const membership = auth.memberships.find((entry) => entry.workspaceId === workspaceId);
   const canManage = membership?.role === "owner" || membership?.role === "manager";
   const canUpload = canManage || membership?.role === "creator";
 

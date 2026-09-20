@@ -972,3 +972,17 @@ button.safety-card:hover { border-color: #83a391; background: #ffffff12; }
 .channel-intro p { margin: 8px 0 0; max-width: 850px; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .channel-intro a { color: var(--teal); }
 .module-page > .media-summary-grid { margin-top: 18px; }
+
+/* Keep account setup focused without changing other workspace tools. */
+.social-accounts-page { width: 100%; max-width: 1180px; margin-inline: auto; box-sizing: border-box; }
+.social-accounts-page .channel-intro { padding: 16px 20px; }
+.social-accounts-page .channel-connect-card { min-height: 0; padding: 20px; gap: 8px; }
+.social-accounts-page .channel-connect-card::after { display: none; }
+.social-accounts-page .channel-connect-head { gap: 8px; flex-wrap: wrap; }
+.social-accounts-page .channel-platform-icon { width: 36px; height: 36px; border-radius: 10px; }
+.social-accounts-page .channel-connect-copy { margin: 12px 0 8px; }
+.social-accounts-page .channel-connect-copy h2 { font-size: 19px; }
+.social-accounts-page .channel-connect-meta { flex-wrap: wrap; }
+.social-accounts-page details > summary { cursor: pointer; font-weight: 650; padding-block: 10px; }
+.social-accounts-page details[open] > summary { margin-bottom: 10px; }
+.social-accounts-page .channel-connect-button { text-decoration: none; box-sizing: border-box; }

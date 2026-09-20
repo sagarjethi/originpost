@@ -123,25 +123,23 @@ function versionHeaders(item: ContentItem): Record<string, string> {
 }
 
 const primaryNavGroups = [
-  { label: "Work", items: [
+  { label: "Publish", items: [
     { label: "Home", icon: DashboardCircleIcon },
     { label: "Agent", icon: ActivitySparkIcon },
-    { label: "Boards", icon: SquareKanbanIcon },
     { label: "Content", icon: ContentWritingIcon },
-  ] },
-  { label: "Plan", items: [
     { label: "Calendar", icon: Calendar03Icon },
-    { label: "Engagement", icon: Message02Icon },
+    { label: "Channels", icon: Plug02Icon },
   ] },
-  { label: "Outcomes", items: [
-    { label: "Analytics", icon: ChartBreakoutSquareIcon },
+  { label: "Create", items: [
     { label: "Library", icon: FolderLibraryIcon },
     { label: "Audio", icon: ActivitySparkIcon },
   ] },
 ];
 
 const secondaryNav = [
-  { label: "Setup", icon: Building02Icon },
+  { label: "Boards", icon: SquareKanbanIcon },
+  { label: "Engagement", icon: Message02Icon },
+  { label: "Analytics", icon: ChartBreakoutSquareIcon },
   { label: "Research", icon: GlobalSearchIcon },
   { label: "Signals", icon: ActivitySparkIcon },
   { label: "Reuse", icon: Recycle03Icon },
@@ -149,11 +147,11 @@ const secondaryNav = [
   { label: "Batches", icon: StackStarIcon },
   { label: "Proof", icon: HugeShieldCheckIcon },
   { label: "Automations", icon: HugeZapIcon },
-  { label: "Organizations", icon: Building02Icon },
-  { label: "Channels", icon: Plug02Icon },
   { label: "Agent plugins", icon: PackageOpenIcon },
   { label: "Developer API", icon: ApiIcon },
 ];
+
+const navigationLabel = (label: string) => (({ Channels: "Social accounts", Content: "Posts", Agent: "Create with AI", Proof: "Published posts", Organizations: "Team & projects", Setup: "App setup", Library: "Media library" } as Record<string, string>)[label] ?? label);
 
 const statusLabel: Record<Status, string> = {
   inbox: "Inbox",
@@ -223,11 +221,12 @@ export function OriginPostApp() {
   function applyWorkspaceLocation(label: string, nextFilter: WorkspaceContentFilter, itemId?: string) {
     const route = workspaceRouteForNav(label) ?? workspaceRouteForNav("Home")!;
     setActiveNav(route.nav);
+    setMoreNavOpen(secondaryNav.some(item => item.label === route.nav));
     setActiveModule(route.module as WorkspaceModule | null);
     setFilter(nextFilter);
     if (itemId) setSelectedId(itemId);
     if (route.nav === "Creative Studio") setCreativeContentItemId(itemId ?? "");
-    document.title = route.nav === "Home" ? "OriginPost — From source to published proof" : `${route.nav} — OriginPost`;
+    document.title = route.nav === "Home" ? "OriginPost — From source to published proof" : `${navigationLabel(route.nav)} — OriginPost`;
   }
 
   function navigate(label: string, options: { filter?: WorkspaceContentFilter; itemId?: string; replace?: boolean } = {}) {
@@ -443,7 +442,7 @@ export function OriginPostApp() {
     })
     .slice(0, 5);
   const nextUp = homeQueue[0];
-  const showSecondaryNav = moreNavOpen || secondaryNav.some((item) => item.label === activeNav);
+  const showSecondaryNav = moreNavOpen;
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setLoginBusy(true); setLoginError("");
@@ -673,26 +672,26 @@ export function OriginPostApp() {
 
         <nav className="main-nav" aria-label="Primary navigation">
           {primaryNavGroups.map((group) => <div className="nav-cluster" key={group.label}>
-            <div className="nav-section-label"><span>{group.label}</span><small>{String(group.items.length).padStart(2, "0")}</small></div>
+            <div className="nav-section-label"><span>{group.label}</span></div>
             {group.items.map(({ label, icon }) => {
               const badge = label === "Engagement" ? engagementUnreadCount : 0;
               return <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}>
-                <span className="nav-glyph"><HugeiconsIcon icon={icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">{label}</span>
+                <span className="nav-glyph"><HugeiconsIcon icon={icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">{navigationLabel(label)}</span>
                 {badge ? <em>{badge > 99 ? "99+" : badge}</em> : null}
               </a>;
             })}
           </div>)}
           <div className="nav-section-rule" />
-          <button className="nav-item nav-more" type="button" onClick={() => setMoreNavOpen((open) => !open)} aria-expanded={showSecondaryNav} aria-controls="secondary-navigation"><span className="nav-glyph"><HugeiconsIcon icon={WorkflowSquare06Icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">Studio &amp; system</span><ChevronDown className={showSecondaryNav ? "nav-chevron open" : "nav-chevron"} size={15} /></button>
+          <button className="nav-item nav-more" type="button" onClick={() => setMoreNavOpen((open) => !open)} aria-expanded={showSecondaryNav} aria-controls="secondary-navigation"><span className="nav-glyph"><HugeiconsIcon icon={WorkflowSquare06Icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">More tools</span><ChevronDown className={showSecondaryNav ? "nav-chevron open" : "nav-chevron"} size={15} /></button>
           {showSecondaryNav ? <div id="secondary-navigation" className="secondary-navigation">
-            {secondaryNav.filter(item => item.label !== "Setup" || auth.memberships.some(member => member.workspaceId === activeWorkspaceId && member.role === "owner")).map(({ label, icon }) => <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={icon} size={17} strokeWidth={1.5} /></span><span className="nav-label">{label}</span></a>)}
+            {secondaryNav.map(({ label, icon }) => <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={icon} size={17} strokeWidth={1.5} /></span><span className="nav-label">{navigationLabel(label)}</span>{label === "Engagement" && engagementUnreadCount > 0 ? <em>{engagementUnreadCount > 99 ? "99+" : engagementUnreadCount}</em> : null}</a>)}
           </div> : null}
         </nav>
 
         <div className="sidebar-bottom">
-          <button type="button" className="safety-card" onClick={() => navigate("Channels")}><span><ShieldCheck size={18} /> Publishing channels</span><p>Check connections and availability</p></button>
+          {activeMembership?.role === "owner" ? <a href="/setup" className={activeNav === "Setup" ? "nav-item active" : "nav-item"} aria-current={activeNav === "Setup" ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={Building02Icon} size={18} strokeWidth={1.55} /></span><span className="nav-label">App setup</span></a> : null}
           <a href={workspaceHref("Help")} className={activeNav === "Help" ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate("Help"); }} aria-current={activeNav === "Help" ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={HugeHelpCircleIcon} size={18} strokeWidth={1.55} /></span><span className="nav-label">Help</span></a>
-          <a href={workspaceHref("Organizations")} className="nav-item" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate("Organizations"); }}><span className="nav-glyph"><HugeiconsIcon icon={Building02Icon} size={18} strokeWidth={1.55} /></span><span className="nav-label">Workspace</span></a>
+          <a href={workspaceHref("Organizations")} className="nav-item" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate("Organizations"); }}><span className="nav-glyph"><HugeiconsIcon icon={Building02Icon} size={18} strokeWidth={1.55} /></span><span className="nav-label">Team &amp; projects</span></a>
           {auth.mode === "sessions" ? <button className="user-row" onClick={() => void signOut()} aria-label={`Sign out ${auth.user.displayName}`}><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"} · Sign out</small></div><HugeiconsIcon icon={MoreHorizontalCircle01Icon} size={17} strokeWidth={1.5} /></button> : <div className="user-row user-row-static"><span>{auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{auth.user.displayName}</strong><small>{activeMembership?.role ?? "owner"}</small></div></div>}
         </div>
       </aside>
@@ -702,8 +701,8 @@ export function OriginPostApp() {
       <main id="main-content" tabIndex={-1} inert={composerOpen || (mobileSidebar && sidebarOpen)} className={`main-area ${activeNav === "Agent" ? "agent-main-area" : ""}`}>
         <header className="topbar">
           <button ref={menuButtonRef} className="icon-button mobile-only" onClick={() => setSidebarOpen(true)} aria-label="Open menu" aria-expanded={sidebarOpen}><Menu size={20} /></button>
-          {!showContentSearch ? <div className="agent-topbar-title"><span>Workspace</span><span aria-hidden="true">/</span><strong>{activeNav}</strong></div> : <div className="search-box"><Search size={17} /><input ref={searchInputRef} aria-label="Search content, sources, or proof" placeholder="Search content, sources, or proof…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if(event.key==="Enter") navigate("Content"); if(event.key==="Escape")setSearchQuery(""); }} /><kbd>⌘ K</kbd></div>}
-          {activeNav !== "Agent" && <div className={`connection-pill ${connection}`}><span />{connection === "api" ? "Connected" : connection === "error" ? "Offline" : "Connecting"}</div>}
+          {!showContentSearch ? <div className="agent-topbar-title"><span>Workspace</span><span aria-hidden="true">/</span><strong>{navigationLabel(activeNav)}</strong></div> : <div className="search-box"><Search size={17} /><input ref={searchInputRef} aria-label="Search content, sources, or proof" placeholder="Search content, sources, or proof…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if(event.key==="Enter") navigate("Content"); if(event.key==="Escape")setSearchQuery(""); }} /><kbd>⌘ K</kbd></div>}
+          {activeNav !== "Agent" && <div className={`connection-pill ${connection}`}><span />{connection === "api" ? "Workspace online" : connection === "error" ? "Workspace offline" : "Loading workspace"}</div>}
           <button className="topbar-help" onClick={() => navigate("Help")}><HelpCircle size={17} /> Help</button>
           <NotificationActionCenter auth={auth} workspaceId={activeWorkspaceId} onNavigate={(notification) => void openNotificationAction(notification)} />
           {activeNav !== "Agent" && <button aria-label="New content" className="new-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /><span className="topbar-create-label">New content</span></button>}
@@ -717,8 +716,8 @@ export function OriginPostApp() {
         </section> : <>
         {activeNav === "Home" ? <section className="hero-shell home-hero">
           <div className="page-head">
-            <div><p className="eyebrow">TODAY IN ORIGINPOST</p><h1>Source to published proof.</h1><p>Capture an idea or signal, verify the evidence, create the post, get approval, publish, and keep the real result connected.</p></div>
-            <div className="head-actions"><button className="hero-secondary" onClick={() => navigate("Agent")}><Sparkles size={17} /> Ask Origin</button><button className="hero-secondary" onClick={() => navigate("Help")}><HelpCircle size={17} /> See how it works</button><button className="hero-primary" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /> Add content</button></div>
+            <div><p className="eyebrow">TODAY IN ORIGINPOST</p><h1>Your publishing workspace.</h1><p>Create a post, review it with your team, and publish to your connected accounts.</p></div>
+            <div className="head-actions"><button className="hero-secondary" onClick={() => navigate("Agent")}><Sparkles size={17} /> Create with AI</button><button className="hero-primary" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /> Add content</button></div>
           </div>
           <div className="metrics-grid">
             <button className="metric-card" onClick={() => openContentFilter("new")}><span className="metric-icon coral"><Inbox size={19} /></span><div><small>New items</small><strong>{items.filter((item) => item.status === "inbox" || item.status === "researching").length}</strong></div></button>
@@ -727,11 +726,11 @@ export function OriginPostApp() {
             <button className="metric-card" onClick={() => openContentFilter("scheduled")}><span className="metric-icon blue"><CalendarDays size={19} /></span><div><small>Scheduled</small><strong>{scheduledCount}</strong></div></button>
             <button className="metric-card" onClick={() => navigate("Proof")}><span className="metric-icon green"><ShieldCheck size={19} /></span><div><small>Published</small><strong>{items.reduce((sum, item) => sum + item.proofs.length, 0)}</strong></div></button>
           </div>
-        </section> : <header className="content-page-head"><div><p className="eyebrow">{activeNav.toUpperCase()}</p><h1>{activeNav === "Research" ? "Check the facts behind each story" : activeNav === "Proof" ? "See what actually went live" : "Find and move work forward"}</h1><p>{activeNav === "Research" ? "Review source evidence and research runs before creating a post." : activeNav === "Proof" ? "Published receipts and live links, attached to the exact content item." : "Choose one item, see its evidence and exact status, then continue in Create."}</p></div><button className="secondary-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={16} /> Add content</button></header>}
+        </section> : <header className="content-page-head"><div><p className="eyebrow">{activeNav.toUpperCase()}</p><h1>{activeNav === "Research" ? "Check the facts behind each story" : activeNav === "Proof" ? "See what actually went live" : "Your posts"}</h1><p>{activeNav === "Research" ? "Review source evidence and research runs before creating a post." : activeNav === "Proof" ? "Published receipts and live links, attached to the exact content item." : "Open a post to edit, review, or choose where to publish it."}</p></div><button className="secondary-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={16} /> Add content</button></header>}
 
         <section className={`workspace-grid ${activeNav === "Home" ? "home-workspace" : ""}`}>
           <div className="panel feed-panel">
-            <div className="panel-title"><div><h2>{activeNav === "Home" ? "Your queue" : activeNav === "Research" ? "Source research" : activeNav === "Proof" ? "Published proof" : "Content pipeline"}</h2><p>{activeNav === "Home" ? "Five highest-priority items, ranked by what needs attention." : "Choose an item to see its sources, status, and next step."}</p></div>{activeNav === "Home" ? <button className="secondary-button" onClick={() => navigate("Content")}>View all content</button> : <div className="tabs" aria-label="Filter content pipeline"><button className={filter === "all" ? "selected" : ""} onClick={() => openContentFilter("all")} aria-pressed={filter === "all"}>All</button><button className={filter === "new" ? "selected" : ""} onClick={() => openContentFilter("new")} aria-pressed={filter === "new"}>New</button><button className={filter === "review" ? "selected" : ""} onClick={() => openContentFilter("review")} aria-pressed={filter === "review"}>Review</button><button className={filter === "action" ? "selected" : ""} onClick={() => openContentFilter("action")} aria-pressed={filter === "action"}>Action</button><button className={filter === "scheduled" ? "selected" : ""} onClick={() => openContentFilter("scheduled")} aria-pressed={filter === "scheduled"}>Scheduled</button></div>}</div>
+            <div className="panel-title"><div><h2>{activeNav === "Home" ? "Your queue" : activeNav === "Research" ? "Source research" : activeNav === "Proof" ? "Published proof" : "Posts"}</h2><p>{activeNav === "Home" ? "Five highest-priority items, ranked by what needs attention." : "Choose an item to see its sources, status, and next step."}</p></div>{activeNav === "Home" ? <button className="secondary-button" onClick={() => navigate("Content")}>View all posts</button> : <div className="tabs" aria-label="Filter content pipeline"><button className={filter === "all" ? "selected" : ""} onClick={() => openContentFilter("all")} aria-pressed={filter === "all"}>All</button><button className={filter === "new" ? "selected" : ""} onClick={() => openContentFilter("new")} aria-pressed={filter === "new"}>New</button><button className={filter === "review" ? "selected" : ""} onClick={() => openContentFilter("review")} aria-pressed={filter === "review"}>Review</button><button className={filter === "action" ? "selected" : ""} onClick={() => openContentFilter("action")} aria-pressed={filter === "action"}>Action</button><button className={filter === "scheduled" ? "selected" : ""} onClick={() => openContentFilter("scheduled")} aria-pressed={filter === "scheduled"}>Scheduled</button></div>}</div>
             <div className="content-list">
               {(activeNav === "Home" ? homeQueue : visible).map((item) => (
                 <button key={item.id} className={`content-row ${activeNav !== "Home" && selected?.id === item.id ? "selected-row" : ""}`} onClick={() => navigate(["Research", "Proof"].includes(activeNav) ? activeNav : "Content", { filter, itemId: item.id })} aria-pressed={activeNav !== "Home" && selected?.id === item.id}>
@@ -743,13 +742,13 @@ export function OriginPostApp() {
                   <MoreHorizontal size={18} />
                 </button>
               ))}
-              {(activeNav === "Home" ? homeQueue : visible).length === 0 ? <div className="empty-state"><Check size={22} /><strong>{activeNav === "Home" ? "You're caught up" : "Nothing matches this view"}</strong><p>{activeNav === "Home" ? "No active work needs attention. Add content when you are ready." : "Change the filter or add content to the inbox."}</p></div> : null}
+              {(activeNav === "Home" ? homeQueue : visible).length === 0 ? <div className="empty-state"><Check size={22} /><strong>{activeNav === "Home" ? (items.length ? "You're caught up" : "Start your first post") : "Nothing matches this view"}</strong><p>{activeNav === "Home" ? (items.length ? "No posts need attention right now." : "Connect a social account, create your draft, then review it before publishing.") : "Change the filter or add a post."}</p>{activeNav === "Home" && !items.length ? <a className="secondary-button" href="/channels">Connect social accounts</a> : null}</div> : null}
             </div>
           </div>
 
           {activeNav === "Home" ? <aside className="home-next panel">
             <p className="eyebrow">DO THIS NEXT</p>
-            {nextUp ? <><span className={`type-icon ${nextUp.status}`}>{nextUp.status === "review" ? <CircleCheck size={19} /> : nextUp.status === "action_required" || nextUp.status === "failed" ? <AlertCircle size={19} /> : <Newspaper size={19} />}</span><h2>{nextUp.title}</h2><p>{nextUp.status === "action_required" || nextUp.status === "failed" ? "This item may need recovery before other work continues." : nextUp.status === "review" ? "The exact draft is waiting for a human decision." : "Continue the next incomplete step in this item's source-to-proof journey."}</p><button className="primary-wide" onClick={() => navigate("Content", { itemId: nextUp.id })}>Open next action <Sparkles size={16} /></button></> : <><Check size={23} /><h2>No action is due</h2><p>Your active queue is clear.</p><button className="primary-wide" onClick={() => { setComposerOpen(true); setComposerError(""); }}>Add content <Plus size={16} /></button></>}
+            {nextUp ? <><span className={`type-icon ${nextUp.status}`}>{nextUp.status === "review" ? <CircleCheck size={19} /> : nextUp.status === "action_required" || nextUp.status === "failed" ? <AlertCircle size={19} /> : <Newspaper size={19} />}</span><h2>{nextUp.title}</h2><p>{nextUp.status === "action_required" || nextUp.status === "failed" ? "This item may need recovery before other work continues." : nextUp.status === "review" ? "The exact draft is waiting for a human decision." : "Continue the next incomplete step in this item's source-to-proof journey."}</p><button className="primary-wide" onClick={() => navigate("Content", { itemId: nextUp.id })}>Open next action <Sparkles size={16} /></button></> : <><Check size={23} /><h2>{items.length ? "Ready for your next story" : "Create your draft"}</h2><p>Add a news link, write your own post, or use Create with AI. Nothing publishes until it is approved.</p><button className="primary-wide" onClick={() => { setComposerOpen(true); setComposerError(""); }}>Add content <Plus size={16} /></button></>}
           </aside> : <aside className="detail-panel panel">
             {selected ? <>
               <div className="detail-head"><div><p className="eyebrow">CONTENT ITEM</p><h2>{selected.title}</h2></div><button className="icon-button" disabled aria-label="More actions are not available yet" title="More actions are not available yet"><MoreHorizontal size={18} /></button></div>
