@@ -14,6 +14,30 @@ Self-hosted social content software: collect sources, create a post, review it, 
 
 ![Find sources, create, review, publish, and keep proof](docs/images/source-to-post.svg)
 
+## Guided server setup
+
+New installations can configure social applications and image generation in **Setup** instead of editing provider values in `.env`.
+
+```sh
+node scripts/install.mjs prepare
+node scripts/install.mjs start
+```
+
+The installer requires Docker Compose and Node.js. It generates private installation files, encryption keys and a first owner account, then starts a separate `originpost-installed` stack. It does not replace an existing installation. Read your sign-in details from the protected `.originpost-install/first-login.txt` file and open **http://127.0.0.1:3100/setup**. The initial API is on port 4100 and object storage on 61900; these ports listen only on loopback. Use an SSH tunnel for first setup on a remote server.
+
+Setup guides the installation owner through public addresses, password and team access, provider applications, connected accounts and the first reviewed post. Provider secrets are write-only in the UI and saved encrypted. Ordinary workspace owners and creators cannot change deployment settings. Meta/Google registration and any required provider approvals still happen with those providers.
+
+Saved server settings require a coordinated restart. When no generation or publication is in progress, run:
+
+```sh
+node scripts/install.mjs apply
+node scripts/install.mjs status
+```
+
+The application reports pending changes until the API reloads its saved version. Check worker health separately; this is not a zero-downtime rollout or a live publishing test. Keep the generated directory private and back it up securely with the database; losing its encryption keys prevents credential recovery. **Never commit it or upload it in support logs.**
+
+Read the [guided installation guide](docs/installation.md) for HTTPS, account connections, access roles and the remaining release requirements. The existing developer setup below remains available.
+
 ## 1. Install
 
 Requirements: **Node.js 22.12+ (Node 24 LTS recommended), Docker, and pnpm 10.28.2**. Run from the repository root:

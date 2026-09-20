@@ -39,13 +39,17 @@ export class AuthService implements OnModuleInit {
     const email = this.config.get<string>("BOOTSTRAP_ADMIN_EMAIL")!.trim().toLowerCase();
     const existing = await this.infrastructure.authRepository.findUserByEmail(email);
     if (existing) {
-      if (existing.status !== "active" || !await this.infrastructure.authRepository.getMembership("default", existing.id)) {
+      const membership = await this.infrastructure.authRepository.getMembership("default", existing.id);
+      const installationOwner = this.config.get<string>("INSTALLATION_OWNER_ID");
+      if (existing.status !== "active" || membership?.role !== "owner" || (installationOwner && existing.id !== installationOwner)) {
         throw new Error("BOOTSTRAP_ADMIN_EMAIL exists but is not an active owner of the default workspace.");
       }
       return;
     }
     const now = new Date().toISOString();
-    const id = `user_${randomUUID()}`;
+    const installationOwner = this.config.get<string>("INSTALLATION_OWNER_ID");
+    if (installationOwner && !/^user_[a-f0-9-]{36}$/i.test(installationOwner)) throw new Error("The installation owner identity is invalid.");
+    const id = installationOwner ?? `user_${randomUUID()}`;
     const displayName = this.config.get<string>("BOOTSTRAP_ADMIN_NAME")?.trim() || "OriginPost Owner";
     const passwordHash = await this.passwords.hash(this.config.get<string>("BOOTSTRAP_ADMIN_PASSWORD")!);
     await this.infrastructure.authRepository.createUserWithMembership({

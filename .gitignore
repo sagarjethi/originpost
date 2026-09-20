@@ -34,3 +34,4 @@ secrets.json
 cookies.json
 auth.json
 .originpost-setup.json
+.originpost-install/

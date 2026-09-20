@@ -16,7 +16,7 @@
     "db:migrate": "pnpm --filter @originpost/db migrate",
     "ops:backup": "node --env-file-if-exists=.env apps/api/scripts/backup-compose.mjs",
     "ops:restore-drill": "node apps/api/scripts/restore-drill.mjs",
-    "ops:check": "node --check apps/api/scripts/backup-compose.mjs && node --check apps/api/scripts/restore-drill.mjs && node --check scripts/runtime-media-malware-smoke.mjs",
+    "ops:check": "node --check apps/api/scripts/backup-compose.mjs && node --check apps/api/scripts/restore-drill.mjs && node --check scripts/runtime-media-malware-smoke.mjs && node --check scripts/install.mjs && node --test scripts/install.test.mjs",
     "check": "pnpm typecheck && pnpm ops:check && pnpm test && pnpm build",
     "release:audit": "node scripts/public-release-audit.mjs",
     "security:audit": "pnpm audit --audit-level moderate",
@@ -25,7 +25,8 @@
     "local:codex": "node scripts/local-codex/start.mjs",
     "test:local-codex": "node --test scripts/local-codex/runtime.test.mjs",
     "security:hooks": "git config core.hooksPath .githooks",
-    "test:secret-guard": "node --test scripts/secret-guard.test.mjs"
+    "test:secret-guard": "node --test scripts/secret-guard.test.mjs",
+    "test:installer": "node --test scripts/install.test.mjs"
   },
   "devDependencies": {
     "turbo": "2.10.12",

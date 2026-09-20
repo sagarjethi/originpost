@@ -46,8 +46,8 @@ export class ChannelOAuthService {
   private testMode(): boolean { return this.config.get<string>("NODE_ENV") === "test" && this.config.get<string>("OAUTH_TEST_MODE") === "true"; }
   private facebookAnalyticsRequested(): boolean { return this.config.get<string>("FACEBOOK_ANALYTICS_CONNECTOR_MODE") === "official"; }
   private facebookScopes(): string[] { return ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", ...(this.facebookAnalyticsRequested() ? ["read_insights"] : [])]; }
-  configured(): boolean { return this.vault.configured() && (this.testMode() || Boolean(this.config.get<string>("META_APP_ID") && this.config.get<string>("META_APP_SECRET"))); }
-  facebookConfigured(): boolean { return this.configured(); }
+  configured(): boolean { return !this.config.get<string>("INSTALLATION_SETTINGS_PATH") && this.facebookConfigured(); }
+  facebookConfigured(): boolean { return this.vault.configured() && (this.testMode() || Boolean(this.config.get<string>("META_APP_ID") && this.config.get<string>("META_APP_SECRET"))); }
   instagramFacebookConfigured(): boolean { return this.testMode() || Boolean(this.vault.configured()&&this.config.get<string>("META_APP_ID")&&this.config.get<string>("META_APP_SECRET")&&this.config.get<string>("META_GRAPH_API_VERSION")); }
   metaMessagingConfigured(): boolean { return this.config.get<string>("PRIVATE_MESSAGE_CONNECTOR_MODE") === "official" && Boolean(this.vault.configured() && this.config.get<string>("META_APP_ID") && this.config.get<string>("META_APP_SECRET") && this.config.get<string>("META_GRAPH_API_VERSION") && this.metaMessagingAppReviewReference()); }
   youtubeConfigured(): boolean { return this.vault.configured() && (this.testMode() || Boolean(this.config.get<string>("GOOGLE_CLIENT_ID") && this.config.get<string>("GOOGLE_CLIENT_SECRET"))); }
@@ -259,6 +259,7 @@ export class ChannelOAuthService {
 
   async startInstagram(workspaceId: string, requestedBrandId: string | undefined, actor: Actor) {
     if (!can(actor.role, "workspace:manage")) throw new ForbiddenException("Only workspace owners can connect Instagram.");
+    if (this.config.get<string>("INSTALLATION_SETTINGS_PATH")) throw new ConflictException("Connect Instagram through Facebook Login. Separate Instagram app credentials are not supported by guided installation yet.");
     if (!this.configured()) throw new ConflictException("Instagram OAuth is not configured. Add the Meta app settings and credential encryption key.");
     const brandId = await resolveActiveBrand(this.infrastructure.organizationRepository, workspaceId, requestedBrandId);
     const rawState = randomBytes(32).toString("base64url");
@@ -275,6 +276,7 @@ export class ChannelOAuthService {
   }
 
   async callbackInstagram(input: { state: string; code?: string; error?: string; errorDescription?: string }) {
+    if (this.config.get<string>("INSTALLATION_SETTINGS_PATH")) throw new ConflictException("Connect Instagram through Facebook Login. Separate Instagram app credentials are not supported by guided installation yet.");
     const consumedAt = new Date().toISOString();
     const state = await this.infrastructure.oauthRepository.consumeState(hash(input.state), "instagram", consumedAt);
     if (!state) throw new BadRequestException("This Instagram connection request is invalid, expired, or already used.");

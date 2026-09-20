@@ -8,6 +8,8 @@ describe("workspace routes", () => {
     expect(workspaceRouteForPath("/calendar")?.nav).toBe("Calendar");
     expect(workspacePageSlugs).toContain("creative-studio");
     expect(workspacePageSlugs).toContain("agent");
+    expect(workspacePageSlugs).toContain("setup");
+    expect(resolveWorkspaceLocation("/setup", "").route.nav).toBe("Setup");
     expect(resolveWorkspaceLocation("/agent", "?conversation=local-123").route.nav).toBe("Agent");
   });
 
