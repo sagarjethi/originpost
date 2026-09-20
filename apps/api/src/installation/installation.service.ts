@@ -36,12 +36,13 @@ export class InstallationService {
     const patch: Record<string,string> = {};
     for (const [name,raw] of Object.entries(input.values)) {
       if (name === 'AUTH_COOKIE_SECURE' || !(installationSettingKeys as readonly string[]).includes(name) || typeof raw !== 'string' || raw.length>4096 || /[\r\n\0]/u.test(raw)) throw new BadRequestException('An unsupported or invalid configuration field was supplied.');
-      const value=raw.trim();
+      let value=raw.trim();
       if ((installationSecretKeys as readonly string[]).includes(name) && !value) continue;
       if (['WEB_PUBLIC_URL','API_PUBLIC_URL','S3_PUBLIC_ENDPOINT','CORS_ORIGIN'].includes(name)) {
         let url: URL; try { url=new URL(value); } catch { throw new BadRequestException('Public addresses must be HTTPS origins.'); }
         const localHttp=url.protocol==='http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname);
         if((url.protocol!=='https:'&&!localHttp)||url.username||url.password||url.search||url.hash||url.pathname!=='/') throw new BadRequestException('Use an HTTPS origin or local loopback HTTP address without a path.');
+        value=url.origin;
       }
       if (name==='META_GRAPH_API_VERSION' && !/^v\d+\.\d+$/.test(value)) throw new BadRequestException('Meta API version must use vNN.N format.');
       if (name==='ALLOW_LIVE_PUBLISH' && !['true','false'].includes(value)) throw new BadRequestException('Publishing must be enabled or disabled explicitly.');

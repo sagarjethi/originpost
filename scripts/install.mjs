@@ -21,7 +21,10 @@ export function installationCompose(base, options) {
   for (const [name, service] of Object.entries(result.services)) {
     delete service.profiles;
     delete service.ports;
-    if (service.build) service.build.context = root;
+    if (service.build) {
+      service.build.context = root;
+      service.build.args = { ...service.build.args, ORIGINPOST_API_UPSTREAM: 'http://api:4000' };
+    }
     service.stop_grace_period = '2m';
     if (['api', 'worker'].includes(name)) {
       service.user = `${uid}:${gid}`;
@@ -106,7 +109,10 @@ async function run(command) {
     // Stop both consumers before loading a new configuration revision. Existing worker shutdown drains jobs.
     docker([...args, 'stop', '-t', '120', 'worker', 'api'], { stdio: 'inherit' });
     docker([...args, 'up', '-d', '--no-build', 'api', 'worker'], { stdio: 'inherit' });
-  } else docker([...args, 'up', '-d', '--build'], { stdio: 'inherit' });
+  } else {
+    for (const service of ['api', 'web', 'worker']) docker([...args, 'build', service], { stdio: 'inherit' });
+    docker([...args, 'up', '-d', '--no-build'], { stdio: 'inherit' });
+  }
   console.log('Open http://127.0.0.1:3100/setup to check setup. Starting a service does not prove provider readiness.');
 }
 

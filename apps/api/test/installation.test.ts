@@ -33,6 +33,12 @@ describe('installation settings security and startup application',()=>{
     const restarted=new InstallationService(new ConfigService(fresh));expect(restarted.get(owner()).restartRequired).toBe(false);
     expect(restarted.get(owner()).callbacks.instagram).toBe('https://api.example.test/v1/channels/oauth/instagram/callback');
   });
+  it('normalizes origins before selecting secure cookies and CORS',()=>{
+    const result=service.save(owner(),{version:0,values:{WEB_PUBLIC_URL:'HTTPS://EXAMPLE.TEST/',CORS_ORIGIN:'HTTPS://EXAMPLE.TEST/'}});
+    expect(result.values.WEB_PUBLIC_URL).toBe('https://example.test');
+    expect(result.values.CORS_ORIGIN).toBe('https://example.test');
+    expect(result.values.AUTH_COOKIE_SECURE).toBe('true');
+  });
   it('denies other owners, workspaces, creators, missing principals and disallowed networks',()=>{
     for(const patch of [{originpostUserId:'other'},{originpostWorkspaceId:'other'},{originpostActor:{id:'installer',name:'Creator',role:'creator'}},{originpostActor:undefined},{ip:'192.0.2.1'}]) {
       const actor={...owner(),...patch} as AuthenticatedRequest;expect(()=>service.get(actor)).toThrow('installation owner');expect(()=>service.save(actor,{version:0,values:{}})).toThrow('installation owner');
