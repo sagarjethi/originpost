@@ -31,7 +31,7 @@ RUN npx --yes playwright@1.63.0 install --with-deps chromium && chmod -R a+rX /m
 WORKDIR /app
 COPY --from=build /app /app
 USER node
-CMD ["node", "apps/worker/dist/worker.js"]
+CMD ["node", "apps/worker/dist/main.js"]
 
 FROM build AS web
 EXPOSE 3000

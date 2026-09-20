@@ -34,3 +34,5 @@ export * from "./postgres-telegram-receipt-repository.js";
 export * from "./private-conversation-crypto.js";
 export * from "./in-memory-private-conversation-repository.js";
 export * from "./postgres-private-conversation-repository.js";
+
+export * from "./installation-settings.js";

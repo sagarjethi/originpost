@@ -30,3 +30,4 @@ redis-data
 **/cookies.json
 **/auth.json
 .originpost-setup.json
+.originpost-install

@@ -10,6 +10,7 @@ export type WorkspaceRoute = {
 
 export const workspaceRoutes: readonly WorkspaceRoute[] = [
   { nav: "Home", path: "/", module: null, defaultFilter: "all" },
+  { nav: "Setup", path: "/setup", module: null, defaultFilter: "all" },
   { nav: "Agent", path: "/agent", module: null, defaultFilter: "all" },
   { nav: "Boards", path: "/boards", module: "boards", defaultFilter: "all" },
   { nav: "Content", path: "/content", module: null, defaultFilter: "all" },

@@ -9,7 +9,7 @@ export function privateGitPath(path) {
   return /(^|\/)\.env(?:\.|$)/i.test(name) && !/(^|\/)\.env\.example$/.test(name)
     || /(^|\/)(?:secrets?|credentials?|cookies?|sessions?|auth)\.(?:json|ya?ml|toml|txt)$/i.test(name)
     || /\.(?:pem|key|p12|pfx|keystore|sqlite3?|dump)$/i.test(name)
-    || /(^|\/)(?:data|uploads|postgres-data|minio-data|redis-data|\.ssh|\.aws|\.config)\//i.test(name);
+    || /(^|\/)(?:data|uploads|postgres-data|minio-data|redis-data|\.originpost-install|\.ssh|\.aws|\.config)\//i.test(name);
 }
 export function scan(mode, cwd = process.cwd()) {
   if (!['staged', 'history'].includes(mode)) throw new Error('Use secret-guard.mjs staged|history.');

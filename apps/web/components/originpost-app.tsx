@@ -62,6 +62,7 @@ import { NotificationActionCenter, type WorkspaceNotification } from "./notifica
 import { externalPostIdPlaceholder, liveUrlPlaceholder, platformBadge, platformLabel } from "./platform-ui";
 import { HelpCenter } from "./help/help-center";
 import { NewsPostWorkspace } from "./agent-chat/news-post-workspace";
+import { InstallationSettings } from "./onboarding/installation-settings";
 
 type Status = "inbox" | "researching" | "drafting" | "review" | "approved" | "scheduled" | "action_required" | "publishing" | "published" | "failed" | "archived";
 type ContentItem = {
@@ -140,6 +141,7 @@ const primaryNavGroups = [
 ];
 
 const secondaryNav = [
+  { label: "Setup", icon: Building02Icon },
   { label: "Research", icon: GlobalSearchIcon },
   { label: "Signals", icon: ActivitySparkIcon },
   { label: "Reuse", icon: Recycle03Icon },
@@ -683,7 +685,7 @@ export function OriginPostApp() {
           <div className="nav-section-rule" />
           <button className="nav-item nav-more" type="button" onClick={() => setMoreNavOpen((open) => !open)} aria-expanded={showSecondaryNav} aria-controls="secondary-navigation"><span className="nav-glyph"><HugeiconsIcon icon={WorkflowSquare06Icon} size={19} strokeWidth={1.55} /></span><span className="nav-label">Studio &amp; system</span><ChevronDown className={showSecondaryNav ? "nav-chevron open" : "nav-chevron"} size={15} /></button>
           {showSecondaryNav ? <div id="secondary-navigation" className="secondary-navigation">
-            {secondaryNav.map(({ label, icon }) => <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={icon} size={17} strokeWidth={1.5} /></span><span className="nav-label">{label}</span></a>)}
+            {secondaryNav.filter(item => item.label !== "Setup" || auth.memberships.some(member => member.workspaceId === activeWorkspaceId && member.role === "owner")).map(({ label, icon }) => <a href={workspaceHref(label)} key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(label); }} aria-current={activeNav === label ? "page" : undefined}><span className="nav-glyph"><HugeiconsIcon icon={icon} size={17} strokeWidth={1.5} /></span><span className="nav-label">{label}</span></a>)}
           </div> : null}
         </nav>
 
@@ -708,7 +710,7 @@ export function OriginPostApp() {
         </header>
 
         {workspaceError && <div className="workspace-error" role="alert"><AlertCircle size={18}/><p>{workspaceError}</p><button type="button" onClick={() => void refresh()}>Refresh</button></div>}
-        {activeNav === "Agent" ? <NewsPostWorkspace key={`${auth.user.id}:${activeWorkspaceId}:${activeBrandId}`} auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? ""} onNavigate={navigate} /> : activeModule ? <WorkspaceModules module={activeModule} auth={auth} workspaceId={activeWorkspaceId} activeBrandId={activeBrandId} brands={brands} {...(creativeContentItemId ? { creativeContentItemId } : {})} onOrganizationChanged={reloadOrganization} onEngagementUnreadChange={setEngagementUnreadCount} onOpenContent={(contentItemId) => void openContentItem(contentItemId)} /> : activeNav === "Calendar" ? <ContentCalendar auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? activeBrandId} items={items} loading={connection === "loading"} dataMode={connection} onChanged={() => refresh()} /> : activeNav === "Help" ? <HelpCenter onNavigate={navigate} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Create" ? <section className="studio-page">
+        {activeNav === "Setup" ? <InstallationSettings key={`${auth.user.id}:${activeWorkspaceId}`} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Agent" ? <NewsPostWorkspace key={`${auth.user.id}:${activeWorkspaceId}:${activeBrandId}`} auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? ""} onNavigate={navigate} /> : activeModule ? <WorkspaceModules module={activeModule} auth={auth} workspaceId={activeWorkspaceId} activeBrandId={activeBrandId} brands={brands} {...(creativeContentItemId ? { creativeContentItemId } : {})} onOrganizationChanged={reloadOrganization} onEngagementUnreadChange={setEngagementUnreadCount} onOpenContent={(contentItemId) => void openContentItem(contentItemId)} /> : activeNav === "Calendar" ? <ContentCalendar auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? activeBrandId} items={items} loading={connection === "loading"} dataMode={connection} onChanged={() => refresh()} /> : activeNav === "Help" ? <HelpCenter onNavigate={navigate} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Create" ? <section className="studio-page">
           <header className="content-page-head"><div><p className="eyebrow">CREATE</p><h1>Build the exact post</h1><p>Draft, review, prepare media, and schedule one selected Content Item without losing its evidence.</p></div><button className="secondary-button" onClick={() => navigate("Content")}><Inbox size={16} /> Choose another item</button></header>
           {selected ? <ContentStudio auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} item={selected} onChanged={() => refresh()} onOpenLibrary={() => navigate("Library")} onOpenChannels={() => navigate("Channels")} onOpenCreative={() => navigate("Creative Studio", { itemId: selected.id })} /> : <div className="panel empty-state"><WandSparkles size={23} /><strong>Choose a Content Item first</strong><p>Open Content or add a new item before creating a draft.</p></div>}
           {selected?.status === "approved" && youtubeDraft ? <section className="youtube-review-shell panel"><YouTubePublishReview auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} contentItemId={selected.id} contentVersion={selected.version} draft={youtubeDraft} fallbackTitle={selected.title} onScheduled={() => refresh()} /></section> : null}

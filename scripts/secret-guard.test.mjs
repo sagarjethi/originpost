@@ -10,7 +10,7 @@ import { privateGitPath } from './secret-guard.mjs';
 
 const script = fileURLToPath(new URL('./secret-guard.mjs', import.meta.url));
 test('private paths are blocked with one exact fake-auth fixture exception', () => {
-  for (const path of ['.env', 'apps/api/.env.production', 'auth.json', 'other/tests/fixtures/auth.json', 'backup.dump', 'uploads/photo.jpg', 'key.pem']) assert.equal(privateGitPath(path), true, path);
+  for (const path of ['.env', 'apps/api/.env.production', 'auth.json', 'other/tests/fixtures/auth.json', 'backup.dump', 'uploads/photo.jpg', 'key.pem', '.originpost-install/compose.private.json', '.originpost-install/first-login.txt']) assert.equal(privateGitPath(path), true, path);
   for (const path of ['.env.example', 'README.md', 'integrations/hermes/originpost-board-approvals/tests/fixtures/auth.json']) assert.equal(privateGitPath(path), false, path);
 });
 
