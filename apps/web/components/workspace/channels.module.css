@@ -1,0 +1,8 @@
+.help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.supportNote { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+.supportNote strong { color: var(--ink); font-weight: 600; }
+.advanced { margin: 14px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); }
+.advanced > summary { cursor: pointer; color: var(--ink); font-size: 13px; font-weight: 600; }
+.advanced > summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; border-radius: 3px; }
+.advanced > p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.advanced[open] > summary { margin-bottom: 14px; }
