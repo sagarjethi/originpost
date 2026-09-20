@@ -21,6 +21,10 @@ export function installationCompose(base, options) {
   for (const [name, service] of Object.entries(result.services)) {
     delete service.profiles;
     delete service.ports;
+    if (service.security_opt) {
+      service.security_opt = service.security_opt.map(option => option.startsWith('seccomp=./')
+        ? `seccomp=${resolve(root, option.slice('seccomp='.length))}` : option);
+    }
     if (service.build) {
       service.build.context = root;
       service.build.args = { ...service.build.args, ORIGINPOST_API_UPSTREAM: 'http://api:4000' };
