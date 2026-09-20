@@ -72,6 +72,13 @@ async function prepare() {
   // Never resolve the existing .env or change an existing installation.
   try { await stat(privateDirectory); throw new InstallationError('An installation directory already exists. Use start or apply; it will not be overwritten.'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
+  for (const args of [
+    ['ps', '--all', '--filter', 'label=com.docker.compose.project=originpost-installed', '--format', '{{.ID}}'],
+    ['volume', 'ls', '--filter', 'label=com.docker.compose.project=originpost-installed', '--format', '{{.Name}}'],
+  ]) {
+    const existing = docker(args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    if (existing.stdout.trim()) throw new InstallationError('An installed stack or its data already exists. Use its original installation directory; preparation will not replace it.');
+  }
   const password = randomBytes(24).toString('base64url');
   const ownerId = `user_${randomUUID()}`;
   const secrets = Object.fromEntries(['database', 'review', 'media', 'credentials', 'lookup', 'deletion', 'storage', 'webhook'].map(name => [name, randomSecret()]));
