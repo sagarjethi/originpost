@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { installationCompose } from './install.mjs';
 
 const base = {
@@ -27,4 +28,13 @@ test('fresh installation isolates data, requires sessions and grants settings wr
   assert.deepEqual(actual.services.worker.command,['node','apps/worker/dist/main.js']);
   assert.equal(actual.services.api.environment.DATABASE_URL,'postgres://originpost:test-only-database@postgres:5432/originpost');
   assert.equal(base.volumes['originpost-postgres'].name, 'originpost_originpost-postgres');
+});
+test('browser sandbox profile resolves from the checkout, not the private Compose directory', () => {
+  const configured = structuredClone(base);
+  configured.services.worker.security_opt = ['seccomp=./deploy/browser-seccomp.json', 'no-new-privileges:true'];
+  const actual = installationCompose(configured, options);
+  assert.deepEqual(actual.services.worker.security_opt, [
+    `seccomp=${fileURLToPath(new URL('../deploy/browser-seccomp.json', import.meta.url))}`,
+    'no-new-privileges:true',
+  ]);
 });
