@@ -18,11 +18,11 @@ importers:
   apps/api:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: ^3.1131.0
-        version: 3.1131.0
+        specifier: ^3.1135.0
+        version: 3.1135.0
       '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1131.0
-        version: 3.1131.0
+        specifier: ^3.1135.0
+        version: 3.1135.0
       '@fastify/cors':
         specifier: 11.3.0
         version: 11.3.0
@@ -54,8 +54,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/domain
       bullmq:
-        specifier: 6.3.4
-        version: 6.3.4(ioredis@6.0.0)
+        specifier: 6.3.6
+        version: 6.3.6(ioredis@6.0.0)
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -63,11 +63,11 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       dotenv:
-        specifier: 17.4.2
-        version: 17.4.2
+        specifier: 18.0.0
+        version: 18.0.0
       fastify:
-        specifier: 5.12.4
-        version: 5.12.4
+        specifier: 5.12.5
+        version: 5.12.5
       ioredis:
         specifier: 6.0.0
         version: 6.0.0
@@ -84,8 +84,8 @@ importers:
         specifier: 0.35.4
         version: 0.35.4(@types/node@26.5.1)
       zod:
-        specifier: 4.6.2
-        version: 4.6.2
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@nestjs/testing':
         specifier: ^12.0.3
@@ -121,8 +121,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/telegram
       dotenv:
-        specifier: 17.4.2
-        version: 17.4.2
+        specifier: 18.0.0
+        version: 18.0.0
     devDependencies:
       '@types/node':
         specifier: 26.5.1
@@ -146,8 +146,8 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@hugeicons/core-free-icons':
-        specifier: ^4.3.2
-        version: 4.3.2
+        specifier: ^4.3.3
+        version: 4.3.3
       '@hugeicons/react':
         specifier: ^1.1.10
         version: 1.1.10(react@19.3.0)
@@ -155,8 +155,8 @@ importers:
         specifier: workspace:0.1.0-alpha.1
         version: link:../../packages/domain
       lucide-react:
-        specifier: 1.45.0
-        version: 1.45.0(react@19.3.0)
+        specifier: 1.47.0
+        version: 1.47.0(react@19.3.0)
       next:
         specifier: 16.3.5
         version: 16.3.5(@types/node@26.5.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -186,8 +186,8 @@ importers:
   apps/worker:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: 3.1131.0
-        version: 3.1131.0
+        specifier: 3.1135.0
+        version: 3.1135.0
       '@originpost/agents':
         specifier: workspace:*
         version: link:../../packages/agents
@@ -204,11 +204,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/telegram
       bullmq:
-        specifier: 6.3.4
-        version: 6.3.4(ioredis@6.0.0)
+        specifier: 6.3.6
+        version: 6.3.6(ioredis@6.0.0)
       dotenv:
-        specifier: 17.4.2
-        version: 17.4.2
+        specifier: 18.0.0
+        version: 18.0.0
       ioredis:
         specifier: 6.0.0
         version: 6.0.0
@@ -238,8 +238,8 @@ importers:
         specifier: ^5.11.1
         version: 5.11.1
       zod:
-        specifier: 4.6.2
-        version: 4.6.2
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/node':
         specifier: 26.5.1
@@ -257,8 +257,8 @@ importers:
         specifier: workspace:*
         version: link:../domain
       zod:
-        specifier: 4.6.2
-        version: 4.6.2
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/node':
         specifier: 26.5.1
@@ -295,8 +295,8 @@ importers:
   packages/domain:
     dependencies:
       zod:
-        specifier: 4.6.2
-        version: 4.6.2
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/node':
         specifier: 26.5.1
@@ -326,8 +326,8 @@ packages:
     resolution: {integrity: sha512-6uTniZc87q+B5eXouGTl+7Tmc482rEeCcvxpsvREP8EfF0gvloRZ41UOA9sbSJlyy8TbqIBXb3kKfKarEArUQA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1131.0':
-    resolution: {integrity: sha512-jMw3q5sYNvWJRngkNwdS3H2WPBcdqhdrOez+7fBUB26fpH/2+TaJcDdlzdjgLTMhFTq2eOyXBSy1T/4A6CL/Lw==}
+  '@aws-sdk/client-s3@3.1135.0':
+    resolution: {integrity: sha512-/1CVA0M+TaEOzgM02DUST1NzQTjbY8OumDKPETjzo4owypkZZMxu1ADecFbzeG73hje/XLNAJfGepQ3a40CGnw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.0':
@@ -374,8 +374,8 @@ packages:
     resolution: {integrity: sha512-mooq9Q+jLa18VoM7HouczmslZU60iiB0aKc/Ztnq/luIL1ud0z4DnYprLR/ZO1gp331S9tJctM1HZr7u6YKBXQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/s3-request-presigner@3.1131.0':
-    resolution: {integrity: sha512-n22qXGWwWmngjM0LVY6RU6KkZ29W5BbD6FfwLSBYHTWqXX/bK/2RIFXSCBS9J8b1D+mtcylB9kiYZadb61rEFw==}
+  '@aws-sdk/s3-request-presigner@3.1135.0':
+    resolution: {integrity: sha512-e8fkfFrsROsL2xa4X2Elui7SApBSb+vsJ0XlVdifv7MPOuwPzQ0oQsC1/BQxT1/Hx3IuOVdT0EF9dU87aKse8A==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/signature-v4-multi-region@3.996.46':
@@ -593,8 +593,8 @@ packages:
   '@fastify/multipart@10.1.1':
     resolution: {integrity: sha512-jyRHgnFVdchZRKjJRf6kGPEiDp3Bg4MLo4d6/krt8Z4RutLrqL5IYWihx8a4tnv7Tu7JfuHcyC+dU9zPzTxiSg==}
 
-  '@fastify/proxy-addr@5.1.0':
-    resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
+  '@fastify/proxy-addr@5.1.1':
+    resolution: {integrity: sha512-zv07Y9GEuDsJPegZoDFd4SDWaZOW8N2pa0GSrYmKpId/tjt1Hgo3BjZBVjdVpfVrHaA+Qv5jawtS2O50J5xM9g==}
 
   '@fontsource-variable/manrope@5.3.0':
     resolution: {integrity: sha512-6D5dgokHsWDDMtmXHznKa0hK229NN+1a4BLPmUCLqcO1Pw5EEhWY5RFt0AcXnVRAljFFPfRtLkJePQj6LSsV6g==}
@@ -602,8 +602,8 @@ packages:
   '@fontsource-variable/newsreader@5.3.0':
     resolution: {integrity: sha512-rrzYi43qMpbzwuFtf9OkWH8sxAPVPcQQQEwXpPtwaKYeJ8yVg5aLs5kawmo1f2Q1t1M38TLmEKCkGVDsYwgdFw==}
 
-  '@hugeicons/core-free-icons@4.3.2':
-    resolution: {integrity: sha512-31uDdIq71YcVxeltjcS/tsmYFt4VjmgyNTZfG1bY6mbeFmsYL6Nwz9PdDZetGtGPZOAEVg0bHoQFOoPWDC51bg==}
+  '@hugeicons/core-free-icons@4.3.3':
+    resolution: {integrity: sha512-rpCPwJXhIjEKhMYb2AbNU6nS1HD2vXjeT65LL8SOaEHoN0cI57UTgnroU8q/TlocQQfnxeGz9C3KiyIausfzxg==}
 
   '@hugeicons/react@1.1.10':
     resolution: {integrity: sha512-9tAsd92yMVVGP+E+d8cM+wc0VnXuYZHNbWQi7TOe8k2neawmhiaFmVFbzyruejhOMa197/LbgvSED32ayUo3ZA==}
@@ -1330,8 +1330,8 @@ packages:
   bowser@2.14.1:
     resolution: {integrity: sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg==}
 
-  bullmq@6.3.4:
-    resolution: {integrity: sha512-DpilB5sayCB8huCp4YuzVhJjxB4ieHidzu+GPgbcjPi3kQv0gdLoLnk+I+mMACDQ88rTbSiT+B4crmhWFGL9GA==}
+  bullmq@6.3.6:
+    resolution: {integrity: sha512-+T6T6jeONZ5AvCj4xDkjuqdXI+/Kezvi/PvNS2YrIiO3HZNS4MgI+397ORyfO3Mx6jP127jowte6fNOxAfUN2w==}
     engines: {node: '>=14.17.0'}
     peerDependencies:
       bullmq-otel: '>=2.0.0'
@@ -1397,8 +1397,8 @@ packages:
   cookiejar@2.1.4:
     resolution: {integrity: sha512-LDx6oHrK+PhzLKJU9j5S7/Y3jM/mUHvD/DeI1WQmJn652iPC5Y4TBzC9l+5OMOXlyTTA+SmVUPm0HQUwpD5Jqw==}
 
-  cron-parser@5.10.0:
-    resolution: {integrity: sha512-izNAxJyRWUP8ljBoDSub5WyrVOUlT4SLGShswE7eoRBpp6QUsSycYxLBMJlbshgPBMcPT/nrfgjNY2918ayv2A==}
+  cron-parser@5.10.1:
+    resolution: {integrity: sha512-pKRrRagItwk9rGIStcUyMxFX34x56zoX3KDf9HJ4ttwkXIK1qxK63EvXvEDmlxI9AdPJ+Y7TEKRftRlW5eSS7A==}
     engines: {node: '>=18'}
 
   csstype@3.2.3:
@@ -1442,6 +1442,11 @@ packages:
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
+
+  dotenv@18.0.0:
+    resolution: {integrity: sha512-16YSUvsKtKbwrTbESvtTSZzzJUug6jdFdqiBFg9Q6Bk1JY9r0hAtrtTiWxdI9YrsgOTmkjZRdgU0n3LnwGpECw==}
+    engines: {node: '>=12'}
+    hasBin: true
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -1502,11 +1507,11 @@ packages:
   fast-safe-stringify@2.1.1:
     resolution: {integrity: sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==}
 
-  fast-uri@3.1.7:
-    resolution: {integrity: sha512-dOvZVzjdZdz7phd9v6jCbwxrBW3fK6n8Rc0CtdmM4bumzMnxywBYhuph6J819RRw/ku+rLbelwfMunktuzVVHg==}
+  fast-uri@3.1.8:
+    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
-  fast-uri@4.1.4:
-    resolution: {integrity: sha512-dODXrIxlS9JSdgAnhIUKOosKV1oMtU2VtVw87QRaHzyl5jxO290Ii5tEZfCfzfWNHi3jKWwBSdQj0qIyshdZdQ==}
+  fast-uri@4.1.5:
+    resolution: {integrity: sha512-vZeoMRB4epNr7QfdHxel7te/RcX16CxyXI07JCCTFWZA2s4v1azGNESRj+2EoaHSaWFL/Z3GmKT2jF6A202jLg==}
 
   fast-xml-builder@1.3.1:
     resolution: {integrity: sha512-pIM/1n3ntFXKYrUZwW7QCK0gAW7XY+wzj1YMIV3tLDvPj/V+zTGJK5e3/4WJfwj0qWw2ElNXiTixda/R+3YSug==}
@@ -1520,6 +1525,9 @@ packages:
 
   fastify@5.12.4:
     resolution: {integrity: sha512-zATD676fP6tBMsn+jQ7Q5/cO/Qo+149TXH0dUqUKel+1/hcZxwIbnflqtPa9EjlrvpY8eCZcL3M1UYrMc31Y7g==}
+
+  fastify@5.12.5:
+    resolution: {integrity: sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==}
 
   fastq@1.20.3:
     resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
@@ -1699,8 +1707,8 @@ packages:
     resolution: {integrity: sha512-v5xlu8eHD1+6r8EHTg6hfmO97LN8ugKtiXcy5e6oN72iD2r6u0RPfLl6fxM+7Wnh2ZRq15o0russMst44WauPA==}
     engines: {node: '>=13.2.0'}
 
-  lucide-react@1.45.0:
-    resolution: {integrity: sha512-yH1ubCAduho9UR7oJhRXIQXogksRILBiTuZC4/bQIGeB9JOkxMlSuEHyyZpo1Z3S0yWJO2KTSUZbjiNvVxeOUw==}
+  lucide-react@1.47.0:
+    resolution: {integrity: sha512-o8C23aXpNQypRY73W7fW02EyvWJinEMXgKeGjFoKym0zj3Q73hD97A1IQps1g8C14HTGsOpZL0Am+xjfgFZAbg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -2163,8 +2171,8 @@ packages:
     resolution: {integrity: sha512-ghig2TBE/H11aOVgmahA3MhimvkBr6JIYknH/Dhdk10nXwdbIqBJsbfMxpvFPG8bAw77gN29aQWvKpmVoPlvPQ==}
     engines: {node: '>=16.0.0'}
 
-  zod@4.6.2:
-    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -2176,7 +2184,7 @@ snapshots:
       '@smithy/types': 4.18.0
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1131.0':
+  '@aws-sdk/client-s3@3.1135.0':
     dependencies:
       '@aws-sdk/checksums': 3.1001.0
       '@aws-sdk/core': 3.978.0
@@ -2305,7 +2313,7 @@ snapshots:
       '@smithy/types': 4.18.0
       tslib: 2.8.1
 
-  '@aws-sdk/s3-request-presigner@3.1131.0':
+  '@aws-sdk/s3-request-presigner@3.1135.0':
     dependencies:
       '@aws-sdk/core': 3.978.0
       '@aws-sdk/signature-v4-multi-region': 3.996.46
@@ -2431,7 +2439,7 @@ snapshots:
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      fast-uri: 4.1.4
+      fast-uri: 4.1.5
 
   '@fastify/busboy@3.2.2': {}
 
@@ -2475,7 +2483,7 @@ snapshots:
       fastify-plugin: 6.0.0
       secure-json-parse: 4.1.0
 
-  '@fastify/proxy-addr@5.1.0':
+  '@fastify/proxy-addr@5.1.1':
     dependencies:
       '@fastify/forwarded': 3.0.2
       ipaddr.js: 2.5.0
@@ -2484,7 +2492,7 @@ snapshots:
 
   '@fontsource-variable/newsreader@5.3.0': {}
 
-  '@hugeicons/core-free-icons@4.3.2': {}
+  '@hugeicons/core-free-icons@4.3.3': {}
 
   '@hugeicons/react@1.1.10(react@19.3.0)':
     dependencies:
@@ -2953,7 +2961,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.7
+      fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -2976,9 +2984,9 @@ snapshots:
 
   bowser@2.14.1: {}
 
-  bullmq@6.3.4(ioredis@6.0.0):
+  bullmq@6.3.6(ioredis@6.0.0):
     dependencies:
-      cron-parser: 5.10.0
+      cron-parser: 5.10.1
       msgpackr: 2.1.0
       node-abort-controller: 3.1.1
       semver: 7.8.5
@@ -3026,7 +3034,7 @@ snapshots:
 
   cookiejar@2.1.4: {}
 
-  cron-parser@5.10.0:
+  cron-parser@5.10.1:
     dependencies:
       luxon: 3.7.2
 
@@ -3056,6 +3064,8 @@ snapshots:
       dotenv: 17.4.2
 
   dotenv@17.4.2: {}
+
+  dotenv@18.0.0: {}
 
   dunder-proto@1.0.1:
     dependencies:
@@ -3132,7 +3142,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      fast-uri: 4.1.4
+      fast-uri: 4.1.5
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -3142,9 +3152,9 @@ snapshots:
 
   fast-safe-stringify@2.1.1: {}
 
-  fast-uri@3.1.7: {}
+  fast-uri@3.1.8: {}
 
-  fast-uri@4.1.4: {}
+  fast-uri@4.1.5: {}
 
   fast-xml-builder@1.3.1:
     dependencies:
@@ -3167,7 +3177,25 @@ snapshots:
       '@fastify/ajv-compiler': 4.0.6
       '@fastify/error': 4.2.0
       '@fastify/fast-json-stringify-compiler': 5.1.0
-      '@fastify/proxy-addr': 5.1.0
+      '@fastify/proxy-addr': 5.1.1
+      abstract-logging: 2.0.1
+      avvio: 9.3.0
+      fast-json-stringify: 7.0.1
+      find-my-way: 9.9.0
+      light-my-request: 6.6.0
+      pino: 10.3.1
+      process-warning: 5.1.0
+      rfdc: 1.4.1
+      secure-json-parse: 4.1.0
+      semver: 7.8.5
+      toad-cache: 3.7.4
+
+  fastify@5.12.5:
+    dependencies:
+      '@fastify/ajv-compiler': 4.0.6
+      '@fastify/error': 4.2.0
+      '@fastify/fast-json-stringify-compiler': 5.1.0
+      '@fastify/proxy-addr': 5.1.1
       abstract-logging: 2.0.1
       avvio: 9.3.0
       fast-json-stringify: 7.0.1
@@ -3342,7 +3370,7 @@ snapshots:
 
   load-esm@1.0.3: {}
 
-  lucide-react@1.45.0(react@19.3.0):
+  lucide-react@1.47.0(react@19.3.0):
     dependencies:
       react: 19.3.0
 
@@ -3800,4 +3828,4 @@ snapshots:
 
   xml-naming@0.3.0: {}
 
-  zod@4.6.2: {}
+  zod@4.6.5: {}
