@@ -1,6 +1,7 @@
 "use client";
 
 import { WorkspaceLoading } from "./loading/workspace-loading";
+import { requestDeadline } from "@/lib/request-deadline";
 import { SourceEvidenceCard, type SourceEvidenceView } from "./source-evidence-card";
 import {
   AlertCircle,
@@ -179,6 +180,7 @@ export function OriginPostApp() {
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [auth, setAuth] = useState<AuthView | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [bootstrapUnavailable, setBootstrapUnavailable] = useState(false);
   const [oidcConfig, setOidcConfig] = useState<{ enabled: boolean; displayName: string }>({ enabled: false, displayName: "Single sign-on" });
   const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
   const [activeBrandId, setActiveBrandId] = useState("");
@@ -272,15 +274,15 @@ export function OriginPostApp() {
     window.requestAnimationFrame(() => document.querySelector(".detail-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
-  async function refresh(activeAuth = auth, workspaceId = activeWorkspaceId || activeAuth?.memberships[0]?.workspaceId || "default", requestedBrandId = activeBrandId) {
+  async function refresh(activeAuth = auth, workspaceId = activeWorkspaceId || activeAuth?.memberships[0]?.workspaceId || "default", requestedBrandId = activeBrandId, signal?: AbortSignal) {
     if (!activeAuth) return;
     try {
-      const brandResponse = await apiFetch(`/v1/workspaces/${encodeURIComponent(workspaceId)}/brands`, { cache: "no-store" }, activeAuth.csrfToken);
+      const brandResponse = await apiFetch(`/v1/workspaces/${encodeURIComponent(workspaceId)}/brands`, { cache: "no-store", signal: signal ?? null }, activeAuth.csrfToken);
       if (!brandResponse.ok) throw new Error("Could not load workspace brands.");
       const availableBrands = await brandResponse.json() as BrandView[];
       const storedBrandId = typeof window === "undefined" ? "" : window.localStorage.getItem(`originpost:brand:${workspaceId}`) ?? "";
       const brandId = availableBrands.some((brand) => brand.id === requestedBrandId) ? requestedBrandId : availableBrands.some((brand) => brand.id === storedBrandId) ? storedBrandId : availableBrands[0]?.id ?? "";
-      const response = await apiFetch(`/v1/content-items?workspaceId=${encodeURIComponent(workspaceId)}${brandId ? `&brandId=${encodeURIComponent(brandId)}` : ""}`, { cache: "no-store" }, activeAuth.csrfToken);
+      const response = await apiFetch(`/v1/content-items?workspaceId=${encodeURIComponent(workspaceId)}${brandId ? `&brandId=${encodeURIComponent(brandId)}` : ""}`, { cache: "no-store", signal: signal ?? null }, activeAuth.csrfToken);
       if (response.status === 401 && activeAuth.mode === "sessions") { setAuth(null); return; }
       if (!response.ok) throw new Error("API unavailable");
       const data = await response.json() as ContentItem[];
@@ -295,7 +297,8 @@ export function OriginPostApp() {
       setSelectedId((current) => data.some((item) => item.id === current) ? current : data[0]?.id ?? current);
       setConnection("api");
       setWorkspaceError("");
-    } catch {
+    } catch (error) {
+      if (signal) throw error;
       setConnection("error");
       setWorkspaceError("Could not refresh this workspace. Previously loaded items may be out of date.");
     }
@@ -303,30 +306,32 @@ export function OriginPostApp() {
 
   useEffect(() => {
     let cancelled = false;
+    const deadline = requestDeadline();
     void (async () => {
       try {
         if (new URLSearchParams(window.location.search).get("auth") === "error") setLoginError("Single sign-on could not be completed. Try again or contact your workspace owner.");
-        const configResponse = await apiFetch("/v1/auth/config", { cache: "no-store" });
+        const configResponse = await apiFetch("/v1/auth/config", { cache: "no-store", signal: deadline.signal });
         if (!configResponse.ok) throw new Error("OriginPost API is unavailable.");
         const config = await configResponse.json() as { mode: AuthMode; oidc?: { enabled?: boolean; displayName?: string } };
         if (cancelled) return;
         setAuthMode(config.mode);
         setOidcConfig({ enabled: config.oidc?.enabled === true, displayName: config.oidc?.displayName?.trim() || "Single sign-on" });
-        const meResponse = await apiFetch("/v1/auth/me", { cache: "no-store" });
+        const meResponse = await apiFetch("/v1/auth/me", { cache: "no-store", signal: deadline.signal });
+        if (!meResponse.ok && meResponse.status !== 401) throw new Error("OriginPost API is unavailable.");
         if (meResponse.ok) {
           const view = await meResponse.json() as AuthView;
           if (!cancelled) {
             setAuth(view);
             const stored = window.localStorage.getItem("originpost:workspace") ?? "";
             const workspaceId = view.memberships.some((membership) => membership.workspaceId === stored) ? stored : view.memberships[0]?.workspaceId ?? "default";
-            await refresh(view, workspaceId, window.localStorage.getItem(`originpost:brand:${workspaceId}`) ?? "");
+            await refresh(view, workspaceId, window.localStorage.getItem(`originpost:brand:${workspaceId}`) ?? "", deadline.signal);
           }
         }
-      } catch (error) {
-        if (!cancelled) setLoginError(error instanceof Error ? error.message : "OriginPost API is unavailable.");
-      } finally { if (!cancelled) setAuthLoading(false); }
+      } catch {
+        if (!cancelled) setBootstrapUnavailable(true);
+      } finally { deadline.dispose(); if (!cancelled) setAuthLoading(false); }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; deadline.cancel(); };
   }, []);
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); }, [selectedId]);
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); setComposerOpen(false); }, [activeWorkspaceId, activeBrandId]);
@@ -620,6 +625,7 @@ export function OriginPostApp() {
   }
 
   if (authLoading) return <WorkspaceLoading />;
+  if (bootstrapUnavailable) return <WorkspaceLoading unavailable />;
   if (!auth && authMode === "sessions") return <main className="login-shell"><form className="login-card panel" onSubmit={signIn}><div className="brand-mark"><span>O</span></div><p className="eyebrow">SELF-HOSTED WORKSPACE</p><h1>Sign in to OriginPost</h1><p>Use the account created by your workspace owner.</p>{loginError ? <div className="module-alert">{loginError}</div> : null}{oidcConfig.enabled ? <a className="secondary-button" href={`${apiBasePath}/auth/oidc/start`}>Continue with {oidcConfig.displayName}</a> : null}<label>Email<input name="email" type="email" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required minLength={12} /></label><button className="new-button" disabled={loginBusy}>{loginBusy ? "Signing in…" : "Sign in with password"}</button></form></main>;
   if (!auth) return <main className="login-shell"><section className="login-card panel"><div className="brand-mark"><span>O</span></div><h1>OriginPost is unavailable</h1><p>{loginError || "Check that the API is running."}</p></section></main>;
 
@@ -711,7 +717,7 @@ export function OriginPostApp() {
         {workspaceError && <div className="workspace-error" role="alert"><AlertCircle size={18}/><p>{workspaceError}</p><button type="button" onClick={() => void refresh()}>Refresh</button></div>}
         {activeNav === "Setup" ? <InstallationSettings key={`${auth.user.id}:${activeWorkspaceId}`} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Agent" ? <NewsPostWorkspace key={`${auth.user.id}:${activeWorkspaceId}:${activeBrandId}`} auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? ""} onNavigate={navigate} /> : activeModule ? <WorkspaceModules module={activeModule} auth={auth} workspaceId={activeWorkspaceId} activeBrandId={activeBrandId} brands={brands} {...(creativeContentItemId ? { creativeContentItemId } : {})} onOrganizationChanged={reloadOrganization} onEngagementUnreadChange={setEngagementUnreadCount} onOpenContent={(contentItemId) => void openContentItem(contentItemId)} /> : activeNav === "Calendar" ? <ContentCalendar auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} brandName={activeBrand?.name ?? activeBrandId} items={items} loading={connection === "loading"} dataMode={connection} onChanged={() => refresh()} /> : activeNav === "Help" ? <HelpCenter onNavigate={navigate} auth={auth} workspaceId={activeWorkspaceId} /> : activeNav === "Create" ? <section className="studio-page">
           <header className="content-page-head"><div><p className="eyebrow">CREATE</p><h1>Build the exact post</h1><p>Draft, review, prepare media, and schedule one selected Content Item without losing its evidence.</p></div><button className="secondary-button" onClick={() => navigate("Content")}><Inbox size={16} /> Choose another item</button></header>
-          {selected ? <ContentStudio auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} item={selected} onChanged={() => refresh()} onOpenLibrary={() => navigate("Library")} onOpenChannels={() => navigate("Channels")} onOpenCreative={() => navigate("Creative Studio", { itemId: selected.id })} /> : <div className="panel empty-state"><WandSparkles size={23} /><strong>Choose a Content Item first</strong><p>Open Content or add a new item before creating a draft.</p></div>}
+          {selected ? <ContentStudio auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} item={selected} onChanged={() => refresh()} onOpenLibrary={() => navigate("Library")} onOpenChannels={() => navigate("Channels")} onOpenCreative={() => navigate("Creative Studio", { itemId: selected.id })} /> : <div className="panel empty-state"><WandSparkles size={23} /><strong>Choose a Content Item first</strong><p>Add a title and short brief, then generate your text. You can also choose an existing post.</p><button className="new-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}>Add a post</button><button className="secondary-button" onClick={() => navigate("Content")}>Choose an existing post</button></div>}
           {selected?.status === "approved" && youtubeDraft ? <section className="youtube-review-shell panel"><YouTubePublishReview auth={auth} workspaceId={activeWorkspaceId} brandId={activeBrandId} contentItemId={selected.id} contentVersion={selected.version} draft={youtubeDraft} fallbackTitle={selected.title} onScheduled={() => refresh()} /></section> : null}
         </section> : <>
         {activeNav === "Home" ? <section className="hero-shell home-hero">
