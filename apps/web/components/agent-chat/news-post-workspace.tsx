@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { apiFetch, type AuthView } from "@/lib/api-client";
 import { WorkspaceLoading } from "../loading/workspace-loading";
+import { requestDeadline } from "../../lib/request-deadline";
 import { PostVoiceAction } from "../voice/post-voice-action";
 import { SettingsSection } from "../forms/settings-section";
 import { FormSection } from "../forms/form-section";
@@ -247,18 +248,25 @@ export function NewsPostWorkspace({
   );
   const query = `workspaceId=${encodeURIComponent(workspaceId)}&brandId=${encodeURIComponent(brandId)}`;
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await apiFetch(path, init, auth.csrfToken);
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(
-        response.status === 404
-          ? "This server needs the news-post workflow update. Your input is still here."
-          : Array.isArray(data.message)
-            ? data.message.join(" ")
-            : (data.message ?? `Request failed (${response.status}).`),
-      );
-    }
-    return response.json() as Promise<T>;
+    // Bound metadata reads without interrupting a paid or durable generation request.
+    const deadline = !init?.method || init.method.toUpperCase() === "GET" ? requestDeadline() : null;
+    try {
+      const response = await apiFetch(path, { ...init, ...(deadline ? { signal: deadline.signal } : {}) }, auth.csrfToken);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          response.status === 404
+            ? "This server needs the news-post workflow update. Your input is still here."
+            : Array.isArray(data.message)
+              ? data.message.join(" ")
+              : (data.message ?? `Request failed (${response.status}).`),
+        );
+      }
+      return await response.json() as T;
+    } catch (error) {
+      if (deadline?.signal.aborted) throw new Error("The workflow server took too long to respond. Check the API connection; your saved work is unchanged.");
+      throw error;
+    } finally { deadline?.dispose(); }
   }
   useEffect(() => {
     let live = true;
@@ -870,7 +878,7 @@ export function NewsPostWorkspace({
           </button>
         </div>
         <div className={styles.body}>
-          {!selectedRun && <GenerationActions research={capability?.research} text={capability?.text} image={capability?.image.generation} review={capability?.imageReview} loading={loading} canConfigure={role === "owner"} />}
+          {!selectedRun && <GenerationActions research={capability?.research} text={capability?.text} image={capability?.image.generation} review={capability?.imageReview} loading={loading} unavailable={Boolean(loadError)} canConfigure={role === "owner"} />}
           {!loading && !creationAvailable && (
             <div className={styles.setup}>
               <Settings2 size={18} />

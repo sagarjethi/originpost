@@ -72,6 +72,41 @@ function docker(args, options = {}) {
   return run;
 }
 
+export async function installationStatus({
+  runCommand = spawnSync,
+  request = fetch,
+  output = console.log,
+  apiHealthUrl = 'http://127.0.0.1:4100/health',
+  dockerTimeoutMs = 10_000,
+  healthTimeoutMs = 5_000,
+} = {}) {
+  // Use the direct Docker command: Compose may itself spawn a plugin process.
+  // Bound only this read-only check, never builds or graceful service shutdowns.
+  const listing = runCommand('docker', [
+    'ps', '--all', '--filter', 'label=com.docker.compose.project=originpost-installed',
+    '--format', 'table {{.Names}}\t{{.Status}}\t{{.Ports}}',
+  ], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: dockerTimeoutMs, killSignal: 'SIGKILL' });
+  const dockerReady = !listing.error && listing.status === 0;
+  if (dockerReady) output(listing.stdout.trim());
+  else output('Docker status: unavailable. The status command failed or exceeded its time limit.');
+
+  let apiReady = false;
+  try {
+    const response = await request(apiHealthUrl, { signal: AbortSignal.timeout(healthTimeoutMs), redirect: 'error' });
+    const health = response.ok ? await response.json() : undefined;
+    apiReady = health?.status === 'ok' && health?.service === 'originpost-api';
+  } catch {
+    // Network failures, empty replies and body read timeouts are not readiness.
+    // Never print the response body, command stderr or transport error details.
+  }
+  output(apiReady
+    ? 'API health: reachable. This does not verify worker, generation or publishing readiness.'
+    : 'API health: unavailable. Container status alone does not prove the API is responding.');
+  if (!dockerReady || !apiReady) {
+    throw new InstallationError('Installation is not ready. Check Docker and the installed services; see docs/installation.md#checking-readiness. No services were restarted.');
+  }
+}
+
 async function prepare() {
   // Never resolve the existing .env or change an existing installation.
   try { await stat(privateDirectory); throw new InstallationError('An installation directory already exists. Use start or apply; it will not be overwritten.'); }
@@ -115,7 +150,7 @@ async function run(command) {
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
   if (manifest.version !== 1 || !manifest.ownerId) throw new InstallationError('Installation metadata is invalid.');
   const args = ['compose', '--env-file', '/dev/null', '-f', composeFile];
-  if (command === 'status') { docker([...args, 'ps'], { stdio: 'inherit' }); return; }
+  if (command === 'status') return installationStatus();
   if (command === 'apply') {
     // Stop both consumers before loading a new configuration revision. Existing worker shutdown drains jobs.
     docker([...args, 'stop', '-t', '120', 'worker', 'api'], { stdio: 'inherit' });

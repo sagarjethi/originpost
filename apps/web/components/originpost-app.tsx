@@ -64,6 +64,7 @@ import { externalPostIdPlaceholder, liveUrlPlaceholder, platformBadge, platformL
 import { HelpCenter } from "./help/help-center";
 import { NewsPostWorkspace } from "./agent-chat/news-post-workspace";
 import { InstallationSettings } from "./onboarding/installation-settings";
+import { GenerationLauncher } from "./generation/generation-launcher";
 
 type Status = "inbox" | "researching" | "drafting" | "review" | "approved" | "scheduled" | "action_required" | "publishing" | "published" | "failed" | "archived";
 type ContentItem = {
@@ -335,6 +336,12 @@ export function OriginPostApp() {
   }, []);
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); }, [selectedId]);
   useEffect(() => { setHandoffMessage(""); setReviewShareUrl(""); setComposerOpen(false); }, [activeWorkspaceId, activeBrandId]);
+  useEffect(() => {
+    if (!activeWorkspaceId || !activeBrandId || activeNav !== "Create" || new URLSearchParams(window.location.search).get("compose") !== "new") return;
+    setComposerError("");
+    setComposerOpen(true);
+    window.history.replaceState({}, "", workspaceHref("Create"));
+  }, [activeWorkspaceId, activeBrandId, activeNav]);
   useEffect(() => {
     const syncFromUrl = (canonicalizeLegacy = false) => {
       const resolved = resolveWorkspaceLocation(window.location.pathname, window.location.search);
@@ -711,7 +718,7 @@ export function OriginPostApp() {
           {activeNav !== "Agent" && <div className={`connection-pill ${connection}`}><span />{connection === "api" ? "Workspace online" : connection === "error" ? "Workspace offline" : "Loading workspace"}</div>}
           <button className="topbar-help" onClick={() => navigate("Help")}><HelpCircle size={17} /> Help</button>
           <NotificationActionCenter auth={auth} workspaceId={activeWorkspaceId} onNavigate={(notification) => void openNotificationAction(notification)} />
-          {activeNav !== "Agent" && <button aria-label="New content" className="new-button" onClick={() => { setComposerOpen(true); setComposerError(""); }}><Plus size={17} /><span className="topbar-create-label">New content</span></button>}
+          <GenerationLauncher key={`${activeWorkspaceId}:${activeBrandId}:${activeNav}`} brandName={activeBrand?.name ?? ""} canConfigure={activeMembership?.role === "owner"} content={["Content", "Create"].includes(activeNav) ? selected : undefined} />
         </header>
 
         {workspaceError && <div className="workspace-error" role="alert"><AlertCircle size={18}/><p>{workspaceError}</p><button type="button" onClick={() => void refresh()}>Refresh</button></div>}

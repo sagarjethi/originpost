@@ -33,6 +33,19 @@ The UI intentionally distinguishes saved configuration, active configuration, co
 
 This installer is for a new isolated stack. It does not migrate an existing `.env`, database, ownership or account grants. Existing deployments continue to start with their previous configuration; the new Setup screen explains why it is unavailable until the installation owner and protected settings storage are provisioned. Do not create a second stack and expect it to contain the first stack's projects. Plan and test migration separately, including secure backups and retained encryption keys.
 
+## Checking readiness
+
+Run `node scripts/install.mjs status` after startup or when Setup cannot reach the workspace. It lists only the installed stack and requests its local API health endpoint on port 4100. The Docker listing has a ten-second limit and the API request has a five-second limit. An empty response, invalid health response, request timeout or Docker failure exits with an error, even if Docker reports the container as running. This check does not call a paid provider, publish a post or restart services; a healthy API alone does not prove worker or provider readiness.
+
+If startup has just begun, allow migrations to finish and run status again. If the API keeps failing while its container appears to be running, check the Docker runtime and the installed stack's service state. A stale Docker task may require an operator to restart Docker or Colima. Coordinate that restart with anyone using other projects on the same runtime. After recovery, restore the installed stack with its existing images and private configuration, then recheck:
+
+```sh
+docker compose --env-file /dev/null -f .originpost-install/compose.private.json up -d --no-build
+node scripts/install.mjs status
+```
+
+Do not rerun `prepare`, delete data volumes or replace encryption keys to fix a health check. Keep private configuration and unreviewed service logs out of support tickets and Git.
+
 ## Operational limitations
 
 - Restart application is an operator command, not a browser action with access to the Docker socket.
