@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Bot, Check, Camera, Globe, Layers3, RefreshCw, UsersRound, Video } from "lucide-react";
 import { apiFetch, type AuthView } from "../../lib/api-client";
+import { requestDeadline } from "../../lib/request-deadline";
 import styles from "./agent-connections.module.css";
 
 export type AgentConnection = {
@@ -40,22 +41,24 @@ export function AgentConnections({ auth, workspaceId, brandId, onNavigate }: {
   const [loading, setLoading] = useState(true);
   const current = snapshot?.scope === scope ? snapshot : null;
   useEffect(() => {
-    const controller = new AbortController();
+    const deadline = requestDeadline();
+    let active = true;
     const query = new URLSearchParams({ workspaceId, brandId });
     const get = async <T,>(path: string): Promise<T> => {
-      const response = await apiFetch(`${path}?${query}`, { cache: "no-store", signal: controller.signal }, auth.csrfToken);
+      const response = await apiFetch(`${path}?${query}`, { cache: "no-store", signal: deadline.signal }, auth.csrfToken);
       if (!response.ok) throw new Error("Connection status unavailable");
       return response.json() as Promise<T>;
     };
     setLoading(true);
     void Promise.allSettled([get<AgentConnection[]>("/v1/channels/accounts"), get<Capability>("/v1/agent-posts/capability")]).then(([accounts, capability]) => {
-      if (controller.signal.aborted) return;
+      deadline.dispose();
+      if (!active) return;
       setSnapshot({ scope, accounts: accounts.status === "fulfilled" && Array.isArray(accounts.value) ? accounts.value : null, capability: capability.status === "fulfilled" ? capability.value : null, accountsError: accounts.status === "rejected" || !Array.isArray(accounts.value), capabilityError: capability.status === "rejected" });
       setLoading(false);
     });
     const focus = () => setRefresh((value) => value + 1);
     window.addEventListener("focus", focus);
-    return () => { controller.abort(); window.removeEventListener("focus", focus); };
+    return () => { active = false; deadline.cancel(); window.removeEventListener("focus", focus); };
   }, [scope, workspaceId, brandId, auth.csrfToken, refresh]);
 
   const additional = [...new Set((current?.accounts ?? []).map((account) => account.platform))].filter((id) => !platforms.some((platform) => platform.id === id));

@@ -525,7 +525,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
   if (module === "library") return <MediaLibrary auth={auth} workspaceId={workspaceId} brandId={activeBrandId} />;
   if (module === "creative") return <CreativeStudio auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(creativeContentItemId ? { initialContentItemId: creativeContentItemId } : {})} {...(onOpenContent ? { onOpenContent } : {})} />;
   if (module === "analytics") return <AnalyticsDashboard auth={auth} workspaceId={workspaceId} brandId={activeBrandId} brands={brands} />;
-  if (module === "signals") return <SourceSignalDesk auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onOpenContent ? { onOpenContent } : {})} />;
+  if (module === "signals") return <SourceSignalDesk key={`${workspaceId}:${activeBrandId}`} auth={auth} workspaceId={workspaceId} brandId={activeBrandId} brandName={brands.find(brand => brand.id === activeBrandId)?.name ?? ""} {...(onOpenContent ? { onOpenContent } : {})} />;
   if (module === "evergreen") return <ReuseStudio auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onOpenContent ? { onOpenContent } : {})} />;
   if (module === "engagement") return <EngagementInbox auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onEngagementUnreadChange ? { onUnreadCountChange: onEngagementUnreadChange } : {})} />;
   if (module === "batches") return <BatchOperations auth={auth} workspaceId={workspaceId} brandId={activeBrandId} {...(onOpenContent ? { onOpenContent } : {})} />;
@@ -535,7 +535,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
   const enabledMetaMessagingAccounts = eligibleMetaMessagingAccounts.filter((account) => account.capabilities.includes("private_message_read") && account.capabilities.includes("private_message_send"));
   const title = module === "automations" ? "Source monitoring" : module === "channels" ? "Social accounts" : "Agent plugins";
   const description = module === "automations"
-    ? "Check chosen topics on a schedule. New findings arrive in the content inbox with their source links."
+    ? "Check topics and public sources on a schedule. Review their updates, then generate text and images for a post."
     : module === "channels"
       ? "Connect the accounts you publish to. OriginPost checks access, permissions, and account health before anything is scheduled."
       : "Research and writing providers plug into one clear boundary. Workspaces decide which provider may run.";
@@ -550,6 +550,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
     {channelMessage ? <div className="module-alert success" role="status">{channelMessage}</div> : null}
 
     {module === "automations" ? <>
+      <div className="module-list-head"><div><h2>Updates → drafts → reviewed posts</h2><p>Tracked sources arrive in the News & Source Desk. Topic research arrives in the Content Inbox. Monitors never approve or publish posts.</p></div><a className="secondary-button" href="/signals">Open news & sources <ArrowRight size={15} /></a></div>
       {monitorFormOpen ? <form className="monitor-form panel" onSubmit={createMonitor}>
         <div><label>Monitor name<input name="name" required minLength={2} placeholder="Ahmedabad civic updates" /></label><label>Search every<select name="intervalMinutes" defaultValue="15"><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option></select></label></div>
         <label>What should OriginPost look for?<textarea name="query" required minLength={3} rows={3} placeholder="Latest verified Ahmedabad civic news from primary and trusted sources" /></label>
@@ -576,7 +577,7 @@ export function WorkspaceModules({ module, auth, workspaceId, activeBrandId, bra
         </article>)}</div> : <div className="delivery-empty"><ShieldCheck size={18} /> No delivery commands yet.</div>}
       </div>
       <div className="module-list panel">
-        <div className="module-list-head"><div><h2>Monitoring schedule</h2><p>Global schedule for this workspace.</p></div><span>{loading ? "Loading…" : `${monitors.length} configured`}</span></div>
+        <div className="module-list-head"><div><h2>Monitoring schedule</h2><p>{brands.find(brand => brand.id === activeBrandId)?.name ?? "Selected brand"} · View new reports in the source desk or content inbox.</p></div><span>{loading ? "Loading…" : `${monitors.length} configured`}</span></div>
         {monitors.map((monitor) => <div className="monitor-block" key={monitor.id}>
           <article className="monitor-row">
             <span className={`module-state ${monitor.health === "healthy" ? "online" : monitor.health === "failed" || monitor.health === "stale" || monitor.health === "degraded" ? "unhealthy" : ""}`}><Zap size={16} /></span>

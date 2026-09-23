@@ -10,6 +10,8 @@ describe("installation setup access and credentials", () => {
     expect(appSetupStatus(view, "Instagram & Facebook")).toBe("Saved · activation pending");
     expect(appSetupStatus({ ...view, restartRequired: false }, "Instagram & Facebook")).toBe("App setup needed");
     expect(appSetupStatus({ ...view, restartRequired: false, activeSecrets: { META_APP_SECRET: true } }, "Instagram & Facebook")).toBe("App settings active");
+    expect(appSetupStatus({ ...view, restartRequired: false, activeSecrets: { OPENAI_IMAGE_API_KEY: true } }, "Images")).toBe("Image generation off");
+    expect(appSetupStatus({ ...view, restartRequired: false, activeValues: { IMAGE_GENERATION_MODE: "openai" }, activeSecrets: { OPENAI_IMAGE_API_KEY: true } }, "Images")).toBe("App settings active");
   });
   it("does not borrow ownership from another workspace", () => {
     expect(canShowInstallation(auth("owner", "other"), "workspace")).toBe(false);
