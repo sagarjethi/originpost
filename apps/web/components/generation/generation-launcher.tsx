@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, FileText, Image, Mic, Plus, Sparkles } from "lucide-react";
+import { FileText, Image, Mic, Plus, Sparkles } from "lucide-react";
 import styles from "./generation-launcher.module.css";
 import { workspaceHref } from "../../lib/workspace-route";
 
@@ -40,7 +40,7 @@ export function GenerationLauncher(props: Props) {
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [open]);
   return <div ref={root} className={styles.root} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button ref={trigger} type="button" className="new-button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}><Plus size={17} /><span>Create</span><ChevronDown size={14} /></button>
+    <button ref={trigger} type="button" className="new-button" aria-label="Create content" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}><Plus size={17} /><span className="topbar-create-label">Create</span></button>
     {open && <section id={id} className={styles.popover} aria-label="Create content"><GenerationChoices {...props} /></section>}
   </div>;
 }
