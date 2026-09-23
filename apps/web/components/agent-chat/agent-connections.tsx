@@ -79,7 +79,8 @@ export function AgentConnections({ auth, workspaceId, brandId, onNavigate }: {
         ["Writing", current?.capability?.text],
         ["Image creation", current?.capability?.image.generation],
       ] as const).map(([name, ready]) => <div key={name}><span>{name}</span><small data-tone={ready ? "good" : "neutral"}>{ready ? <><Check size={12} />Configured</> : ready === false ? "Setup needed" : "Checking…"}</small></div>)}</div>}
-      <button type="button" className={styles.action} onClick={() => onNavigate("Agent plugins")}>Configure agent <ArrowUpRight size={14} /></button>
+      <button type="button" className={styles.action} onClick={() => onNavigate("Agent plugins")}>Configure text and vision <ArrowUpRight size={14} /></button>
+    {auth.memberships.some(member => member.workspaceId === workspaceId && member.role === "owner") && <a className={styles.action} href="/setup?provider=images">Configure image generation <ArrowUpRight size={14} /></a>}
     </section>
     <section className={styles.project}>
       <Layers3 size={19} /><div><h2>Project memory & skills</h2><p>Manage focused work and approved Hermes skills in Boards.</p><button type="button" onClick={() => onNavigate("Boards")}>Open Boards <ArrowUpRight size={13} /></button></div>

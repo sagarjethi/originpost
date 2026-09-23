@@ -64,6 +64,7 @@ export function InstallationSettings({ auth, workspaceId }: { auth: AuthView; wo
   const [step, setStep] = useState(2);
   const [dirty, setDirty] = useState(false);
   const [provider, setProvider] = useState<Provider>(providers[0]);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("provider") === "images") { setProvider("Images"); setStep(2); } }, []);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(owner);

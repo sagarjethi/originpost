@@ -52,8 +52,9 @@ describe("OriginPost PWA", () => {
     worker.handlers.activate!({ waitUntil });
     await waitUntil.mock.calls[0]![0];
     expect(worker.caches.delete).toHaveBeenCalledWith("originpost-public-shell-old");
+    expect(worker.caches.delete).toHaveBeenCalledWith("originpost-public-shell-v1");
     expect(worker.caches.delete).toHaveBeenCalledWith("originpost-shell-v1");
-    expect(worker.caches.delete).not.toHaveBeenCalledWith("originpost-public-shell-v1");
+    expect(worker.caches.delete).not.toHaveBeenCalledWith("originpost-public-shell-v2");
     expect(worker.caches.delete).not.toHaveBeenCalledWith("unrelated-cache");
   });
 
@@ -69,7 +70,7 @@ describe("OriginPost PWA", () => {
       expect(response?.headers.get("cache-control")).toBe("no-cache, no-store, must-revalidate");
       expect(await response?.text()).toContain("OriginPost is offline");
     }
-    expect(worker.caches.match).toHaveBeenCalledWith("/offline.html", { cacheName: "originpost-public-shell-v1", ignoreSearch: true });
+    expect(worker.caches.match).toHaveBeenCalledWith("/offline.html", { cacheName: "originpost-public-shell-v2", ignoreSearch: true });
   });
 
   it("keeps the offline document free of executable inline behavior", () => {
@@ -96,6 +97,7 @@ function loadWorker(fetch = vi.fn(), offline = new Response("offline")) {
     keys: vi.fn().mockResolvedValue([
       "unrelated-cache",
       "originpost-public-shell-v1",
+      "originpost-public-shell-v2",
       "originpost-public-shell-old",
       "originpost-shell-v1",
     ]),

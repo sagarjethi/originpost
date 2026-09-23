@@ -1,4 +1,6 @@
 "use client";
+
+import { GenerationActions } from "./generation-actions";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
@@ -868,6 +870,7 @@ export function NewsPostWorkspace({
           </button>
         </div>
         <div className={styles.body}>
+          {!selectedRun && <GenerationActions research={capability?.research} text={capability?.text} image={capability?.image.generation} review={capability?.imageReview} loading={loading} canConfigure={role === "owner"} />}
           {!loading && !creationAvailable && (
             <div className={styles.setup}>
               <Settings2 size={18} />
@@ -1456,7 +1459,7 @@ export function NewsPostWorkspace({
                   ) : (
                     <ImageIcon size={16} />
                   )}{" "}
-                  {selectedRun ? "Create revision" : "Research & create"}
+                  {selectedRun ? "Create revision" : activeImageMode === "codex-upload" ? "Generate text & image brief" : "Generate text & image"}
                 </button>
               </div>
             </div>

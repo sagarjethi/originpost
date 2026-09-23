@@ -1,5 +1,5 @@
 const PUBLIC_CACHE_PREFIX = "originpost-public-shell-";
-const PUBLIC_CACHE = `${PUBLIC_CACHE_PREFIX}v1`;
+const PUBLIC_CACHE = `${PUBLIC_CACHE_PREFIX}v2`;
 const LEGACY_CACHE_PREFIXES = ["originpost-shell-"];
 const OFFLINE_PATH = "/offline.html";
 const PUBLIC_SHELL_ASSETS = [
