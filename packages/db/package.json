@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@originpost/domain": "workspace:*",
-    "postgres": "3.4.9"
+    "postgres": "4.0.0"
   },
   "devDependencies": {
     "@types/node": "26.5.1",
